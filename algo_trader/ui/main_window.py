@@ -15,6 +15,7 @@ from algo_trader.core.config import Config
 from algo_trader.core.database import Database
 from algo_trader.core.order_manager import OrderManager
 from algo_trader.core.strategy_engine import StrategyEngine
+from algo_trader.core.risk_manager import RiskManager
 from algo_trader.brokers import UpstoxBroker, AliceBlueBroker
 
 from loguru import logger
@@ -62,12 +63,14 @@ class MainWindow(QMainWindow):
         self._create_chartink_tab()
         self._create_orders_tab()
         self._create_positions_tab()
+        self._create_risk_tab()
         self._create_backtest_tab()
         self._create_settings_tab()
 
         # Load strategies after all tabs are created
         self._load_strategies()
         self._load_chartink_scans()
+        self._init_risk_manager()
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -381,6 +384,104 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.holdings_table)
 
         self.tabs.addTab(positions, "Positions")
+
+    def _create_risk_tab(self):
+        """Create Risk Management tab with TSL and MTM"""
+        risk = QWidget()
+        layout = QVBoxLayout(risk)
+
+        # MTM Summary Section
+        mtm_group = QGroupBox("MTM (Mark-to-Market) Summary")
+        mtm_layout = QVBoxLayout(mtm_group)
+
+        mtm_info_layout = QHBoxLayout()
+        self.mtm_total_pnl = QLabel("Total P&L: ₹0.00")
+        self.mtm_total_pnl.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.mtm_realized = QLabel("Realized: ₹0.00")
+        self.mtm_unrealized = QLabel("Unrealized: ₹0.00")
+        self.mtm_trades = QLabel("Trades: 0 (W: 0 / L: 0)")
+
+        mtm_info_layout.addWidget(self.mtm_total_pnl)
+        mtm_info_layout.addWidget(self.mtm_realized)
+        mtm_info_layout.addWidget(self.mtm_unrealized)
+        mtm_info_layout.addWidget(self.mtm_trades)
+        mtm_layout.addLayout(mtm_info_layout)
+
+        layout.addWidget(mtm_group)
+
+        # Add Position with TSL Section
+        add_pos_group = QGroupBox("Add Position with Trailing Stop Loss")
+        add_pos_layout = QFormLayout(add_pos_group)
+
+        self.risk_symbol = QLineEdit()
+        self.risk_symbol.setPlaceholderText("e.g., RELIANCE")
+        add_pos_layout.addRow("Symbol:", self.risk_symbol)
+
+        self.risk_exchange = QComboBox()
+        self.risk_exchange.addItems(["NSE", "BSE", "NFO"])
+        add_pos_layout.addRow("Exchange:", self.risk_exchange)
+
+        self.risk_quantity = QSpinBox()
+        self.risk_quantity.setRange(-10000, 10000)
+        self.risk_quantity.setValue(1)
+        add_pos_layout.addRow("Quantity (+Long/-Short):", self.risk_quantity)
+
+        self.risk_entry_price = QDoubleSpinBox()
+        self.risk_entry_price.setRange(0.01, 100000)
+        self.risk_entry_price.setDecimals(2)
+        add_pos_layout.addRow("Entry Price:", self.risk_entry_price)
+
+        self.risk_sl_type = QComboBox()
+        self.risk_sl_type.addItems(["Fixed Price", "Trailing %", "Trailing Points"])
+        self.risk_sl_type.currentTextChanged.connect(self._on_sl_type_changed)
+        add_pos_layout.addRow("Stop Loss Type:", self.risk_sl_type)
+
+        self.risk_sl_value = QDoubleSpinBox()
+        self.risk_sl_value.setRange(0, 100000)
+        self.risk_sl_value.setDecimals(2)
+        add_pos_layout.addRow("SL Value:", self.risk_sl_value)
+
+        self.risk_target = QDoubleSpinBox()
+        self.risk_target.setRange(0, 100000)
+        self.risk_target.setDecimals(2)
+        add_pos_layout.addRow("Target Price (optional):", self.risk_target)
+
+        add_pos_btn = QPushButton("Add Position")
+        add_pos_btn.clicked.connect(self._add_risk_position)
+        add_pos_layout.addRow(add_pos_btn)
+
+        layout.addWidget(add_pos_group)
+
+        # Tracked Positions Section
+        tracked_group = QGroupBox("Tracked Positions (with TSL)")
+        tracked_layout = QVBoxLayout(tracked_group)
+
+        self.risk_positions_table = QTableWidget()
+        self.risk_positions_table.setColumnCount(10)
+        self.risk_positions_table.setHorizontalHeaderLabels([
+            "Symbol", "Qty", "Entry", "LTP", "SL", "Target", "High/Low", "P&L", "P&L %", "Actions"
+        ])
+        self.risk_positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        tracked_layout.addWidget(self.risk_positions_table)
+
+        # Control buttons
+        btn_layout = QHBoxLayout()
+        self.start_risk_monitor_btn = QPushButton("Start Monitoring")
+        self.start_risk_monitor_btn.clicked.connect(self._start_risk_monitoring)
+        self.stop_risk_monitor_btn = QPushButton("Stop Monitoring")
+        self.stop_risk_monitor_btn.clicked.connect(self._stop_risk_monitoring)
+        self.stop_risk_monitor_btn.setEnabled(False)
+        self.refresh_risk_btn = QPushButton("Refresh")
+        self.refresh_risk_btn.clicked.connect(self._refresh_risk_positions)
+
+        btn_layout.addWidget(self.start_risk_monitor_btn)
+        btn_layout.addWidget(self.stop_risk_monitor_btn)
+        btn_layout.addWidget(self.refresh_risk_btn)
+        tracked_layout.addLayout(btn_layout)
+
+        layout.addWidget(tracked_group)
+
+        self.tabs.addTab(risk, "Risk/TSL")
 
     def _create_backtest_tab(self):
         """Create backtesting tab"""
@@ -946,6 +1047,262 @@ class MainWindow(QMainWindow):
             action_text = "No broker connected"
 
         self.chartink_alerts_table.setItem(row, 4, QTableWidgetItem(action_text))
+
+    # Risk Management / TSL Methods
+    def _init_risk_manager(self):
+        """Initialize the risk manager"""
+        self.risk_manager = RiskManager()
+        self.risk_manager.register_mtm_callback(self._on_mtm_update)
+        self.risk_manager.register_sl_hit_callback(self._on_sl_hit)
+        self.risk_manager.register_target_hit_callback(self._on_target_hit)
+        logger.info("Risk manager initialized")
+
+    def _on_sl_type_changed(self, sl_type: str):
+        """Handle stop loss type change"""
+        if sl_type == "Fixed Price":
+            self.risk_sl_value.setPrefix("₹")
+            self.risk_sl_value.setSuffix("")
+            self.risk_sl_value.setDecimals(2)
+        elif sl_type == "Trailing %":
+            self.risk_sl_value.setPrefix("")
+            self.risk_sl_value.setSuffix("%")
+            self.risk_sl_value.setDecimals(1)
+            self.risk_sl_value.setRange(0.1, 50)
+        elif sl_type == "Trailing Points":
+            self.risk_sl_value.setPrefix("₹")
+            self.risk_sl_value.setSuffix(" pts")
+            self.risk_sl_value.setDecimals(2)
+
+    def _add_risk_position(self):
+        """Add a new position to risk manager"""
+        symbol = self.risk_symbol.text().strip().upper()
+        if not symbol:
+            QMessageBox.warning(self, "Error", "Please enter a symbol")
+            return
+
+        exchange = self.risk_exchange.currentText()
+        quantity = self.risk_quantity.value()
+        entry_price = self.risk_entry_price.value()
+        sl_type = self.risk_sl_type.currentText()
+        sl_value = self.risk_sl_value.value()
+        target = self.risk_target.value() if self.risk_target.value() > 0 else None
+
+        if quantity == 0:
+            QMessageBox.warning(self, "Error", "Quantity cannot be zero")
+            return
+
+        if entry_price <= 0:
+            QMessageBox.warning(self, "Error", "Please enter a valid entry price")
+            return
+
+        # Determine SL parameters based on type
+        stop_loss = None
+        trailing_sl_percent = None
+        trailing_sl_points = None
+
+        if sl_value > 0:
+            if sl_type == "Fixed Price":
+                stop_loss = sl_value
+            elif sl_type == "Trailing %":
+                trailing_sl_percent = sl_value
+                # Calculate initial SL
+                if quantity > 0:
+                    stop_loss = entry_price * (1 - sl_value / 100)
+                else:
+                    stop_loss = entry_price * (1 + sl_value / 100)
+            elif sl_type == "Trailing Points":
+                trailing_sl_points = sl_value
+                # Calculate initial SL
+                if quantity > 0:
+                    stop_loss = entry_price - sl_value
+                else:
+                    stop_loss = entry_price + sl_value
+
+        # Add position to risk manager
+        self.risk_manager.add_position(
+            symbol=symbol,
+            quantity=quantity,
+            entry_price=entry_price,
+            exchange=exchange,
+            stop_loss=stop_loss,
+            target=target,
+            trailing_sl_percent=trailing_sl_percent,
+            trailing_sl_points=trailing_sl_points
+        )
+
+        # Clear inputs
+        self.risk_symbol.clear()
+        self.risk_entry_price.setValue(0)
+        self.risk_sl_value.setValue(0)
+        self.risk_target.setValue(0)
+
+        # Refresh table
+        self._refresh_risk_positions()
+
+        QMessageBox.information(self, "Success", f"Position {symbol} added for tracking")
+
+    def _start_risk_monitoring(self):
+        """Start risk monitoring with price updates"""
+        # Get active broker for price feed
+        current_broker = self.broker_combo.currentText().lower()
+        price_feed = self.brokers.get(current_broker) if current_broker else None
+
+        self.risk_manager.start_monitoring(price_feed=price_feed, interval=2.0)
+
+        self.start_risk_monitor_btn.setEnabled(False)
+        self.stop_risk_monitor_btn.setEnabled(True)
+        self.status_bar.showMessage("Risk monitoring started")
+
+    def _stop_risk_monitoring(self):
+        """Stop risk monitoring"""
+        self.risk_manager.stop_monitoring()
+
+        self.start_risk_monitor_btn.setEnabled(True)
+        self.stop_risk_monitor_btn.setEnabled(False)
+        self.status_bar.showMessage("Risk monitoring stopped")
+
+    def _refresh_risk_positions(self):
+        """Refresh the risk positions table"""
+        positions = self.risk_manager.get_all_positions()
+        self.risk_positions_table.setRowCount(len(positions))
+
+        for i, pos in enumerate(positions):
+            self.risk_positions_table.setItem(i, 0, QTableWidgetItem(pos.symbol))
+            self.risk_positions_table.setItem(i, 1, QTableWidgetItem(str(pos.quantity)))
+            self.risk_positions_table.setItem(i, 2, QTableWidgetItem(f"₹{pos.entry_price:.2f}"))
+            self.risk_positions_table.setItem(i, 3, QTableWidgetItem(f"₹{pos.current_price:.2f}"))
+            self.risk_positions_table.setItem(i, 4, QTableWidgetItem(f"₹{pos.stop_loss:.2f}" if pos.stop_loss else "-"))
+            self.risk_positions_table.setItem(i, 5, QTableWidgetItem(f"₹{pos.target:.2f}" if pos.target else "-"))
+
+            # High/Low for trailing SL
+            if pos.quantity > 0:
+                self.risk_positions_table.setItem(i, 6, QTableWidgetItem(f"H: ₹{pos.highest_price:.2f}"))
+            else:
+                self.risk_positions_table.setItem(i, 6, QTableWidgetItem(f"L: ₹{pos.lowest_price:.2f}"))
+
+            # P&L with color
+            pnl_item = QTableWidgetItem(f"₹{pos.pnl:.2f}")
+            if pos.pnl > 0:
+                pnl_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif pos.pnl < 0:
+                pnl_item.setForeground(Qt.GlobalColor.red)
+            self.risk_positions_table.setItem(i, 7, pnl_item)
+
+            # P&L %
+            pnl_pct_item = QTableWidgetItem(f"{pos.pnl_percent:.2f}%")
+            if pos.pnl_percent > 0:
+                pnl_pct_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif pos.pnl_percent < 0:
+                pnl_pct_item.setForeground(Qt.GlobalColor.red)
+            self.risk_positions_table.setItem(i, 8, pnl_pct_item)
+
+            # Close button
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(lambda checked, s=pos.symbol, e=pos.exchange: self._close_risk_position(s, e))
+            self.risk_positions_table.setCellWidget(i, 9, close_btn)
+
+        # Update MTM summary
+        mtm = self.risk_manager.get_mtm_summary()
+        self._update_mtm_display(mtm)
+
+    def _close_risk_position(self, symbol: str, exchange: str):
+        """Close a tracked position"""
+        position = self.risk_manager.get_position(symbol, exchange)
+        if position:
+            # Use current price as exit price
+            self.risk_manager.close_position(symbol, position.current_price, exchange)
+            self._refresh_risk_positions()
+            QMessageBox.information(self, "Position Closed", f"Closed {symbol} @ ₹{position.current_price:.2f}")
+
+    def _update_mtm_display(self, mtm):
+        """Update MTM display labels"""
+        # Total P&L
+        total_color = "green" if mtm.total_pnl >= 0 else "red"
+        self.mtm_total_pnl.setText(f"Total P&L: <span style='color:{total_color}'>₹{mtm.total_pnl:.2f}</span>")
+        self.mtm_total_pnl.setTextFormat(Qt.TextFormat.RichText)
+
+        # Realized
+        realized_color = "green" if mtm.realized_pnl >= 0 else "red"
+        self.mtm_realized.setText(f"Realized: <span style='color:{realized_color}'>₹{mtm.realized_pnl:.2f}</span>")
+        self.mtm_realized.setTextFormat(Qt.TextFormat.RichText)
+
+        # Unrealized
+        unrealized_color = "green" if mtm.unrealized_pnl >= 0 else "red"
+        self.mtm_unrealized.setText(f"Unrealized: <span style='color:{unrealized_color}'>₹{mtm.unrealized_pnl:.2f}</span>")
+        self.mtm_unrealized.setTextFormat(Qt.TextFormat.RichText)
+
+        # Trade stats
+        self.mtm_trades.setText(f"Trades: {mtm.total_trades} (W: {mtm.winning_trades} / L: {mtm.losing_trades})")
+
+    def _on_mtm_update(self, mtm):
+        """Handle MTM update from risk manager"""
+        self._update_mtm_display(mtm)
+        self._refresh_risk_positions()
+
+    def _on_sl_hit(self, position):
+        """Handle stop loss hit"""
+        QMessageBox.warning(
+            self, "Stop Loss Hit",
+            f"Stop Loss triggered for {position.symbol}!\n"
+            f"Entry: ₹{position.entry_price:.2f}\n"
+            f"Exit: ₹{position.current_price:.2f}\n"
+            f"P&L: ₹{position.pnl:.2f}"
+        )
+
+        # Auto-close position from tracking
+        self.risk_manager.close_position(position.symbol, position.current_price, position.exchange)
+        self._refresh_risk_positions()
+
+        # Place exit order if broker connected
+        self._place_exit_order(position)
+
+    def _on_target_hit(self, position):
+        """Handle target hit"""
+        QMessageBox.information(
+            self, "Target Hit",
+            f"Target reached for {position.symbol}!\n"
+            f"Entry: ₹{position.entry_price:.2f}\n"
+            f"Exit: ₹{position.current_price:.2f}\n"
+            f"P&L: ₹{position.pnl:.2f}"
+        )
+
+        # Auto-close position from tracking
+        self.risk_manager.close_position(position.symbol, position.current_price, position.exchange)
+        self._refresh_risk_positions()
+
+        # Place exit order if broker connected
+        self._place_exit_order(position)
+
+    def _place_exit_order(self, position):
+        """Place exit order for a position"""
+        from algo_trader.core.order_manager import Order, OrderType, TransactionType, Exchange
+
+        current_broker = self.broker_combo.currentText().lower()
+        if not current_broker or current_broker not in self.brokers:
+            logger.warning("No broker connected for exit order")
+            return
+
+        try:
+            # Exit is opposite of entry
+            if position.quantity > 0:
+                transaction_type = TransactionType.SELL
+            else:
+                transaction_type = TransactionType.BUY
+
+            order = Order(
+                symbol=position.symbol,
+                transaction_type=transaction_type,
+                quantity=abs(position.quantity),
+                order_type=OrderType.MARKET,
+                exchange=Exchange[position.exchange]
+            )
+
+            result = self.order_manager.place_order(order, current_broker)
+            logger.info(f"Exit order placed: {result.broker_order_id}")
+            self._load_orders()
+
+        except Exception as e:
+            logger.error(f"Failed to place exit order: {e}")
 
     def closeEvent(self, event):
         """Handle window close"""

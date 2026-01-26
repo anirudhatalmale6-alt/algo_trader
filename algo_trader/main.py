@@ -2,11 +2,16 @@
 Algo Trader - Main Entry Point
 """
 import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from loguru import logger
 
-from ui.main_window import MainWindow
+from algo_trader.ui.main_window import MainWindow
 
 
 def setup_logging():

@@ -11,11 +11,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QFont
 
-from ..core.config import Config
-from ..core.database import Database
-from ..core.order_manager import OrderManager
-from ..core.strategy_engine import StrategyEngine
-from ..brokers import UpstoxBroker, AliceBlueBroker
+from algo_trader.core.config import Config
+from algo_trader.core.database import Database
+from algo_trader.core.order_manager import OrderManager
+from algo_trader.core.strategy_engine import StrategyEngine
+from algo_trader.brokers import UpstoxBroker, AliceBlueBroker
 
 from loguru import logger
 
@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
 
     def _show_broker_dialog(self):
         """Show broker configuration dialog"""
-        from .broker_dialog import BrokerConfigDialog
+        from algo_trader.ui.broker_dialog import BrokerConfigDialog
         dialog = BrokerConfigDialog(self.config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._load_configured_brokers()
@@ -505,7 +505,7 @@ class MainWindow(QMainWindow):
 
     def _validate_strategy(self):
         """Validate Pine Script"""
-        from ..strategies.pine_parser import PineScriptParser
+        from algo_trader.strategies.pine_parser import PineScriptParser
 
         script = self.pine_script_editor.toPlainText().strip()
         if not script:
@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
 
     def _place_manual_order(self):
         """Place a manual order"""
-        from ..core.order_manager import Order, OrderType, TransactionType, Exchange
+        from algo_trader.core.order_manager import Order, OrderType, TransactionType, Exchange
 
         current_broker = self.broker_combo.currentText().lower()
         if not current_broker or current_broker not in self.brokers:
@@ -613,8 +613,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Strategy not found")
             return
 
-        from ..strategies.pine_parser import PineScriptParser
-        from ..strategies.pine_interpreter import PineScriptInterpreter
+        from algo_trader.strategies.pine_parser import PineScriptParser
+        from algo_trader.strategies.pine_interpreter import PineScriptInterpreter
 
         parser = PineScriptParser()
         parsed = parser.parse(strategy['pine_script'])

@@ -1,4 +1,4 @@
 # Broker integrations
-from .base import BaseBroker
-from .upstox import UpstoxBroker
-from .alice_blue import AliceBlueBroker
+from algo_trader.brokers.base import BaseBroker
+from algo_trader.brokers.upstox import UpstoxBroker
+from algo_trader.brokers.alice_blue import AliceBlueBroker

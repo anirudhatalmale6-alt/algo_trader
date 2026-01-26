@@ -8,9 +8,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from loguru import logger
 
-from .pine_parser import ParsedStrategy
-from .indicators import Indicators
-from ..core.strategy_engine import Signal, SignalType
+from algo_trader.strategies.pine_parser import ParsedStrategy
+from algo_trader.strategies.indicators import Indicators
+from algo_trader.core.strategy_engine import Signal, SignalType
 
 
 class PineScriptInterpreter:

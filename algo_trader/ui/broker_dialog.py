@@ -10,8 +10,8 @@ from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 import webbrowser
 
-from ..core.config import Config
-from ..brokers import UpstoxBroker, AliceBlueBroker
+from algo_trader.core.config import Config
+from algo_trader.brokers import UpstoxBroker, AliceBlueBroker
 
 from loguru import logger
 

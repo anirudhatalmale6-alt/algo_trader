@@ -9,8 +9,8 @@ import threading
 import time
 from loguru import logger
 
-from .order_manager import OrderManager, Order, OrderType, TransactionType, Exchange
-from .database import Database
+from algo_trader.core.order_manager import OrderManager, Order, OrderType, TransactionType, Exchange
+from algo_trader.core.database import Database
 
 
 class SignalType(Enum):
@@ -58,7 +58,7 @@ class StrategyEngine:
         """
         try:
             # Import here to avoid circular imports
-            from ..strategies.pine_parser import PineScriptParser
+            from algo_trader.strategies.pine_parser import PineScriptParser
 
             parser = PineScriptParser()
             strategy = parser.parse(pine_script)

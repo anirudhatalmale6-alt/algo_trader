@@ -1,5 +1,6 @@
 @echo off
-echo Starting Algo Trader...
+title Algo Trader
 cd /d "%~dp0"
-python -m algo_trader.main
+echo Starting Algo Trader...
+python algo_trader/main.py
 pause

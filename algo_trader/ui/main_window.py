@@ -64,6 +64,9 @@ class MainWindow(QMainWindow):
         self._create_backtest_tab()
         self._create_settings_tab()
 
+        # Load strategies after all tabs are created
+        self._load_strategies()
+
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -212,9 +215,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter)
 
         self.tabs.addTab(strategies, "Strategies")
-
-        # Load existing strategies
-        self._load_strategies()
 
     def _create_orders_tab(self):
         """Create orders management tab"""

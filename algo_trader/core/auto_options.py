@@ -35,33 +35,60 @@ class ExpirySelection(Enum):
 
 
 @dataclass
+class LegConfig:
+    """Configuration for a single leg"""
+    enabled: bool = True
+    option_type: str = "CE"          # CE or PE
+    action: str = "BUY"             # BUY or SELL
+    strike_selection: str = "ATM"    # From StrikeSelection
+    expiry_selection: str = "Current Week"  # From ExpirySelection
+    quantity: int = 1                # Number of lots
+
+
+@dataclass
 class AutoOptionsConfig:
     """Configuration for auto-options execution"""
     enabled: bool = False
     symbol: str = "NIFTY"             # Underlying symbol
 
-    # What to do on BUY signal
-    buy_signal_action: str = "BUY CE"    # Action from SignalAction
-    # What to do on SELL signal
-    sell_signal_action: str = "BUY PE"   # Action from SignalAction
+    # What to do on BUY signal - now with per-leg config
+    buy_signal_action: str = "BUY CE"    # Legacy / display label
+    sell_signal_action: str = "BUY PE"   # Legacy / display label
 
-    # Strike selection
+    # Leg 1 config (main trade)
+    leg1: LegConfig = None
+    # Leg 2 config (hedge leg - optional)
+    leg2: LegConfig = None
+    hedge_enabled: bool = False       # Enable 2-leg hedge
+
+    # Legacy single-leg config (for backward compat)
     strike_selection: str = "ATM"
-
-    # Expiry
     expiry_selection: str = "Current Week"
-
-    # Quantity
-    quantity: int = 1                    # Number of lots
+    quantity: int = 1
 
     # Exit settings
     exit_type: str = "P&L Based"
-    sl_value: float = 0.0               # SL (₹ or %)
-    target_value: float = 0.0           # Target (₹ or %)
-    tsl_value: float = 0.0              # Trailing SL
+    sl_value: float = 0.0
+    target_value: float = 0.0
+    tsl_value: float = 0.0
 
     # Auto close on opposite signal
-    close_on_opposite: bool = True       # Close existing on opposite signal
+    close_on_opposite: bool = True
+
+    def __post_init__(self):
+        if self.leg1 is None:
+            self.leg1 = LegConfig(
+                option_type="CE", action="BUY",
+                strike_selection="ATM", expiry_selection="Current Week",
+                quantity=1
+            )
+        if self.leg2 is None:
+            self.leg2 = LegConfig(
+                enabled=False,
+                option_type="CE", action="SELL",
+                strike_selection="OTM +3", expiry_selection="Current Week",
+                quantity=1
+            )
 
 
 class AutoOptionsExecutor:
@@ -121,42 +148,76 @@ class AutoOptionsExecutor:
         logger.info(f"Auto-Options received signal: {signal_type} from {signal.strategy_name}")
 
         try:
-            if signal_type == "BUY":
-                action_str = self.config.buy_signal_action
-            elif signal_type in ("SELL", "EXIT_LONG"):
-                action_str = self.config.sell_signal_action
-            else:
-                logger.info(f"Ignoring signal type: {signal_type}")
-                return
-
             # Close opposite positions if configured
             if self.config.close_on_opposite:
                 self._close_existing_positions(signal_type)
 
             # Get spot price
             spot_price = self._get_spot_price(signal)
-
             if spot_price <= 0:
                 logger.error("Could not determine spot price for auto-options")
                 return
 
-            # Get expiry
-            expiry = self._get_expiry()
-            if not expiry:
-                logger.error("Could not determine expiry date")
+            # Determine what leg config to use based on signal
+            if signal_type == "BUY":
+                leg1_type = self.config.leg1.option_type if self.config.leg1 else "CE"
+            elif signal_type in ("SELL", "EXIT_LONG"):
+                leg1_type = "PE"  # On SELL, default to PE
+            else:
+                logger.info(f"Ignoring signal type: {signal_type}")
                 return
 
-            # Get strike price
-            strike = self._get_strike(spot_price)
+            # Build legs
+            legs_data = []
 
-            # Determine option type and action
-            opt_type, trade_action = self._parse_action(action_str)
+            # Leg 1 (main trade)
+            leg1 = self.config.leg1
+            if leg1 and leg1.enabled:
+                # For SELL signal, swap CE->PE if configured as "BUY CE" pattern
+                opt_type_1 = leg1.option_type
+                if signal_type in ("SELL", "EXIT_LONG") and self.config.sell_signal_action == "BUY PE":
+                    opt_type_1 = "PE"
 
-            # Check if it's a hedge strategy
-            if action_str in ("Straddle", "Strangle"):
-                self._execute_hedge(action_str, expiry, spot_price, signal)
-            else:
-                self._execute_single(opt_type, trade_action, strike, expiry, signal, spot_price)
+                expiry_1 = self._get_expiry_for_selection(leg1.expiry_selection)
+                strike_1 = self._get_strike_for_selection(spot_price, leg1.strike_selection, opt_type_1)
+
+                if expiry_1:
+                    legs_data.append({
+                        "strike": strike_1,
+                        "expiry": expiry_1,
+                        "option_type": opt_type_1,
+                        "action": leg1.action,
+                        "quantity": leg1.quantity,
+                        "entry_price": self._estimate_premium(strike_1, opt_type_1, expiry_1)
+                    })
+
+            # Leg 2 (hedge) - only if hedge enabled
+            if self.config.hedge_enabled and self.config.leg2 and self.config.leg2.enabled:
+                leg2 = self.config.leg2
+
+                opt_type_2 = leg2.option_type
+                if signal_type in ("SELL", "EXIT_LONG") and leg2.option_type == "CE":
+                    opt_type_2 = "PE"  # Mirror for sell signal
+
+                expiry_2 = self._get_expiry_for_selection(leg2.expiry_selection)
+                strike_2 = self._get_strike_for_selection(spot_price, leg2.strike_selection, opt_type_2)
+
+                if expiry_2:
+                    legs_data.append({
+                        "strike": strike_2,
+                        "expiry": expiry_2,
+                        "option_type": opt_type_2,
+                        "action": leg2.action,
+                        "quantity": leg2.quantity,
+                        "entry_price": self._estimate_premium(strike_2, opt_type_2, expiry_2)
+                    })
+
+            if not legs_data:
+                logger.error("No valid legs to execute")
+                return
+
+            # Execute multi-leg or single
+            self._execute_multileg(legs_data, signal, spot_price)
 
         except Exception as e:
             logger.error(f"Auto-options execution error: {e}")
@@ -182,40 +243,49 @@ class AutoOptionsExecutor:
         return 0.0
 
     def _get_expiry(self) -> Optional[str]:
-        """Get expiry date based on config"""
+        """Get expiry date based on config (legacy)"""
+        return self._get_expiry_for_selection(self.config.expiry_selection)
+
+    def _get_expiry_for_selection(self, selection: str) -> Optional[str]:
+        """Get expiry date for a specific selection"""
         expiries = self.options_manager.get_expiry_dates(self.config.symbol)
         if not expiries:
             return None
 
-        exp_sel = self.config.expiry_selection
-        if exp_sel == "Current Week":
-            return expiries[0]  # Nearest expiry
-        elif exp_sel == "Next Week" and len(expiries) > 1:
+        if selection == "Current Week":
+            return expiries[0]
+        elif selection == "Next Week" and len(expiries) > 1:
             return expiries[1]
-        elif exp_sel == "Current Month":
-            return expiries[-1]  # Last expiry is monthly
+        elif selection == "Current Month":
+            return expiries[-1]
         return expiries[0]
 
     def _get_strike(self, spot_price: float) -> float:
-        """Get strike price based on config"""
+        """Get strike price based on config (legacy)"""
+        return self._get_strike_for_selection(spot_price, self.config.strike_selection, "CE")
+
+    def _get_strike_for_selection(self, spot_price: float, selection: str, opt_type: str = "CE") -> float:
+        """Get strike price for a specific selection and option type"""
         from algo_trader.core.options_manager import INDEX_STRIKE_GAPS
 
         gap = INDEX_STRIKE_GAPS.get(self.config.symbol.upper(), 50)
         atm = round(spot_price / gap) * gap
 
-        sel = self.config.strike_selection
-        if sel == "ATM":
+        # For PE options, OTM is below ATM; for CE, OTM is above ATM
+        direction = 1 if opt_type == "CE" else -1
+
+        if selection == "ATM":
             return atm
-        elif sel == "OTM +1":
-            return atm + gap
-        elif sel == "OTM +2":
-            return atm + (gap * 2)
-        elif sel == "OTM +3":
-            return atm + (gap * 3)
-        elif sel == "ITM -1":
-            return atm - gap
-        elif sel == "ITM -2":
-            return atm - (gap * 2)
+        elif selection == "OTM +1":
+            return atm + (gap * 1 * direction)
+        elif selection == "OTM +2":
+            return atm + (gap * 2 * direction)
+        elif selection == "OTM +3":
+            return atm + (gap * 3 * direction)
+        elif selection == "ITM -1":
+            return atm - (gap * 1 * direction)
+        elif selection == "ITM -2":
+            return atm - (gap * 2 * direction)
         return atm
 
     def _parse_action(self, action_str: str):
@@ -227,6 +297,63 @@ class AutoOptionsExecutor:
             "SELL PE": ("PE", "SELL"),
         }
         return action_map.get(action_str, ("CE", "BUY"))
+
+    def _execute_multileg(self, legs_data, signal, spot_price):
+        """Execute a multi-leg option trade from auto signal"""
+        symbol = self.config.symbol
+
+        if len(legs_data) == 1:
+            # Single leg
+            leg = legs_data[0]
+            position = self.options_manager.create_single_option(
+                symbol=symbol,
+                expiry=leg["expiry"],
+                strike=leg["strike"],
+                option_type=leg["option_type"],
+                action=leg["action"],
+                quantity=leg["quantity"],
+                entry_price=leg.get("entry_price", 0),
+                exit_type=self.config.exit_type,
+                sl_value=self.config.sl_value,
+                target_value=self.config.target_value,
+                tsl_value=self.config.tsl_value
+            )
+        else:
+            # Multi-leg
+            position = self.options_manager.create_custom_multileg(
+                symbol=symbol,
+                legs_data=legs_data,
+                exit_type=self.config.exit_type,
+                sl_value=self.config.sl_value,
+                target_value=self.config.target_value,
+                tsl_value=self.config.tsl_value
+            )
+
+        # Build trade info
+        legs_desc = " + ".join(
+            f"{l['action']} {int(l['strike'])}{l['option_type']} {l['expiry']}"
+            for l in legs_data
+        )
+
+        trade_info = {
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "signal": signal.signal_type.value,
+            "strategy": signal.strategy_name,
+            "action": f"{symbol} {legs_desc}",
+            "expiry": legs_data[0]["expiry"],
+            "qty": legs_data[0].get("quantity", 1),
+            "position_id": position.position_id,
+            "legs": len(legs_data)
+        }
+
+        self._trade_log.append(trade_info)
+        logger.info(f"Auto-option executed: {trade_info['action']}")
+
+        for cb in self._on_trade_callbacks:
+            try:
+                cb(trade_info)
+            except Exception as e:
+                logger.error(f"Trade callback error: {e}")
 
     def _execute_single(self, opt_type, trade_action, strike, expiry, signal, spot_price):
         """Execute a single option trade"""

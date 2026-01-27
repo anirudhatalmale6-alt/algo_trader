@@ -516,84 +516,132 @@ class MainWindow(QMainWindow):
 
         # --- Auto Options (Signal -> Options) ---
         auto_group = QGroupBox("Auto Options (Strategy Signal → Automatic Option Trade)")
-        auto_layout = QHBoxLayout(auto_group)
+        auto_main_layout = QVBoxLayout(auto_group)
 
-        # Left: Config
-        auto_config = QFormLayout()
-        auto_config.setSpacing(4)
-
+        # Row 1: Enable + Symbol + Close opposite + Save
+        auto_top = QHBoxLayout()
         self.auto_opt_enabled = QCheckBox("Enable Auto-Options")
-        auto_config.addRow(self.auto_opt_enabled)
+        auto_top.addWidget(self.auto_opt_enabled)
 
+        auto_top.addWidget(QLabel("Symbol:"))
         self.auto_opt_symbol = QComboBox()
         self.auto_opt_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
         self.auto_opt_symbol.setEditable(True)
-        auto_config.addRow("Symbol:", self.auto_opt_symbol)
-
-        self.auto_opt_buy_action = QComboBox()
-        self.auto_opt_buy_action.addItems([s.value for s in SignalAction])
-        auto_config.addRow("On BUY Signal:", self.auto_opt_buy_action)
-
-        self.auto_opt_sell_action = QComboBox()
-        self.auto_opt_sell_action.addItems([s.value for s in SignalAction])
-        self.auto_opt_sell_action.setCurrentText("BUY PE")
-        auto_config.addRow("On SELL Signal:", self.auto_opt_sell_action)
-
-        auto_layout.addLayout(auto_config)
-
-        # Right: More config
-        auto_config2 = QFormLayout()
-        auto_config2.setSpacing(4)
-
-        self.auto_opt_strike = QComboBox()
-        self.auto_opt_strike.addItems([s.value for s in StrikeSelection])
-        auto_config2.addRow("Strike:", self.auto_opt_strike)
-
-        self.auto_opt_expiry = QComboBox()
-        self.auto_opt_expiry.addItems([e.value for e in ExpirySelection])
-        auto_config2.addRow("Expiry:", self.auto_opt_expiry)
-
-        self.auto_opt_qty = QSpinBox()
-        self.auto_opt_qty.setRange(1, 500)
-        self.auto_opt_qty.setValue(1)
-        self.auto_opt_qty.setSuffix(" lots")
-        auto_config2.addRow("Quantity:", self.auto_opt_qty)
+        auto_top.addWidget(self.auto_opt_symbol)
 
         self.auto_opt_close_opposite = QCheckBox("Close on Opposite Signal")
         self.auto_opt_close_opposite.setChecked(True)
-        auto_config2.addRow(self.auto_opt_close_opposite)
+        auto_top.addWidget(self.auto_opt_close_opposite)
 
-        auto_layout.addLayout(auto_config2)
+        self.auto_opt_hedge_enabled = QCheckBox("Enable Hedge (Leg 2)")
+        auto_top.addWidget(self.auto_opt_hedge_enabled)
 
-        # Right-most: SL/Target + Save
-        auto_config3 = QFormLayout()
-        auto_config3.setSpacing(4)
+        auto_main_layout.addLayout(auto_top)
+
+        # Row 2: Leg 1 and Leg 2 side by side
+        legs_row = QHBoxLayout()
+
+        # Leg 1 config
+        leg1_group = QGroupBox("Leg 1 (Main Trade)")
+        leg1_layout = QFormLayout(leg1_group)
+        leg1_layout.setSpacing(3)
+
+        self.auto_leg1_type = QComboBox()
+        self.auto_leg1_type.addItems(["CE", "PE"])
+        leg1_layout.addRow("Type:", self.auto_leg1_type)
+
+        self.auto_leg1_action = QComboBox()
+        self.auto_leg1_action.addItems(["BUY", "SELL"])
+        leg1_layout.addRow("Action:", self.auto_leg1_action)
+
+        self.auto_leg1_strike = QComboBox()
+        self.auto_leg1_strike.addItems([s.value for s in StrikeSelection])
+        leg1_layout.addRow("Strike:", self.auto_leg1_strike)
+
+        self.auto_leg1_expiry = QComboBox()
+        self.auto_leg1_expiry.addItems([e.value for e in ExpirySelection])
+        leg1_layout.addRow("Expiry:", self.auto_leg1_expiry)
+
+        self.auto_leg1_qty = QSpinBox()
+        self.auto_leg1_qty.setRange(1, 500)
+        self.auto_leg1_qty.setValue(1)
+        self.auto_leg1_qty.setSuffix(" lots")
+        leg1_layout.addRow("Qty:", self.auto_leg1_qty)
+
+        legs_row.addWidget(leg1_group)
+
+        # Leg 2 config (Hedge)
+        leg2_group = QGroupBox("Leg 2 (Hedge - Separate Strike/Expiry)")
+        leg2_layout = QFormLayout(leg2_group)
+        leg2_layout.setSpacing(3)
+
+        self.auto_leg2_type = QComboBox()
+        self.auto_leg2_type.addItems(["CE", "PE"])
+        leg2_layout.addRow("Type:", self.auto_leg2_type)
+
+        self.auto_leg2_action = QComboBox()
+        self.auto_leg2_action.addItems(["BUY", "SELL"])
+        self.auto_leg2_action.setCurrentText("SELL")
+        leg2_layout.addRow("Action:", self.auto_leg2_action)
+
+        self.auto_leg2_strike = QComboBox()
+        self.auto_leg2_strike.addItems([s.value for s in StrikeSelection])
+        self.auto_leg2_strike.setCurrentText("OTM +3")
+        leg2_layout.addRow("Strike:", self.auto_leg2_strike)
+
+        self.auto_leg2_expiry = QComboBox()
+        self.auto_leg2_expiry.addItems([e.value for e in ExpirySelection])
+        leg2_layout.addRow("Expiry:", self.auto_leg2_expiry)
+
+        self.auto_leg2_qty = QSpinBox()
+        self.auto_leg2_qty.setRange(1, 500)
+        self.auto_leg2_qty.setValue(1)
+        self.auto_leg2_qty.setSuffix(" lots")
+        leg2_layout.addRow("Qty:", self.auto_leg2_qty)
+
+        legs_row.addWidget(leg2_group)
+
+        # SL/Target/TSL config
+        exit_group_auto = QGroupBox("Exit (Combined P&L)")
+        exit_auto_layout = QFormLayout(exit_group_auto)
+        exit_auto_layout.setSpacing(3)
 
         self.auto_opt_exit_type = QComboBox()
         self.auto_opt_exit_type.addItems([e.value for e in ExitType])
         self.auto_opt_exit_type.setCurrentText("P&L Based")
-        auto_config3.addRow("Exit:", self.auto_opt_exit_type)
+        exit_auto_layout.addRow("Exit:", self.auto_opt_exit_type)
 
         self.auto_opt_sl = QDoubleSpinBox()
         self.auto_opt_sl.setRange(0, 1000000)
         self.auto_opt_sl.setPrefix("₹")
-        auto_config3.addRow("SL:", self.auto_opt_sl)
+        exit_auto_layout.addRow("SL:", self.auto_opt_sl)
 
         self.auto_opt_target = QDoubleSpinBox()
         self.auto_opt_target.setRange(0, 1000000)
         self.auto_opt_target.setPrefix("₹")
-        auto_config3.addRow("Target:", self.auto_opt_target)
+        exit_auto_layout.addRow("Target:", self.auto_opt_target)
 
         self.auto_opt_tsl = QDoubleSpinBox()
         self.auto_opt_tsl.setRange(0, 1000000)
         self.auto_opt_tsl.setPrefix("₹")
-        auto_config3.addRow("TSL:", self.auto_opt_tsl)
+        exit_auto_layout.addRow("TSL:", self.auto_opt_tsl)
 
         save_auto_btn = QPushButton("Save Auto Config")
         save_auto_btn.clicked.connect(self._save_auto_options_config)
-        auto_config3.addRow(save_auto_btn)
+        exit_auto_layout.addRow(save_auto_btn)
 
-        auto_layout.addLayout(auto_config3)
+        legs_row.addWidget(exit_group_auto)
+
+        auto_main_layout.addLayout(legs_row)
+
+        # Legacy hidden combos for backward compat
+        self.auto_opt_buy_action = QComboBox()
+        self.auto_opt_buy_action.addItems([s.value for s in SignalAction])
+        self.auto_opt_buy_action.setVisible(False)
+        self.auto_opt_sell_action = QComboBox()
+        self.auto_opt_sell_action.addItems([s.value for s in SignalAction])
+        self.auto_opt_sell_action.setCurrentText("BUY PE")
+        self.auto_opt_sell_action.setVisible(False)
 
         layout.addWidget(auto_group)
 
@@ -1578,14 +1626,33 @@ class MainWindow(QMainWindow):
         logger.info("Options manager initialized")
 
     def _save_auto_options_config(self):
-        """Save auto-options configuration"""
+        """Save auto-options configuration with per-leg settings"""
+        from algo_trader.core.auto_options import LegConfig
+
+        # Update Leg 1 config
+        self.auto_options.config.leg1 = LegConfig(
+            enabled=True,
+            option_type=self.auto_leg1_type.currentText(),
+            action=self.auto_leg1_action.currentText(),
+            strike_selection=self.auto_leg1_strike.currentText(),
+            expiry_selection=self.auto_leg1_expiry.currentText(),
+            quantity=self.auto_leg1_qty.value()
+        )
+
+        # Update Leg 2 config (hedge)
+        hedge_on = self.auto_opt_hedge_enabled.isChecked()
+        self.auto_options.config.leg2 = LegConfig(
+            enabled=hedge_on,
+            option_type=self.auto_leg2_type.currentText(),
+            action=self.auto_leg2_action.currentText(),
+            strike_selection=self.auto_leg2_strike.currentText(),
+            expiry_selection=self.auto_leg2_expiry.currentText(),
+            quantity=self.auto_leg2_qty.value()
+        )
+
         self.auto_options.update_config(
             symbol=self.auto_opt_symbol.currentText().strip().upper(),
-            buy_signal_action=self.auto_opt_buy_action.currentText(),
-            sell_signal_action=self.auto_opt_sell_action.currentText(),
-            strike_selection=self.auto_opt_strike.currentText(),
-            expiry_selection=self.auto_opt_expiry.currentText(),
-            quantity=self.auto_opt_qty.value(),
+            hedge_enabled=hedge_on,
             close_on_opposite=self.auto_opt_close_opposite.isChecked(),
             exit_type=self.auto_opt_exit_type.currentText(),
             sl_value=self.auto_opt_sl.value(),
@@ -1594,7 +1661,6 @@ class MainWindow(QMainWindow):
         )
 
         if self.auto_opt_enabled.isChecked():
-            # Set broker if available
             current_broker = self.broker_combo.currentText().lower()
             if current_broker and current_broker in self.brokers:
                 self.auto_options.set_broker(self.brokers[current_broker])
@@ -1602,14 +1668,24 @@ class MainWindow(QMainWindow):
         else:
             self.auto_options.disable()
 
+        # Build info message
+        leg1_info = (f"Leg 1: {self.auto_leg1_action.currentText()} "
+                     f"{self.auto_leg1_type.currentText()} "
+                     f"Strike:{self.auto_leg1_strike.currentText()} "
+                     f"Expiry:{self.auto_leg1_expiry.currentText()}")
+
+        leg2_info = ""
+        if hedge_on:
+            leg2_info = (f"\nLeg 2: {self.auto_leg2_action.currentText()} "
+                         f"{self.auto_leg2_type.currentText()} "
+                         f"Strike:{self.auto_leg2_strike.currentText()} "
+                         f"Expiry:{self.auto_leg2_expiry.currentText()}")
+
         QMessageBox.information(
             self, "Saved",
             f"Auto-Options config saved!\n"
             f"Status: {'ENABLED' if self.auto_opt_enabled.isChecked() else 'DISABLED'}\n"
-            f"BUY Signal → {self.auto_opt_buy_action.currentText()}\n"
-            f"SELL Signal → {self.auto_opt_sell_action.currentText()}\n"
-            f"Strike: {self.auto_opt_strike.currentText()}, "
-            f"Expiry: {self.auto_opt_expiry.currentText()}"
+            f"{leg1_info}{leg2_info}"
         )
 
     def _on_auto_option_trade(self, trade_info):

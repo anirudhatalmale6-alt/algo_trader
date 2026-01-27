@@ -353,6 +353,69 @@ class OptionsManager:
 
         return position
 
+    def create_custom_multileg(self, symbol: str, legs_data: List[Dict],
+                                exit_type: str = "Manual",
+                                sl_value: float = 0, target_value: float = 0,
+                                tsl_value: float = 0) -> OptionPosition:
+        """
+        Create a custom multi-leg position where each leg has independent
+        strike price and expiry date.
+
+        Args:
+            symbol: Base symbol (NIFTY, BANKNIFTY)
+            legs_data: List of dicts, each with:
+                - strike: Strike price
+                - expiry: Expiry date string
+                - option_type: "CE" or "PE"
+                - action: "BUY" or "SELL"
+                - quantity: Number of lots
+                - entry_price: Entry premium
+            exit_type: Exit type for combined P&L
+            sl_value: SL value
+            target_value: Target value
+            tsl_value: TSL value
+        """
+        lot_size = self.get_lot_size(symbol)
+
+        pos_id = f"OPT_{self._next_pos_id}"
+        self._next_pos_id += 1
+
+        position = OptionPosition(
+            position_id=pos_id,
+            symbol=symbol,
+            strategy_type=HedgeStrategy.NONE,
+            exit_type=ExitType(exit_type) if exit_type in [e.value for e in ExitType] else ExitType.MANUAL,
+            sl_value=sl_value,
+            target_value=target_value,
+            tsl_value=tsl_value
+        )
+
+        for leg_data in legs_data:
+            opt_type = OptionType.CE if leg_data["option_type"] == "CE" else OptionType.PE
+            leg = OptionLeg(
+                leg_id=self._next_leg_id,
+                symbol=symbol,
+                expiry=leg_data["expiry"],
+                strike=leg_data["strike"],
+                option_type=opt_type,
+                action=leg_data["action"],
+                quantity=leg_data.get("quantity", 1),
+                lot_size=lot_size,
+                entry_price=leg_data.get("entry_price", 0)
+            )
+            self._next_leg_id += 1
+            position.add_leg(leg)
+
+        self.positions[pos_id] = position
+
+        legs_desc = ", ".join(
+            f"{l['strike']}{l['option_type']} {l['action']} exp:{l['expiry']}"
+            for l in legs_data
+        )
+        logger.info(f"Created multi-leg position {pos_id}: {symbol} [{legs_desc}]")
+
+        return position
+
     def create_hedge_strategy(self, symbol: str, strategy: str,
                               expiry: str, spot_price: float,
                               quantity: int, entry_prices: Dict[str, float],

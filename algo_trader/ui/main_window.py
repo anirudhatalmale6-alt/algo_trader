@@ -607,121 +607,105 @@ class MainWindow(QMainWindow):
         self.auto_trade_log_table.setMaximumHeight(100)
         layout.addWidget(self.auto_trade_log_table)
 
-        # --- New Option Position (left) + Exit Settings (right) side by side ---
-        top_row = QHBoxLayout()
+        # --- Manual Multi-Leg Builder ---
+        build_group = QGroupBox("Manual Option Builder (Multi-Leg - Each Leg Separate Strike & Expiry)")
+        build_layout = QVBoxLayout(build_group)
 
-        # Left: New Option Position Form
-        form_group = QGroupBox("New Option Position")
-        form_layout = QFormLayout(form_group)
-        form_layout.setSpacing(4)
+        # Top row: Symbol, Spot, Load buttons
+        top_form = QHBoxLayout()
 
+        top_form.addWidget(QLabel("Symbol:"))
         self.opt_symbol = QComboBox()
         self.opt_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"])
         self.opt_symbol.setEditable(True)
         self.opt_symbol.currentTextChanged.connect(self._on_opt_symbol_changed)
-        form_layout.addRow("Symbol:", self.opt_symbol)
+        top_form.addWidget(self.opt_symbol)
 
-        spot_row = QHBoxLayout()
+        top_form.addWidget(QLabel("Spot:"))
         self.opt_spot_price = QDoubleSpinBox()
         self.opt_spot_price.setRange(0, 200000)
         self.opt_spot_price.setDecimals(2)
         self.opt_spot_price.setPrefix("₹")
-        spot_row.addWidget(self.opt_spot_price)
-        fetch_spot_btn = QPushButton("Fetch")
-        fetch_spot_btn.setMaximumWidth(60)
+        top_form.addWidget(self.opt_spot_price)
+
+        fetch_spot_btn = QPushButton("Fetch Spot")
         fetch_spot_btn.clicked.connect(self._fetch_spot_price)
-        spot_row.addWidget(fetch_spot_btn)
-        form_layout.addRow("Spot Price:", spot_row)
+        top_form.addWidget(fetch_spot_btn)
 
-        expiry_row = QHBoxLayout()
-        self.opt_expiry = QComboBox()
-        expiry_row.addWidget(self.opt_expiry)
-        load_expiry_btn = QPushButton("Load")
-        load_expiry_btn.setMaximumWidth(60)
+        load_expiry_btn = QPushButton("Load Expiries")
         load_expiry_btn.clicked.connect(self._load_expiry_dates)
-        expiry_row.addWidget(load_expiry_btn)
-        form_layout.addRow("Expiry:", expiry_row)
+        top_form.addWidget(load_expiry_btn)
 
-        self.opt_strategy = QComboBox()
-        self.opt_strategy.addItems([s.value for s in HedgeStrategy])
-        self.opt_strategy.currentTextChanged.connect(self._on_opt_strategy_changed)
-        form_layout.addRow("Strategy:", self.opt_strategy)
+        load_strikes_btn = QPushButton("Load Strikes")
+        load_strikes_btn.clicked.connect(self._load_strike_prices)
+        top_form.addWidget(load_strikes_btn)
 
-        strike_row = QHBoxLayout()
+        self.opt_lot_size = QLabel("Lot: 25")
+        top_form.addWidget(self.opt_lot_size)
+
+        build_layout.addLayout(top_form)
+
+        # Hidden combo for expiry/strike data (used by leg rows)
+        self.opt_expiry = QComboBox()
+        self.opt_expiry.setVisible(False)
+        build_layout.addWidget(self.opt_expiry)
         self.opt_strike = QComboBox()
         self.opt_strike.setEditable(True)
-        strike_row.addWidget(self.opt_strike)
-        load_strikes_btn = QPushButton("Load")
-        load_strikes_btn.setMaximumWidth(60)
-        load_strikes_btn.clicked.connect(self._load_strike_prices)
-        strike_row.addWidget(load_strikes_btn)
-        form_layout.addRow("Strike:", strike_row)
+        self.opt_strike.setVisible(False)
+        build_layout.addWidget(self.opt_strike)
 
-        type_action_row = QHBoxLayout()
-        self.opt_type = QComboBox()
-        self.opt_type.addItems(["CE", "PE"])
-        type_action_row.addWidget(QLabel("Type:"))
-        type_action_row.addWidget(self.opt_type)
-        self.opt_action = QComboBox()
-        self.opt_action.addItems(["BUY", "SELL"])
-        type_action_row.addWidget(QLabel("Action:"))
-        type_action_row.addWidget(self.opt_action)
-        form_layout.addRow(type_action_row)
+        # Leg builder table
+        self.leg_builder_table = QTableWidget()
+        self.leg_builder_table.setColumnCount(7)
+        self.leg_builder_table.setHorizontalHeaderLabels([
+            "Strike", "Expiry", "CE/PE", "BUY/SELL", "Lots", "Premium ₹", "Remove"
+        ])
+        self.leg_builder_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.leg_builder_table.setMaximumHeight(140)
+        build_layout.addWidget(self.leg_builder_table)
 
-        qty_row = QHBoxLayout()
-        self.opt_quantity = QSpinBox()
-        self.opt_quantity.setRange(1, 500)
-        self.opt_quantity.setValue(1)
-        self.opt_quantity.setSuffix(" lots")
-        qty_row.addWidget(self.opt_quantity)
-        self.opt_lot_size = QLabel("Lot: 25")
-        qty_row.addWidget(self.opt_lot_size)
-        form_layout.addRow("Quantity:", qty_row)
+        # Add leg button
+        leg_btn_row = QHBoxLayout()
+        add_leg_btn = QPushButton("+ Add Leg")
+        add_leg_btn.clicked.connect(self._add_builder_leg)
+        leg_btn_row.addWidget(add_leg_btn)
 
-        self.opt_entry_price = QDoubleSpinBox()
-        self.opt_entry_price.setRange(0, 100000)
-        self.opt_entry_price.setDecimals(2)
-        self.opt_entry_price.setPrefix("₹")
-        form_layout.addRow("Premium:", self.opt_entry_price)
-
-        top_row.addWidget(form_group)
-
-        # Right: Exit Settings
-        exit_group = QGroupBox("Exit Settings (SL / TSL / Target)")
-        exit_layout = QFormLayout(exit_group)
-        exit_layout.setSpacing(4)
-
+        # Exit settings inline
+        leg_btn_row.addWidget(QLabel("Exit:"))
         self.opt_exit_type = QComboBox()
         self.opt_exit_type.addItems([e.value for e in ExitType])
         self.opt_exit_type.currentTextChanged.connect(self._on_opt_exit_type_changed)
-        exit_layout.addRow("Exit Type:", self.opt_exit_type)
+        leg_btn_row.addWidget(self.opt_exit_type)
 
+        leg_btn_row.addWidget(QLabel("SL:"))
         self.opt_sl_value = QDoubleSpinBox()
         self.opt_sl_value.setRange(0, 1000000)
         self.opt_sl_value.setDecimals(2)
         self.opt_sl_value.setPrefix("₹")
-        exit_layout.addRow("SL Value:", self.opt_sl_value)
+        leg_btn_row.addWidget(self.opt_sl_value)
 
+        leg_btn_row.addWidget(QLabel("Target:"))
         self.opt_target_value = QDoubleSpinBox()
         self.opt_target_value.setRange(0, 1000000)
         self.opt_target_value.setDecimals(2)
         self.opt_target_value.setPrefix("₹")
-        exit_layout.addRow("Target Value:", self.opt_target_value)
+        leg_btn_row.addWidget(self.opt_target_value)
 
+        leg_btn_row.addWidget(QLabel("TSL:"))
         self.opt_tsl_value = QDoubleSpinBox()
         self.opt_tsl_value.setRange(0, 1000000)
         self.opt_tsl_value.setDecimals(2)
-        exit_layout.addRow("TSL Value:", self.opt_tsl_value)
+        leg_btn_row.addWidget(self.opt_tsl_value)
 
-        # Add button inside exit group
-        add_opt_btn = QPushButton(">>> Add Option Position <<<")
-        add_opt_btn.setMinimumHeight(35)
-        add_opt_btn.clicked.connect(self._add_option_position)
-        exit_layout.addRow(add_opt_btn)
+        build_layout.addLayout(leg_btn_row)
 
-        top_row.addWidget(exit_group)
+        # Create position button
+        create_pos_btn = QPushButton(">>> Create Multi-Leg Position <<<")
+        create_pos_btn.setMinimumHeight(35)
+        create_pos_btn.clicked.connect(self._add_option_position)
+        build_layout.addWidget(create_pos_btn)
 
-        layout.addLayout(top_row)
+        layout.addWidget(build_group)
 
         # --- Active Option Positions Table ---
         positions_group = QGroupBox("Active Option Positions")
@@ -740,9 +724,9 @@ class MainWindow(QMainWindow):
         # Legs detail table
         positions_layout.addWidget(QLabel("Leg Details (select position above):"))
         self.opt_legs_table = QTableWidget()
-        self.opt_legs_table.setColumnCount(9)
+        self.opt_legs_table.setColumnCount(10)
         self.opt_legs_table.setHorizontalHeaderLabels([
-            "Leg", "Strike", "Type", "Action", "Qty", "Entry", "LTP", "P&L", "P&L %"
+            "Leg", "Strike", "Expiry", "Type", "Action", "Qty", "Entry", "LTP", "P&L", "P&L %"
         ])
         self.opt_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.opt_legs_table.setMaximumHeight(150)
@@ -1709,16 +1693,65 @@ class MainWindow(QMainWindow):
 
         self.status_bar.showMessage(f"Loaded {len(strikes)} strikes. ATM: {atm_str}")
 
-    def _on_opt_strategy_changed(self, strategy_name: str):
-        """Handle strategy type change"""
-        is_single = strategy_name == "None"
-        self.opt_type.setEnabled(is_single)
-        self.opt_action.setEnabled(is_single)
-        self.opt_strike.setEnabled(is_single)
+    def _add_builder_leg(self):
+        """Add a new leg row to the multi-leg builder table"""
+        row = self.leg_builder_table.rowCount()
+        self.leg_builder_table.insertRow(row)
 
-        if not is_single:
-            self.opt_type.setCurrentText("CE")
-            self.opt_action.setCurrentText("SELL")
+        # Strike combo - populate from loaded strikes
+        strike_combo = QComboBox()
+        strike_combo.setEditable(True)
+        for i in range(self.opt_strike.count()):
+            strike_combo.addItem(self.opt_strike.itemText(i))
+        # Auto-select ATM if available
+        if self.opt_strike.currentText():
+            strike_combo.setCurrentText(self.opt_strike.currentText())
+        self.leg_builder_table.setCellWidget(row, 0, strike_combo)
+
+        # Expiry combo - populate from loaded expiries
+        expiry_combo = QComboBox()
+        for i in range(self.opt_expiry.count()):
+            expiry_combo.addItem(self.opt_expiry.itemText(i))
+        if self.opt_expiry.currentText():
+            expiry_combo.setCurrentText(self.opt_expiry.currentText())
+        self.leg_builder_table.setCellWidget(row, 1, expiry_combo)
+
+        # CE/PE
+        type_combo = QComboBox()
+        type_combo.addItems(["CE", "PE"])
+        self.leg_builder_table.setCellWidget(row, 2, type_combo)
+
+        # BUY/SELL
+        action_combo = QComboBox()
+        action_combo.addItems(["BUY", "SELL"])
+        self.leg_builder_table.setCellWidget(row, 3, action_combo)
+
+        # Lots
+        qty_spin = QSpinBox()
+        qty_spin.setRange(1, 500)
+        qty_spin.setValue(1)
+        self.leg_builder_table.setCellWidget(row, 4, qty_spin)
+
+        # Premium
+        premium_spin = QDoubleSpinBox()
+        premium_spin.setRange(0, 100000)
+        premium_spin.setDecimals(2)
+        self.leg_builder_table.setCellWidget(row, 5, premium_spin)
+
+        # Remove button
+        remove_btn = QPushButton("X")
+        remove_btn.setMaximumWidth(30)
+        remove_btn.clicked.connect(lambda checked, r=row: self._remove_builder_leg(r))
+        self.leg_builder_table.setCellWidget(row, 6, remove_btn)
+
+    def _remove_builder_leg(self, row):
+        """Remove a leg from builder"""
+        if row < self.leg_builder_table.rowCount():
+            self.leg_builder_table.removeRow(row)
+
+    def _on_opt_strategy_changed(self, strategy_name: str):
+        """Handle strategy type change - kept for compatibility"""
+        pass
 
     def _on_opt_exit_type_changed(self, exit_type: str):
         """Handle exit type change"""
@@ -1743,93 +1776,88 @@ class MainWindow(QMainWindow):
             self.opt_tsl_value.setSuffix("%" if exit_type == "TSL %" else " pts")
 
     def _add_option_position(self):
-        """Add a new option position"""
+        """Add a new multi-leg option position from builder table"""
         symbol = self.opt_symbol.currentText().strip().upper()
         if not symbol:
             QMessageBox.warning(self, "Error", "Please select a symbol")
             return
 
-        expiry = self.opt_expiry.currentText()
-        if not expiry:
-            QMessageBox.warning(self, "Error", "Please load and select an expiry date")
+        num_legs = self.leg_builder_table.rowCount()
+        if num_legs == 0:
+            QMessageBox.warning(self, "Error", "Please add at least one leg using '+ Add Leg' button")
             return
 
-        strike_text = self.opt_strike.currentText()
-        if not strike_text:
-            QMessageBox.warning(self, "Error", "Please load and select a strike price")
-            return
+        # Read all legs from builder table
+        legs_data = []
+        for row in range(num_legs):
+            strike_widget = self.leg_builder_table.cellWidget(row, 0)
+            expiry_widget = self.leg_builder_table.cellWidget(row, 1)
+            type_widget = self.leg_builder_table.cellWidget(row, 2)
+            action_widget = self.leg_builder_table.cellWidget(row, 3)
+            qty_widget = self.leg_builder_table.cellWidget(row, 4)
+            premium_widget = self.leg_builder_table.cellWidget(row, 5)
 
-        try:
-            strike = float(strike_text)
-        except ValueError:
-            QMessageBox.warning(self, "Error", "Invalid strike price")
-            return
+            if not all([strike_widget, expiry_widget, type_widget, action_widget, qty_widget, premium_widget]):
+                QMessageBox.warning(self, "Error", f"Leg {row + 1} has missing fields")
+                return
 
-        entry_price = self.opt_entry_price.value()
-        if entry_price <= 0:
-            QMessageBox.warning(self, "Error", "Please enter entry premium")
-            return
+            try:
+                strike = float(strike_widget.currentText())
+            except (ValueError, AttributeError):
+                QMessageBox.warning(self, "Error", f"Leg {row + 1}: Invalid strike price")
+                return
 
-        quantity = self.opt_quantity.value()
-        strategy = self.opt_strategy.currentText()
+            expiry = expiry_widget.currentText()
+            if not expiry:
+                QMessageBox.warning(self, "Error", f"Leg {row + 1}: Please select expiry")
+                return
+
+            legs_data.append({
+                "strike": strike,
+                "expiry": expiry,
+                "option_type": type_widget.currentText(),
+                "action": action_widget.currentText(),
+                "quantity": qty_widget.value(),
+                "entry_price": premium_widget.value()
+            })
+
         exit_type = self.opt_exit_type.currentText()
         sl_value = self.opt_sl_value.value()
         target_value = self.opt_target_value.value()
         tsl_value = self.opt_tsl_value.value()
 
-        if strategy == "None":
-            # Single option
-            opt_type = self.opt_type.currentText()
-            action = self.opt_action.currentText()
-
+        if num_legs == 1:
+            # Single leg - use create_single_option
+            leg = legs_data[0]
             position = self.options_manager.create_single_option(
-                symbol=symbol, expiry=expiry, strike=strike,
-                option_type=opt_type, action=action, quantity=quantity,
-                entry_price=entry_price, exit_type=exit_type,
-                sl_value=sl_value, target_value=target_value,
-                tsl_value=tsl_value
-            )
-
-            QMessageBox.information(
-                self, "Success",
-                f"Option position added:\n"
-                f"{symbol} {expiry} {int(strike)}{opt_type} {action}\n"
-                f"Qty: {quantity} lots, Premium: ₹{entry_price}"
+                symbol=symbol, expiry=leg["expiry"], strike=leg["strike"],
+                option_type=leg["option_type"], action=leg["action"],
+                quantity=leg["quantity"], entry_price=leg["entry_price"],
+                exit_type=exit_type, sl_value=sl_value,
+                target_value=target_value, tsl_value=tsl_value
             )
         else:
-            # Hedge strategy - need entry prices for each leg
-            # For now, use the entry price as base for all legs
-            spot = self.opt_spot_price.value()
-            if spot <= 0:
-                QMessageBox.warning(self, "Error", "Please enter spot price for hedge strategy")
-                return
-
-            entry_prices = {
-                "ce": entry_price,
-                "pe": entry_price,
-                "buy_ce": entry_price,
-                "sell_ce": entry_price,
-                "buy_pe": entry_price,
-                "sell_pe": entry_price
-            }
-
-            position = self.options_manager.create_hedge_strategy(
-                symbol=symbol, strategy=strategy, expiry=expiry,
-                spot_price=spot, quantity=quantity,
-                entry_prices=entry_prices,
+            # Multi-leg - use create_custom_multileg
+            position = self.options_manager.create_custom_multileg(
+                symbol=symbol, legs_data=legs_data,
                 exit_type=exit_type, sl_value=sl_value,
                 target_value=target_value, tsl_value=tsl_value
             )
 
-            legs_info = "\n".join(
-                f"  {l.strike}{l.option_type.value} {l.action} @ ₹{l.entry_price}"
-                for l in position.legs
-            )
-            QMessageBox.information(
-                self, "Success",
-                f"Hedge position created: {strategy}\n"
-                f"Legs:\n{legs_info}"
-            )
+        # Show confirmation
+        legs_info = "\n".join(
+            f"  Leg {i+1}: {l['strike']}{l['option_type']} {l['action']} "
+            f"Exp:{l['expiry']} Qty:{l['quantity']} @₹{l['entry_price']}"
+            for i, l in enumerate(legs_data)
+        )
+        QMessageBox.information(
+            self, "Position Created",
+            f"{position.position_id}: {symbol}\n"
+            f"Legs ({num_legs}):\n{legs_info}"
+        )
+
+        # Clear builder table
+        self.leg_builder_table.setRowCount(0)
 
         self._refresh_option_positions()
 
@@ -1894,25 +1922,26 @@ class MainWindow(QMainWindow):
         for i, leg in enumerate(pos.legs):
             self.opt_legs_table.setItem(i, 0, QTableWidgetItem(f"Leg {leg.leg_id}"))
             self.opt_legs_table.setItem(i, 1, QTableWidgetItem(str(int(leg.strike))))
-            self.opt_legs_table.setItem(i, 2, QTableWidgetItem(leg.option_type.value))
-            self.opt_legs_table.setItem(i, 3, QTableWidgetItem(leg.action))
-            self.opt_legs_table.setItem(i, 4, QTableWidgetItem(f"{leg.quantity} x {leg.lot_size}"))
-            self.opt_legs_table.setItem(i, 5, QTableWidgetItem(f"₹{leg.entry_price:.2f}"))
-            self.opt_legs_table.setItem(i, 6, QTableWidgetItem(f"₹{leg.current_price:.2f}"))
+            self.opt_legs_table.setItem(i, 2, QTableWidgetItem(leg.expiry))
+            self.opt_legs_table.setItem(i, 3, QTableWidgetItem(leg.option_type.value))
+            self.opt_legs_table.setItem(i, 4, QTableWidgetItem(leg.action))
+            self.opt_legs_table.setItem(i, 5, QTableWidgetItem(f"{leg.quantity} x {leg.lot_size}"))
+            self.opt_legs_table.setItem(i, 6, QTableWidgetItem(f"₹{leg.entry_price:.2f}"))
+            self.opt_legs_table.setItem(i, 7, QTableWidgetItem(f"₹{leg.current_price:.2f}"))
 
             pnl_item = QTableWidgetItem(f"₹{leg.pnl:.2f}")
             if leg.pnl > 0:
                 pnl_item.setForeground(Qt.GlobalColor.darkGreen)
             elif leg.pnl < 0:
                 pnl_item.setForeground(Qt.GlobalColor.red)
-            self.opt_legs_table.setItem(i, 7, pnl_item)
+            self.opt_legs_table.setItem(i, 8, pnl_item)
 
             pct_item = QTableWidgetItem(f"{leg.pnl_percent:.2f}%")
             if leg.pnl_percent > 0:
                 pct_item.setForeground(Qt.GlobalColor.darkGreen)
             elif leg.pnl_percent < 0:
                 pct_item.setForeground(Qt.GlobalColor.red)
-            self.opt_legs_table.setItem(i, 8, pct_item)
+            self.opt_legs_table.setItem(i, 9, pct_item)
 
     def _close_option_position(self, pos_id: str):
         """Close an option position"""

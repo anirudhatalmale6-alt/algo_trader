@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox,
     QScrollArea
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal
 from PyQt6.QtGui import QAction, QFont
 
 from algo_trader.core.config import Config
@@ -231,37 +231,101 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(strategies, "Strategies")
 
     def _create_chartink_tab(self):
-        """Create Chartink scanner integration tab"""
-        chartink = QWidget()
-        layout = QVBoxLayout(chartink)
+        """Create Chartink scanner integration tab with time controls & allocation"""
+        chartink_scroll = QScrollArea()
+        chartink_scroll.setWidgetResizable(True)
+        chartink_inner = QWidget()
+        layout = QVBoxLayout(chartink_inner)
 
-        # Add scan section
+        # === Add Scanner Section ===
         add_scan_group = QGroupBox("Add Chartink Scanner")
-        add_scan_layout = QFormLayout(add_scan_group)
+        add_scan_main = QHBoxLayout(add_scan_group)
+
+        # Left column - Basic info
+        left_form = QFormLayout()
 
         self.chartink_scan_name = QLineEdit()
         self.chartink_scan_name.setPlaceholderText("e.g., My Breakout Scanner")
-        add_scan_layout.addRow("Scan Name:", self.chartink_scan_name)
+        left_form.addRow("Scan Name:", self.chartink_scan_name)
 
         self.chartink_scan_url = QLineEdit()
         self.chartink_scan_url.setPlaceholderText("https://chartink.com/screener/your-scanner-name")
-        add_scan_layout.addRow("Scanner URL:", self.chartink_scan_url)
+        left_form.addRow("Scanner URL:", self.chartink_scan_url)
 
         self.chartink_action = QComboBox()
         self.chartink_action.addItems(["BUY", "SELL"])
-        add_scan_layout.addRow("Action:", self.chartink_action)
+        left_form.addRow("Action:", self.chartink_action)
 
         self.chartink_quantity = QSpinBox()
         self.chartink_quantity.setRange(1, 10000)
         self.chartink_quantity.setValue(1)
-        add_scan_layout.addRow("Quantity:", self.chartink_quantity)
+        left_form.addRow("Default Qty:", self.chartink_quantity)
 
         self.chartink_interval = QSpinBox()
         self.chartink_interval.setRange(30, 3600)
         self.chartink_interval.setValue(60)
         self.chartink_interval.setSuffix(" seconds")
-        add_scan_layout.addRow("Scan Interval:", self.chartink_interval)
+        left_form.addRow("Scan Interval:", self.chartink_interval)
 
+        add_scan_main.addLayout(left_form)
+
+        # Middle column - Time controls
+        mid_form = QFormLayout()
+
+        self.chartink_start_time = QComboBox()
+        self.chartink_start_time.setEditable(True)
+        for h in range(9, 16):
+            for m in (0, 15, 30, 45):
+                self.chartink_start_time.addItem(f"{h:02d}:{m:02d}")
+        self.chartink_start_time.setCurrentText("09:15")
+        mid_form.addRow("Start Time:", self.chartink_start_time)
+
+        self.chartink_exit_time = QComboBox()
+        self.chartink_exit_time.setEditable(True)
+        for h in range(9, 16):
+            for m in (0, 15, 30, 45):
+                self.chartink_exit_time.addItem(f"{h:02d}:{m:02d}")
+        self.chartink_exit_time.setCurrentText("15:15")
+        mid_form.addRow("Exit / Square-off Time:", self.chartink_exit_time)
+
+        self.chartink_no_new_trade_time = QComboBox()
+        self.chartink_no_new_trade_time.setEditable(True)
+        for h in range(9, 16):
+            for m in (0, 15, 30, 45):
+                self.chartink_no_new_trade_time.addItem(f"{h:02d}:{m:02d}")
+        self.chartink_no_new_trade_time.setCurrentText("14:30")
+        mid_form.addRow("No New Trade After:", self.chartink_no_new_trade_time)
+
+        add_scan_main.addLayout(mid_form)
+
+        # Right column - Capital & Limits
+        right_form = QFormLayout()
+
+        self.chartink_total_amount = QDoubleSpinBox()
+        self.chartink_total_amount.setRange(0, 99999999)
+        self.chartink_total_amount.setDecimals(0)
+        self.chartink_total_amount.setValue(0)
+        self.chartink_total_amount.setPrefix("₹ ")
+        self.chartink_total_amount.setSpecialValueText("Unlimited")
+        right_form.addRow("Total Capital:", self.chartink_total_amount)
+
+        self.chartink_stock_quantity = QSpinBox()
+        self.chartink_stock_quantity.setRange(0, 10000)
+        self.chartink_stock_quantity.setValue(0)
+        self.chartink_stock_quantity.setSpecialValueText("Use Default Qty")
+        right_form.addRow("Per-Stock Qty:", self.chartink_stock_quantity)
+
+        self.chartink_max_trades = QSpinBox()
+        self.chartink_max_trades.setRange(0, 1000)
+        self.chartink_max_trades.setValue(0)
+        self.chartink_max_trades.setSpecialValueText("Unlimited")
+        right_form.addRow("Max Trades:", self.chartink_max_trades)
+
+        add_scan_main.addLayout(right_form)
+
+        layout.addWidget(add_scan_group)
+
+        # Buttons row
         btn_layout = QHBoxLayout()
         self.add_chartink_scan_btn = QPushButton("Add Scanner")
         self.add_chartink_scan_btn.clicked.connect(self._add_chartink_scan)
@@ -269,18 +333,18 @@ class MainWindow(QMainWindow):
         self.test_chartink_scan_btn.clicked.connect(self._test_chartink_scan)
         btn_layout.addWidget(self.add_chartink_scan_btn)
         btn_layout.addWidget(self.test_chartink_scan_btn)
-        add_scan_layout.addRow(btn_layout)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
 
-        layout.addWidget(add_scan_group)
-
-        # Active scans section
+        # === Active Scanners Table ===
         scans_group = QGroupBox("Active Scanners")
         scans_layout = QVBoxLayout(scans_group)
 
         self.chartink_scans_table = QTableWidget()
-        self.chartink_scans_table.setColumnCount(6)
+        self.chartink_scans_table.setColumnCount(10)
         self.chartink_scans_table.setHorizontalHeaderLabels([
-            "Name", "Action", "Qty", "Interval", "Stocks Found", "Actions"
+            "Name", "Action", "Qty", "Start", "Exit", "No New",
+            "Capital", "Max Trades", "Trades Done", "Remove"
         ])
         self.chartink_scans_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         scans_layout.addWidget(self.chartink_scans_table)
@@ -292,27 +356,45 @@ class MainWindow(QMainWindow):
         self.stop_chartink_btn = QPushButton("Stop Monitoring")
         self.stop_chartink_btn.clicked.connect(self._stop_chartink_monitoring)
         self.stop_chartink_btn.setEnabled(False)
+        self.reset_chartink_btn = QPushButton("Reset Daily Counters")
+        self.reset_chartink_btn.clicked.connect(self._reset_chartink_counters)
         monitor_btn_layout.addWidget(self.start_chartink_btn)
         monitor_btn_layout.addWidget(self.stop_chartink_btn)
+        monitor_btn_layout.addWidget(self.reset_chartink_btn)
         scans_layout.addLayout(monitor_btn_layout)
 
         layout.addWidget(scans_group)
 
-        # Alerts log section
+        # === Open Positions Section ===
+        positions_group = QGroupBox("Scanner Open Positions (Only Executed Trades)")
+        positions_layout = QVBoxLayout(positions_group)
+
+        self.chartink_positions_table = QTableWidget()
+        self.chartink_positions_table.setColumnCount(6)
+        self.chartink_positions_table.setHorizontalHeaderLabels([
+            "Scanner", "Symbol", "Action", "Qty", "Entry Price", "Entry Time"
+        ])
+        self.chartink_positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        positions_layout.addWidget(self.chartink_positions_table)
+
+        layout.addWidget(positions_group)
+
+        # === Alerts Log ===
         alerts_group = QGroupBox("Recent Alerts")
         alerts_layout = QVBoxLayout(alerts_group)
 
         self.chartink_alerts_table = QTableWidget()
-        self.chartink_alerts_table.setColumnCount(5)
+        self.chartink_alerts_table.setColumnCount(6)
         self.chartink_alerts_table.setHorizontalHeaderLabels([
-            "Time", "Scanner", "Symbol", "Price", "Action Taken"
+            "Time", "Scanner", "Symbol", "Price", "Qty", "Action Taken"
         ])
         self.chartink_alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         alerts_layout.addWidget(self.chartink_alerts_table)
 
         layout.addWidget(alerts_group)
 
-        self.tabs.addTab(chartink, "Chartink")
+        chartink_scroll.setWidget(chartink_inner)
+        self.tabs.addTab(chartink_scroll, "Chartink")
 
     def _create_orders_tab(self):
         """Create orders management tab"""
@@ -1186,14 +1268,20 @@ class MainWindow(QMainWindow):
                     scan_url=scan.get('url'),
                     interval=scan.get('interval', 60),
                     action=scan.get('action', 'BUY'),
-                    quantity=scan.get('quantity', 1)
+                    quantity=scan.get('quantity', 1),
+                    start_time=scan.get('start_time', '09:15'),
+                    exit_time=scan.get('exit_time', '15:15'),
+                    no_new_trade_time=scan.get('no_new_trade_time', '14:30'),
+                    total_amount=scan.get('total_amount', 0),
+                    stock_quantity=scan.get('stock_quantity', 0),
+                    max_trades=scan.get('max_trades', 0)
                 )
             self._refresh_chartink_scans_table()
         except Exception as e:
             logger.error(f"Error loading Chartink scans: {e}")
 
     def _add_chartink_scan(self):
-        """Add a new Chartink scan"""
+        """Add a new Chartink scan with time controls and allocation"""
         name = self.chartink_scan_name.text().strip()
         url = self.chartink_scan_url.text().strip()
 
@@ -1212,6 +1300,12 @@ class MainWindow(QMainWindow):
         action = self.chartink_action.currentText()
         quantity = self.chartink_quantity.value()
         interval = self.chartink_interval.value()
+        start_time = self.chartink_start_time.currentText().strip()
+        exit_time = self.chartink_exit_time.currentText().strip()
+        no_new_trade_time = self.chartink_no_new_trade_time.currentText().strip()
+        total_amount = self.chartink_total_amount.value()
+        stock_quantity = self.chartink_stock_quantity.value()
+        max_trades = self.chartink_max_trades.value()
 
         # Add to scanner
         self.chartink_scanner.add_scan(
@@ -1219,7 +1313,13 @@ class MainWindow(QMainWindow):
             scan_url=url,
             interval=interval,
             action=action,
-            quantity=quantity
+            quantity=quantity,
+            start_time=start_time,
+            exit_time=exit_time,
+            no_new_trade_time=no_new_trade_time,
+            total_amount=total_amount,
+            stock_quantity=stock_quantity,
+            max_trades=max_trades
         )
 
         # Save to config
@@ -1229,7 +1329,13 @@ class MainWindow(QMainWindow):
             'url': url,
             'action': action,
             'quantity': quantity,
-            'interval': interval
+            'interval': interval,
+            'start_time': start_time,
+            'exit_time': exit_time,
+            'no_new_trade_time': no_new_trade_time,
+            'total_amount': total_amount,
+            'stock_quantity': stock_quantity,
+            'max_trades': max_trades
         })
         self.config.set('chartink.scans', scans)
 
@@ -1276,21 +1382,51 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Ready")
 
     def _refresh_chartink_scans_table(self):
-        """Refresh the Chartink scans table"""
+        """Refresh the Chartink scans table with all fields"""
         scans = self.chartink_scanner.get_active_scans()
         self.chartink_scans_table.setRowCount(len(scans))
 
         for i, scan in enumerate(scans):
             self.chartink_scans_table.setItem(i, 0, QTableWidgetItem(scan['name']))
             self.chartink_scans_table.setItem(i, 1, QTableWidgetItem(scan['action']))
-            self.chartink_scans_table.setItem(i, 2, QTableWidgetItem(str(scan['quantity'])))
-            self.chartink_scans_table.setItem(i, 3, QTableWidgetItem(f"{scan['interval']}s"))
-            self.chartink_scans_table.setItem(i, 4, QTableWidgetItem(str(scan['stocks_count'])))
+            qty_text = str(scan.get('stock_quantity', 0)) if scan.get('stock_quantity', 0) > 0 else str(scan['quantity'])
+            self.chartink_scans_table.setItem(i, 2, QTableWidgetItem(qty_text))
+            self.chartink_scans_table.setItem(i, 3, QTableWidgetItem(scan.get('start_time', '09:15')))
+            self.chartink_scans_table.setItem(i, 4, QTableWidgetItem(scan.get('exit_time', '15:15')))
+            self.chartink_scans_table.setItem(i, 5, QTableWidgetItem(scan.get('no_new_trade_time', '14:30')))
+            amt = scan.get('total_amount', 0)
+            self.chartink_scans_table.setItem(i, 6, QTableWidgetItem(f"₹{amt:,.0f}" if amt > 0 else "Unlimited"))
+            max_t = scan.get('max_trades', 0)
+            self.chartink_scans_table.setItem(i, 7, QTableWidgetItem(str(max_t) if max_t > 0 else "Unlimited"))
+            self.chartink_scans_table.setItem(i, 8, QTableWidgetItem(str(scan.get('trade_count', 0))))
 
-            # Add remove button
             remove_btn = QPushButton("Remove")
             remove_btn.clicked.connect(lambda checked, name=scan['name']: self._remove_chartink_scan(name))
-            self.chartink_scans_table.setCellWidget(i, 5, remove_btn)
+            self.chartink_scans_table.setCellWidget(i, 9, remove_btn)
+
+        # Also refresh positions table
+        self._refresh_chartink_positions_table()
+
+    def _refresh_chartink_positions_table(self):
+        """Refresh the scanner open positions table"""
+        all_positions = []
+        for scan_name in self.chartink_scanner.active_scans:
+            positions = self.chartink_scanner.get_open_positions(scan_name)
+            for symbol, pos in positions.items():
+                all_positions.append({
+                    'scanner': scan_name,
+                    'symbol': symbol,
+                    **pos
+                })
+
+        self.chartink_positions_table.setRowCount(len(all_positions))
+        for i, pos in enumerate(all_positions):
+            self.chartink_positions_table.setItem(i, 0, QTableWidgetItem(pos['scanner']))
+            self.chartink_positions_table.setItem(i, 1, QTableWidgetItem(pos['symbol']))
+            self.chartink_positions_table.setItem(i, 2, QTableWidgetItem(pos['action']))
+            self.chartink_positions_table.setItem(i, 3, QTableWidgetItem(str(pos['quantity'])))
+            self.chartink_positions_table.setItem(i, 4, QTableWidgetItem(f"₹{pos['price']:.2f}" if pos.get('price') else "N/A"))
+            self.chartink_positions_table.setItem(i, 5, QTableWidgetItem(pos.get('time', '')))
 
     def _remove_chartink_scan(self, scan_name: str):
         """Remove a Chartink scan"""
@@ -1317,9 +1453,28 @@ class MainWindow(QMainWindow):
         self.stop_chartink_btn.setEnabled(False)
         self.status_bar.showMessage("Chartink monitoring stopped")
 
+    def _reset_chartink_counters(self):
+        """Reset daily trade counters for all scanners"""
+        self.chartink_scanner.reset_daily_counters()
+        self._refresh_chartink_scans_table()
+        self.status_bar.showMessage("Daily counters reset")
+
     def _on_chartink_alert(self, alert):
-        """Handle Chartink alert - execute trade"""
+        """Handle Chartink alert - execute trade with position tracking"""
         from algo_trader.core.order_manager import Order, OrderType, TransactionType, Exchange
+
+        extra = alert.extra_data or {}
+        is_squareoff = extra.get('is_squareoff', False)
+
+        # Determine action and quantity
+        if is_squareoff:
+            action = extra.get('exit_action', 'SELL')
+            quantity = extra.get('quantity', 1)
+        else:
+            scan_config = self.chartink_scanner.active_scans.get(alert.scan_name, {})
+            action = scan_config.get('action', 'BUY')
+            # Use calculated quantity from allocation logic
+            quantity = extra.get('calculated_quantity', scan_config.get('quantity', 1))
 
         # Log alert to table
         row = self.chartink_alerts_table.rowCount()
@@ -1328,11 +1483,7 @@ class MainWindow(QMainWindow):
         self.chartink_alerts_table.setItem(row, 1, QTableWidgetItem(alert.scan_name))
         self.chartink_alerts_table.setItem(row, 2, QTableWidgetItem(alert.symbol))
         self.chartink_alerts_table.setItem(row, 3, QTableWidgetItem(f"₹{alert.price:.2f}" if alert.price else "N/A"))
-
-        # Get scan config for action and quantity
-        scan_config = self.chartink_scanner.active_scans.get(alert.scan_name, {})
-        action = scan_config.get('action', 'BUY')
-        quantity = scan_config.get('quantity', 1)
+        self.chartink_alerts_table.setItem(row, 4, QTableWidgetItem(str(quantity)))
 
         # Execute trade if broker is connected
         current_broker = self.broker_combo.currentText().lower()
@@ -1346,7 +1497,18 @@ class MainWindow(QMainWindow):
                     exchange=Exchange.NSE
                 )
                 result = self.order_manager.place_order(order, current_broker)
-                action_text = f"{action} order placed: {result.broker_order_id}"
+
+                if is_squareoff:
+                    action_text = f"SQUARE-OFF {action}: {result.broker_order_id}"
+                    self.chartink_scanner.record_squareoff(alert.scan_name, alert.symbol)
+                else:
+                    action_text = f"{action} order placed: {result.broker_order_id}"
+                    # Record this trade for position tracking
+                    self.chartink_scanner.record_trade(
+                        alert.scan_name, alert.symbol, action, quantity,
+                        alert.price or 0
+                    )
+
                 logger.info(f"Chartink auto-trade: {action_text}")
             except Exception as e:
                 action_text = f"Order failed: {e}"
@@ -1354,7 +1516,10 @@ class MainWindow(QMainWindow):
         else:
             action_text = "No broker connected"
 
-        self.chartink_alerts_table.setItem(row, 4, QTableWidgetItem(action_text))
+        self.chartink_alerts_table.setItem(row, 5, QTableWidgetItem(action_text))
+
+        # Refresh positions and scans tables
+        self._refresh_chartink_scans_table()
 
     # Risk Management / TSL Methods
     def _init_risk_manager(self):

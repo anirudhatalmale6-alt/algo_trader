@@ -16,6 +16,9 @@ from algo_trader.core.database import Database
 from algo_trader.core.order_manager import OrderManager
 from algo_trader.core.strategy_engine import StrategyEngine
 from algo_trader.core.risk_manager import RiskManager
+from algo_trader.core.options_manager import (
+    OptionsManager, OptionType, HedgeStrategy, ExitType
+)
 from algo_trader.brokers import UpstoxBroker, AliceBlueBroker
 
 from loguru import logger
@@ -64,6 +67,7 @@ class MainWindow(QMainWindow):
         self._create_orders_tab()
         self._create_positions_tab()
         self._create_risk_tab()
+        self._create_options_tab()
         self._create_backtest_tab()
         self._create_settings_tab()
 
@@ -71,6 +75,7 @@ class MainWindow(QMainWindow):
         self._load_strategies()
         self._load_chartink_scans()
         self._init_risk_manager()
+        self._init_options_manager()
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -482,6 +487,168 @@ class MainWindow(QMainWindow):
         layout.addWidget(tracked_group)
 
         self.tabs.addTab(risk, "Risk/TSL")
+
+    def _create_options_tab(self):
+        """Create Options Trading tab with Expiry, Strike, Hedge strategies"""
+        options = QWidget()
+        layout = QVBoxLayout(options)
+
+        # --- Options P&L Summary ---
+        opt_summary_group = QGroupBox("Options P&L Summary")
+        opt_summary_layout = QHBoxLayout(opt_summary_group)
+        self.opt_total_pnl = QLabel("Total P&L: ₹0.00")
+        self.opt_total_pnl.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+        self.opt_active_count = QLabel("Active: 0")
+        self.opt_closed_count = QLabel("Closed: 0")
+        opt_summary_layout.addWidget(self.opt_total_pnl)
+        opt_summary_layout.addWidget(self.opt_active_count)
+        opt_summary_layout.addWidget(self.opt_closed_count)
+        layout.addWidget(opt_summary_group)
+
+        # --- New Option Position Form ---
+        form_group = QGroupBox("New Option Position")
+        form_layout = QFormLayout(form_group)
+
+        # Symbol
+        self.opt_symbol = QComboBox()
+        self.opt_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"])
+        self.opt_symbol.setEditable(True)
+        self.opt_symbol.currentTextChanged.connect(self._on_opt_symbol_changed)
+        form_layout.addRow("Symbol:", self.opt_symbol)
+
+        # Spot Price
+        self.opt_spot_price = QDoubleSpinBox()
+        self.opt_spot_price.setRange(0, 200000)
+        self.opt_spot_price.setDecimals(2)
+        self.opt_spot_price.setPrefix("₹")
+        form_layout.addRow("Spot Price:", self.opt_spot_price)
+
+        # Fetch spot button
+        fetch_spot_btn = QPushButton("Fetch Spot Price")
+        fetch_spot_btn.clicked.connect(self._fetch_spot_price)
+        form_layout.addRow(fetch_spot_btn)
+
+        # Expiry Selection
+        self.opt_expiry = QComboBox()
+        form_layout.addRow("Expiry:", self.opt_expiry)
+
+        # Load expiry button
+        load_expiry_btn = QPushButton("Load Expiries")
+        load_expiry_btn.clicked.connect(self._load_expiry_dates)
+        form_layout.addRow(load_expiry_btn)
+
+        # Hedge Strategy
+        self.opt_strategy = QComboBox()
+        self.opt_strategy.addItems([s.value for s in HedgeStrategy])
+        self.opt_strategy.currentTextChanged.connect(self._on_opt_strategy_changed)
+        form_layout.addRow("Strategy:", self.opt_strategy)
+
+        # Strike Price
+        self.opt_strike = QComboBox()
+        self.opt_strike.setEditable(True)
+        form_layout.addRow("Strike Price:", self.opt_strike)
+
+        # Load strikes button
+        load_strikes_btn = QPushButton("Load Strikes")
+        load_strikes_btn.clicked.connect(self._load_strike_prices)
+        form_layout.addRow(load_strikes_btn)
+
+        # Option Type (CE/PE) - for single option
+        self.opt_type = QComboBox()
+        self.opt_type.addItems(["CE", "PE"])
+        form_layout.addRow("Option Type:", self.opt_type)
+
+        # Action
+        self.opt_action = QComboBox()
+        self.opt_action.addItems(["BUY", "SELL"])
+        form_layout.addRow("Action:", self.opt_action)
+
+        # Quantity (lots)
+        self.opt_quantity = QSpinBox()
+        self.opt_quantity.setRange(1, 500)
+        self.opt_quantity.setValue(1)
+        self.opt_quantity.setSuffix(" lots")
+        form_layout.addRow("Quantity:", self.opt_quantity)
+
+        # Lot size display
+        self.opt_lot_size = QLabel("Lot Size: 25")
+        form_layout.addRow(self.opt_lot_size)
+
+        # Entry Price (premium)
+        self.opt_entry_price = QDoubleSpinBox()
+        self.opt_entry_price.setRange(0, 100000)
+        self.opt_entry_price.setDecimals(2)
+        self.opt_entry_price.setPrefix("₹")
+        form_layout.addRow("Entry Premium:", self.opt_entry_price)
+
+        layout.addWidget(form_group)
+
+        # --- Exit / SL / TSL / Target ---
+        exit_group = QGroupBox("Exit Settings (P&L Based SL / TSL / Target)")
+        exit_layout = QFormLayout(exit_group)
+
+        self.opt_exit_type = QComboBox()
+        self.opt_exit_type.addItems([e.value for e in ExitType])
+        self.opt_exit_type.currentTextChanged.connect(self._on_opt_exit_type_changed)
+        exit_layout.addRow("Exit Type:", self.opt_exit_type)
+
+        self.opt_sl_value = QDoubleSpinBox()
+        self.opt_sl_value.setRange(0, 1000000)
+        self.opt_sl_value.setDecimals(2)
+        self.opt_sl_value.setPrefix("₹")
+        exit_layout.addRow("SL Value:", self.opt_sl_value)
+
+        self.opt_target_value = QDoubleSpinBox()
+        self.opt_target_value.setRange(0, 1000000)
+        self.opt_target_value.setDecimals(2)
+        self.opt_target_value.setPrefix("₹")
+        exit_layout.addRow("Target Value:", self.opt_target_value)
+
+        self.opt_tsl_value = QDoubleSpinBox()
+        self.opt_tsl_value.setRange(0, 1000000)
+        self.opt_tsl_value.setDecimals(2)
+        exit_layout.addRow("TSL Value:", self.opt_tsl_value)
+
+        layout.addWidget(exit_group)
+
+        # Add position button
+        add_opt_btn = QPushButton("Add Option Position")
+        add_opt_btn.clicked.connect(self._add_option_position)
+        layout.addWidget(add_opt_btn)
+
+        # --- Active Option Positions Table ---
+        positions_group = QGroupBox("Active Option Positions")
+        positions_layout = QVBoxLayout(positions_group)
+
+        self.opt_positions_table = QTableWidget()
+        self.opt_positions_table.setColumnCount(10)
+        self.opt_positions_table.setHorizontalHeaderLabels([
+            "ID", "Symbol", "Strategy", "Legs", "Expiry",
+            "Total P&L", "P&L %", "Max P&L", "Exit Type", "Actions"
+        ])
+        self.opt_positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        positions_layout.addWidget(self.opt_positions_table)
+
+        # Legs detail table
+        positions_layout.addWidget(QLabel("Leg Details (select position above):"))
+        self.opt_legs_table = QTableWidget()
+        self.opt_legs_table.setColumnCount(9)
+        self.opt_legs_table.setHorizontalHeaderLabels([
+            "Leg", "Strike", "Type", "Action", "Qty", "Entry", "LTP", "P&L", "P&L %"
+        ])
+        self.opt_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        positions_layout.addWidget(self.opt_legs_table)
+
+        self.opt_positions_table.cellClicked.connect(self._on_opt_position_selected)
+
+        # Refresh button
+        opt_refresh_btn = QPushButton("Refresh Positions")
+        opt_refresh_btn.clicked.connect(self._refresh_option_positions)
+        positions_layout.addWidget(opt_refresh_btn)
+
+        layout.addWidget(positions_group)
+
+        self.tabs.addTab(options, "Options")
 
     def _create_backtest_tab(self):
         """Create backtesting tab"""
@@ -1303,6 +1470,355 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Failed to place exit order: {e}")
+
+    # Options Trading Methods
+    def _init_options_manager(self):
+        """Initialize the options manager"""
+        self.options_manager = OptionsManager()
+        self.options_manager.register_exit_callback(self._on_option_exit)
+        self.options_manager.register_pnl_callback(self._on_option_pnl_update)
+        self._on_opt_symbol_changed(self.opt_symbol.currentText())
+        logger.info("Options manager initialized")
+
+    def _on_opt_symbol_changed(self, symbol: str):
+        """Handle symbol change in options tab"""
+        if not symbol:
+            return
+        from algo_trader.core.options_manager import INDEX_LOT_SIZES
+        lot_size = INDEX_LOT_SIZES.get(symbol.upper(), 1)
+        self.opt_lot_size.setText(f"Lot Size: {lot_size}")
+
+    def _fetch_spot_price(self):
+        """Fetch spot price from broker"""
+        symbol = self.opt_symbol.currentText().strip()
+        current_broker = self.broker_combo.currentText().lower()
+
+        if current_broker and current_broker in self.brokers:
+            try:
+                quote = self.brokers[current_broker].get_quote(symbol, "NSE")
+                if quote:
+                    ltp = quote.get('last_price') or quote.get('ltp') or 0
+                    if isinstance(ltp, dict):
+                        ltp = ltp.get('last_price', 0)
+                    self.opt_spot_price.setValue(float(ltp))
+                    self.status_bar.showMessage(f"Spot price fetched: ₹{ltp}")
+                    return
+            except Exception as e:
+                logger.error(f"Error fetching spot: {e}")
+
+        QMessageBox.warning(self, "Error", "Could not fetch spot price. Please enter manually or connect broker.")
+
+    def _load_expiry_dates(self):
+        """Load expiry dates for selected symbol"""
+        symbol = self.opt_symbol.currentText().strip()
+        if not symbol:
+            return
+
+        current_broker = self.broker_combo.currentText().lower()
+        broker = self.brokers.get(current_broker) if current_broker else None
+
+        expiries = self.options_manager.get_expiry_dates(symbol, broker)
+        self.opt_expiry.clear()
+        for exp in expiries:
+            self.opt_expiry.addItem(exp)
+
+        self.status_bar.showMessage(f"Loaded {len(expiries)} expiry dates for {symbol}")
+
+    def _load_strike_prices(self):
+        """Load strike prices based on spot price"""
+        symbol = self.opt_symbol.currentText().strip()
+        spot = self.opt_spot_price.value()
+
+        if spot <= 0:
+            QMessageBox.warning(self, "Error", "Please enter or fetch spot price first")
+            return
+
+        strikes = self.options_manager.get_strike_prices(symbol, spot)
+        self.opt_strike.clear()
+        for strike in strikes:
+            self.opt_strike.addItem(str(int(strike)) if strike == int(strike) else str(strike))
+
+        # Select ATM
+        from algo_trader.core.options_manager import INDEX_STRIKE_GAPS
+        gap = INDEX_STRIKE_GAPS.get(symbol.upper(), 50)
+        atm = round(spot / gap) * gap
+        atm_str = str(int(atm)) if atm == int(atm) else str(atm)
+        idx = self.opt_strike.findText(atm_str)
+        if idx >= 0:
+            self.opt_strike.setCurrentIndex(idx)
+
+        self.status_bar.showMessage(f"Loaded {len(strikes)} strikes. ATM: {atm_str}")
+
+    def _on_opt_strategy_changed(self, strategy_name: str):
+        """Handle strategy type change"""
+        is_single = strategy_name == "None"
+        self.opt_type.setEnabled(is_single)
+        self.opt_action.setEnabled(is_single)
+        self.opt_strike.setEnabled(is_single)
+
+        if not is_single:
+            self.opt_type.setCurrentText("CE")
+            self.opt_action.setCurrentText("SELL")
+
+    def _on_opt_exit_type_changed(self, exit_type: str):
+        """Handle exit type change"""
+        is_pnl = exit_type == "P&L Based"
+        is_sl_pct = exit_type == "SL %"
+        is_tsl = exit_type in ("TSL %", "TSL Points")
+
+        if is_pnl:
+            self.opt_sl_value.setPrefix("₹")
+            self.opt_sl_value.setSuffix("")
+            self.opt_target_value.setPrefix("₹")
+            self.opt_target_value.setSuffix("")
+            self.opt_tsl_value.setPrefix("₹")
+            self.opt_tsl_value.setSuffix("")
+        elif is_sl_pct:
+            self.opt_sl_value.setPrefix("")
+            self.opt_sl_value.setSuffix("%")
+            self.opt_target_value.setPrefix("")
+            self.opt_target_value.setSuffix("%")
+        elif is_tsl:
+            self.opt_tsl_value.setPrefix("")
+            self.opt_tsl_value.setSuffix("%" if exit_type == "TSL %" else " pts")
+
+    def _add_option_position(self):
+        """Add a new option position"""
+        symbol = self.opt_symbol.currentText().strip().upper()
+        if not symbol:
+            QMessageBox.warning(self, "Error", "Please select a symbol")
+            return
+
+        expiry = self.opt_expiry.currentText()
+        if not expiry:
+            QMessageBox.warning(self, "Error", "Please load and select an expiry date")
+            return
+
+        strike_text = self.opt_strike.currentText()
+        if not strike_text:
+            QMessageBox.warning(self, "Error", "Please load and select a strike price")
+            return
+
+        try:
+            strike = float(strike_text)
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Invalid strike price")
+            return
+
+        entry_price = self.opt_entry_price.value()
+        if entry_price <= 0:
+            QMessageBox.warning(self, "Error", "Please enter entry premium")
+            return
+
+        quantity = self.opt_quantity.value()
+        strategy = self.opt_strategy.currentText()
+        exit_type = self.opt_exit_type.currentText()
+        sl_value = self.opt_sl_value.value()
+        target_value = self.opt_target_value.value()
+        tsl_value = self.opt_tsl_value.value()
+
+        if strategy == "None":
+            # Single option
+            opt_type = self.opt_type.currentText()
+            action = self.opt_action.currentText()
+
+            position = self.options_manager.create_single_option(
+                symbol=symbol, expiry=expiry, strike=strike,
+                option_type=opt_type, action=action, quantity=quantity,
+                entry_price=entry_price, exit_type=exit_type,
+                sl_value=sl_value, target_value=target_value,
+                tsl_value=tsl_value
+            )
+
+            QMessageBox.information(
+                self, "Success",
+                f"Option position added:\n"
+                f"{symbol} {expiry} {int(strike)}{opt_type} {action}\n"
+                f"Qty: {quantity} lots, Premium: ₹{entry_price}"
+            )
+        else:
+            # Hedge strategy - need entry prices for each leg
+            # For now, use the entry price as base for all legs
+            spot = self.opt_spot_price.value()
+            if spot <= 0:
+                QMessageBox.warning(self, "Error", "Please enter spot price for hedge strategy")
+                return
+
+            entry_prices = {
+                "ce": entry_price,
+                "pe": entry_price,
+                "buy_ce": entry_price,
+                "sell_ce": entry_price,
+                "buy_pe": entry_price,
+                "sell_pe": entry_price
+            }
+
+            position = self.options_manager.create_hedge_strategy(
+                symbol=symbol, strategy=strategy, expiry=expiry,
+                spot_price=spot, quantity=quantity,
+                entry_prices=entry_prices,
+                exit_type=exit_type, sl_value=sl_value,
+                target_value=target_value, tsl_value=tsl_value
+            )
+
+            legs_info = "\n".join(
+                f"  {l.strike}{l.option_type.value} {l.action} @ ₹{l.entry_price}"
+                for l in position.legs
+            )
+            QMessageBox.information(
+                self, "Success",
+                f"Hedge position created: {strategy}\n"
+                f"Legs:\n{legs_info}"
+            )
+
+        self._refresh_option_positions()
+
+    def _refresh_option_positions(self):
+        """Refresh the options positions table"""
+        positions = self.options_manager.get_all_positions()
+        self.opt_positions_table.setRowCount(len(positions))
+
+        for i, pos in enumerate(positions):
+            self.opt_positions_table.setItem(i, 0, QTableWidgetItem(pos.position_id))
+            self.opt_positions_table.setItem(i, 1, QTableWidgetItem(pos.symbol))
+            self.opt_positions_table.setItem(i, 2, QTableWidgetItem(pos.strategy_type.value))
+            self.opt_positions_table.setItem(i, 3, QTableWidgetItem(str(len(pos.legs))))
+
+            # Expiry from first leg
+            expiry = pos.legs[0].expiry if pos.legs else "-"
+            self.opt_positions_table.setItem(i, 4, QTableWidgetItem(expiry))
+
+            # P&L with color
+            pnl_item = QTableWidgetItem(f"₹{pos.total_pnl:.2f}")
+            if pos.total_pnl > 0:
+                pnl_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif pos.total_pnl < 0:
+                pnl_item.setForeground(Qt.GlobalColor.red)
+            self.opt_positions_table.setItem(i, 5, pnl_item)
+
+            # P&L %
+            pct_item = QTableWidgetItem(f"{pos.total_pnl_percent:.2f}%")
+            if pos.total_pnl_percent > 0:
+                pct_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif pos.total_pnl_percent < 0:
+                pct_item.setForeground(Qt.GlobalColor.red)
+            self.opt_positions_table.setItem(i, 6, pct_item)
+
+            self.opt_positions_table.setItem(i, 7, QTableWidgetItem(f"₹{pos.max_pnl:.2f}"))
+            self.opt_positions_table.setItem(i, 8, QTableWidgetItem(pos.exit_type.value))
+
+            # Close button
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(lambda checked, pid=pos.position_id: self._close_option_position(pid))
+            self.opt_positions_table.setCellWidget(i, 9, close_btn)
+
+        # Update summary
+        summary = self.options_manager.get_options_summary()
+        color = "green" if summary["total_pnl"] >= 0 else "red"
+        self.opt_total_pnl.setText(f"Total P&L: <span style='color:{color}'>₹{summary['total_pnl']:.2f}</span>")
+        self.opt_total_pnl.setTextFormat(Qt.TextFormat.RichText)
+        self.opt_active_count.setText(f"Active: {summary['active_positions']}")
+        self.opt_closed_count.setText(f"Closed: {summary['closed_positions']}")
+
+    def _on_opt_position_selected(self, row, col):
+        """Show leg details when position is selected"""
+        pos_id_item = self.opt_positions_table.item(row, 0)
+        if not pos_id_item:
+            return
+
+        pos = self.options_manager.get_position(pos_id_item.text())
+        if not pos:
+            return
+
+        self.opt_legs_table.setRowCount(len(pos.legs))
+        for i, leg in enumerate(pos.legs):
+            self.opt_legs_table.setItem(i, 0, QTableWidgetItem(f"Leg {leg.leg_id}"))
+            self.opt_legs_table.setItem(i, 1, QTableWidgetItem(str(int(leg.strike))))
+            self.opt_legs_table.setItem(i, 2, QTableWidgetItem(leg.option_type.value))
+            self.opt_legs_table.setItem(i, 3, QTableWidgetItem(leg.action))
+            self.opt_legs_table.setItem(i, 4, QTableWidgetItem(f"{leg.quantity} x {leg.lot_size}"))
+            self.opt_legs_table.setItem(i, 5, QTableWidgetItem(f"₹{leg.entry_price:.2f}"))
+            self.opt_legs_table.setItem(i, 6, QTableWidgetItem(f"₹{leg.current_price:.2f}"))
+
+            pnl_item = QTableWidgetItem(f"₹{leg.pnl:.2f}")
+            if leg.pnl > 0:
+                pnl_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif leg.pnl < 0:
+                pnl_item.setForeground(Qt.GlobalColor.red)
+            self.opt_legs_table.setItem(i, 7, pnl_item)
+
+            pct_item = QTableWidgetItem(f"{leg.pnl_percent:.2f}%")
+            if leg.pnl_percent > 0:
+                pct_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif leg.pnl_percent < 0:
+                pct_item.setForeground(Qt.GlobalColor.red)
+            self.opt_legs_table.setItem(i, 8, pct_item)
+
+    def _close_option_position(self, pos_id: str):
+        """Close an option position"""
+        pos = self.options_manager.get_position(pos_id)
+        if not pos:
+            return
+
+        reply = QMessageBox.question(
+            self, "Close Position",
+            f"Close {pos.symbol} {pos.strategy_type.value} position?\n"
+            f"Current P&L: ₹{pos.total_pnl:.2f}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Place exit orders for each leg
+            self._place_option_exit_orders(pos)
+            self.options_manager.close_position(pos_id)
+            self._refresh_option_positions()
+            QMessageBox.information(self, "Closed", f"Position {pos_id} closed. P&L: ₹{pos.total_pnl:.2f}")
+
+    def _place_option_exit_orders(self, position):
+        """Place exit orders for all legs of an option position"""
+        from algo_trader.core.order_manager import Order, OrderType, TransactionType, Exchange
+
+        current_broker = self.broker_combo.currentText().lower()
+        if not current_broker or current_broker not in self.brokers:
+            logger.warning("No broker connected for option exit orders")
+            return
+
+        for leg in position.legs:
+            try:
+                # Exit is opposite of entry action
+                exit_action = TransactionType.SELL if leg.action == "BUY" else TransactionType.BUY
+
+                order = Order(
+                    symbol=leg.trading_symbol,
+                    transaction_type=exit_action,
+                    quantity=leg.quantity * leg.lot_size,
+                    order_type=OrderType.MARKET,
+                    exchange=Exchange.NFO,
+                    product="NRML"
+                )
+
+                result = self.order_manager.place_order(order, current_broker)
+                logger.info(f"Option exit order: {leg.trading_symbol} -> {result.broker_order_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to place option exit order for {leg.trading_symbol}: {e}")
+
+    def _on_option_exit(self, position, reason):
+        """Handle auto-exit trigger for options"""
+        QMessageBox.warning(
+            self, "Option Exit Triggered",
+            f"Exit triggered for {position.symbol} {position.strategy_type.value}!\n"
+            f"Reason: {reason}\n"
+            f"P&L: ₹{position.total_pnl:.2f}"
+        )
+
+        self._place_option_exit_orders(position)
+        self.options_manager.close_position(position.position_id)
+        self._refresh_option_positions()
+
+    def _on_option_pnl_update(self, position):
+        """Handle P&L update for options"""
+        self._refresh_option_positions()
 
     def closeEvent(self, event):
         """Handle window close"""

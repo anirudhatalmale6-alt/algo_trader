@@ -20,6 +20,9 @@ from algo_trader.core.risk_manager import RiskManager
 from algo_trader.core.options_manager import (
     OptionsManager, OptionType, HedgeStrategy, ExitType
 )
+from algo_trader.core.auto_options import (
+    AutoOptionsExecutor, StrikeSelection, SignalAction, ExpirySelection
+)
 from algo_trader.brokers import UpstoxBroker, AliceBlueBroker
 
 from loguru import logger
@@ -510,6 +513,99 @@ class MainWindow(QMainWindow):
         opt_summary_layout.addWidget(self.opt_active_count)
         opt_summary_layout.addWidget(self.opt_closed_count)
         layout.addWidget(opt_summary_group)
+
+        # --- Auto Options (Signal -> Options) ---
+        auto_group = QGroupBox("Auto Options (Strategy Signal → Automatic Option Trade)")
+        auto_layout = QHBoxLayout(auto_group)
+
+        # Left: Config
+        auto_config = QFormLayout()
+        auto_config.setSpacing(4)
+
+        self.auto_opt_enabled = QCheckBox("Enable Auto-Options")
+        auto_config.addRow(self.auto_opt_enabled)
+
+        self.auto_opt_symbol = QComboBox()
+        self.auto_opt_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
+        self.auto_opt_symbol.setEditable(True)
+        auto_config.addRow("Symbol:", self.auto_opt_symbol)
+
+        self.auto_opt_buy_action = QComboBox()
+        self.auto_opt_buy_action.addItems([s.value for s in SignalAction])
+        auto_config.addRow("On BUY Signal:", self.auto_opt_buy_action)
+
+        self.auto_opt_sell_action = QComboBox()
+        self.auto_opt_sell_action.addItems([s.value for s in SignalAction])
+        self.auto_opt_sell_action.setCurrentText("BUY PE")
+        auto_config.addRow("On SELL Signal:", self.auto_opt_sell_action)
+
+        auto_layout.addLayout(auto_config)
+
+        # Right: More config
+        auto_config2 = QFormLayout()
+        auto_config2.setSpacing(4)
+
+        self.auto_opt_strike = QComboBox()
+        self.auto_opt_strike.addItems([s.value for s in StrikeSelection])
+        auto_config2.addRow("Strike:", self.auto_opt_strike)
+
+        self.auto_opt_expiry = QComboBox()
+        self.auto_opt_expiry.addItems([e.value for e in ExpirySelection])
+        auto_config2.addRow("Expiry:", self.auto_opt_expiry)
+
+        self.auto_opt_qty = QSpinBox()
+        self.auto_opt_qty.setRange(1, 500)
+        self.auto_opt_qty.setValue(1)
+        self.auto_opt_qty.setSuffix(" lots")
+        auto_config2.addRow("Quantity:", self.auto_opt_qty)
+
+        self.auto_opt_close_opposite = QCheckBox("Close on Opposite Signal")
+        self.auto_opt_close_opposite.setChecked(True)
+        auto_config2.addRow(self.auto_opt_close_opposite)
+
+        auto_layout.addLayout(auto_config2)
+
+        # Right-most: SL/Target + Save
+        auto_config3 = QFormLayout()
+        auto_config3.setSpacing(4)
+
+        self.auto_opt_exit_type = QComboBox()
+        self.auto_opt_exit_type.addItems([e.value for e in ExitType])
+        self.auto_opt_exit_type.setCurrentText("P&L Based")
+        auto_config3.addRow("Exit:", self.auto_opt_exit_type)
+
+        self.auto_opt_sl = QDoubleSpinBox()
+        self.auto_opt_sl.setRange(0, 1000000)
+        self.auto_opt_sl.setPrefix("₹")
+        auto_config3.addRow("SL:", self.auto_opt_sl)
+
+        self.auto_opt_target = QDoubleSpinBox()
+        self.auto_opt_target.setRange(0, 1000000)
+        self.auto_opt_target.setPrefix("₹")
+        auto_config3.addRow("Target:", self.auto_opt_target)
+
+        self.auto_opt_tsl = QDoubleSpinBox()
+        self.auto_opt_tsl.setRange(0, 1000000)
+        self.auto_opt_tsl.setPrefix("₹")
+        auto_config3.addRow("TSL:", self.auto_opt_tsl)
+
+        save_auto_btn = QPushButton("Save Auto Config")
+        save_auto_btn.clicked.connect(self._save_auto_options_config)
+        auto_config3.addRow(save_auto_btn)
+
+        auto_layout.addLayout(auto_config3)
+
+        layout.addWidget(auto_group)
+
+        # --- Auto Trade Log ---
+        self.auto_trade_log_table = QTableWidget()
+        self.auto_trade_log_table.setColumnCount(6)
+        self.auto_trade_log_table.setHorizontalHeaderLabels([
+            "Time", "Signal", "Strategy", "Action", "Expiry", "Qty"
+        ])
+        self.auto_trade_log_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.auto_trade_log_table.setMaximumHeight(100)
+        layout.addWidget(self.auto_trade_log_table)
 
         # --- New Option Position (left) + Exit Settings (right) side by side ---
         top_row = QHBoxLayout()
@@ -1491,7 +1587,58 @@ class MainWindow(QMainWindow):
         self.options_manager.register_exit_callback(self._on_option_exit)
         self.options_manager.register_pnl_callback(self._on_option_pnl_update)
         self._on_opt_symbol_changed(self.opt_symbol.currentText())
+
+        # Initialize auto-options executor
+        self.auto_options = AutoOptionsExecutor(self.options_manager, self.strategy_engine)
+        self.auto_options.register_trade_callback(self._on_auto_option_trade)
         logger.info("Options manager initialized")
+
+    def _save_auto_options_config(self):
+        """Save auto-options configuration"""
+        self.auto_options.update_config(
+            symbol=self.auto_opt_symbol.currentText().strip().upper(),
+            buy_signal_action=self.auto_opt_buy_action.currentText(),
+            sell_signal_action=self.auto_opt_sell_action.currentText(),
+            strike_selection=self.auto_opt_strike.currentText(),
+            expiry_selection=self.auto_opt_expiry.currentText(),
+            quantity=self.auto_opt_qty.value(),
+            close_on_opposite=self.auto_opt_close_opposite.isChecked(),
+            exit_type=self.auto_opt_exit_type.currentText(),
+            sl_value=self.auto_opt_sl.value(),
+            target_value=self.auto_opt_target.value(),
+            tsl_value=self.auto_opt_tsl.value(),
+        )
+
+        if self.auto_opt_enabled.isChecked():
+            # Set broker if available
+            current_broker = self.broker_combo.currentText().lower()
+            if current_broker and current_broker in self.brokers:
+                self.auto_options.set_broker(self.brokers[current_broker])
+            self.auto_options.enable()
+        else:
+            self.auto_options.disable()
+
+        QMessageBox.information(
+            self, "Saved",
+            f"Auto-Options config saved!\n"
+            f"Status: {'ENABLED' if self.auto_opt_enabled.isChecked() else 'DISABLED'}\n"
+            f"BUY Signal → {self.auto_opt_buy_action.currentText()}\n"
+            f"SELL Signal → {self.auto_opt_sell_action.currentText()}\n"
+            f"Strike: {self.auto_opt_strike.currentText()}, "
+            f"Expiry: {self.auto_opt_expiry.currentText()}"
+        )
+
+    def _on_auto_option_trade(self, trade_info):
+        """Handle auto-option trade execution"""
+        row = self.auto_trade_log_table.rowCount()
+        self.auto_trade_log_table.insertRow(row)
+        self.auto_trade_log_table.setItem(row, 0, QTableWidgetItem(trade_info.get("time", "")))
+        self.auto_trade_log_table.setItem(row, 1, QTableWidgetItem(trade_info.get("signal", "")))
+        self.auto_trade_log_table.setItem(row, 2, QTableWidgetItem(trade_info.get("strategy", "")))
+        self.auto_trade_log_table.setItem(row, 3, QTableWidgetItem(trade_info.get("action", "")))
+        self.auto_trade_log_table.setItem(row, 4, QTableWidgetItem(trade_info.get("expiry", "")))
+        self.auto_trade_log_table.setItem(row, 5, QTableWidgetItem(str(trade_info.get("qty", ""))))
+        self._refresh_option_positions()
 
     def _on_opt_symbol_changed(self, symbol: str):
         """Handle symbol change in options tab"""

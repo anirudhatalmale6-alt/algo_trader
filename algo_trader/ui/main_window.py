@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
     QTabWidget, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QComboBox, QLineEdit, QTextEdit, QSplitter,
     QMessageBox, QStatusBar, QToolBar, QGroupBox, QFormLayout,
-    QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox
+    QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox,
+    QScrollArea
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QFont
@@ -490,8 +491,13 @@ class MainWindow(QMainWindow):
 
     def _create_options_tab(self):
         """Create Options Trading tab with Expiry, Strike, Hedge strategies"""
+        # Use scroll area so content is not squeezed
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+
         options = QWidget()
         layout = QVBoxLayout(options)
+        layout.setSpacing(8)
 
         # --- Options P&L Summary ---
         opt_summary_group = QGroupBox("Options P&L Summary")
@@ -505,87 +511,89 @@ class MainWindow(QMainWindow):
         opt_summary_layout.addWidget(self.opt_closed_count)
         layout.addWidget(opt_summary_group)
 
-        # --- New Option Position Form ---
+        # --- New Option Position (left) + Exit Settings (right) side by side ---
+        top_row = QHBoxLayout()
+
+        # Left: New Option Position Form
         form_group = QGroupBox("New Option Position")
         form_layout = QFormLayout(form_group)
+        form_layout.setSpacing(4)
 
-        # Symbol
         self.opt_symbol = QComboBox()
         self.opt_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"])
         self.opt_symbol.setEditable(True)
         self.opt_symbol.currentTextChanged.connect(self._on_opt_symbol_changed)
         form_layout.addRow("Symbol:", self.opt_symbol)
 
-        # Spot Price
+        spot_row = QHBoxLayout()
         self.opt_spot_price = QDoubleSpinBox()
         self.opt_spot_price.setRange(0, 200000)
         self.opt_spot_price.setDecimals(2)
         self.opt_spot_price.setPrefix("₹")
-        form_layout.addRow("Spot Price:", self.opt_spot_price)
-
-        # Fetch spot button
-        fetch_spot_btn = QPushButton("Fetch Spot Price")
+        spot_row.addWidget(self.opt_spot_price)
+        fetch_spot_btn = QPushButton("Fetch")
+        fetch_spot_btn.setMaximumWidth(60)
         fetch_spot_btn.clicked.connect(self._fetch_spot_price)
-        form_layout.addRow(fetch_spot_btn)
+        spot_row.addWidget(fetch_spot_btn)
+        form_layout.addRow("Spot Price:", spot_row)
 
-        # Expiry Selection
+        expiry_row = QHBoxLayout()
         self.opt_expiry = QComboBox()
-        form_layout.addRow("Expiry:", self.opt_expiry)
-
-        # Load expiry button
-        load_expiry_btn = QPushButton("Load Expiries")
+        expiry_row.addWidget(self.opt_expiry)
+        load_expiry_btn = QPushButton("Load")
+        load_expiry_btn.setMaximumWidth(60)
         load_expiry_btn.clicked.connect(self._load_expiry_dates)
-        form_layout.addRow(load_expiry_btn)
+        expiry_row.addWidget(load_expiry_btn)
+        form_layout.addRow("Expiry:", expiry_row)
 
-        # Hedge Strategy
         self.opt_strategy = QComboBox()
         self.opt_strategy.addItems([s.value for s in HedgeStrategy])
         self.opt_strategy.currentTextChanged.connect(self._on_opt_strategy_changed)
         form_layout.addRow("Strategy:", self.opt_strategy)
 
-        # Strike Price
+        strike_row = QHBoxLayout()
         self.opt_strike = QComboBox()
         self.opt_strike.setEditable(True)
-        form_layout.addRow("Strike Price:", self.opt_strike)
-
-        # Load strikes button
-        load_strikes_btn = QPushButton("Load Strikes")
+        strike_row.addWidget(self.opt_strike)
+        load_strikes_btn = QPushButton("Load")
+        load_strikes_btn.setMaximumWidth(60)
         load_strikes_btn.clicked.connect(self._load_strike_prices)
-        form_layout.addRow(load_strikes_btn)
+        strike_row.addWidget(load_strikes_btn)
+        form_layout.addRow("Strike:", strike_row)
 
-        # Option Type (CE/PE) - for single option
+        type_action_row = QHBoxLayout()
         self.opt_type = QComboBox()
         self.opt_type.addItems(["CE", "PE"])
-        form_layout.addRow("Option Type:", self.opt_type)
-
-        # Action
+        type_action_row.addWidget(QLabel("Type:"))
+        type_action_row.addWidget(self.opt_type)
         self.opt_action = QComboBox()
         self.opt_action.addItems(["BUY", "SELL"])
-        form_layout.addRow("Action:", self.opt_action)
+        type_action_row.addWidget(QLabel("Action:"))
+        type_action_row.addWidget(self.opt_action)
+        form_layout.addRow(type_action_row)
 
-        # Quantity (lots)
+        qty_row = QHBoxLayout()
         self.opt_quantity = QSpinBox()
         self.opt_quantity.setRange(1, 500)
         self.opt_quantity.setValue(1)
         self.opt_quantity.setSuffix(" lots")
-        form_layout.addRow("Quantity:", self.opt_quantity)
+        qty_row.addWidget(self.opt_quantity)
+        self.opt_lot_size = QLabel("Lot: 25")
+        qty_row.addWidget(self.opt_lot_size)
+        form_layout.addRow("Quantity:", qty_row)
 
-        # Lot size display
-        self.opt_lot_size = QLabel("Lot Size: 25")
-        form_layout.addRow(self.opt_lot_size)
-
-        # Entry Price (premium)
         self.opt_entry_price = QDoubleSpinBox()
         self.opt_entry_price.setRange(0, 100000)
         self.opt_entry_price.setDecimals(2)
         self.opt_entry_price.setPrefix("₹")
-        form_layout.addRow("Entry Premium:", self.opt_entry_price)
+        form_layout.addRow("Premium:", self.opt_entry_price)
 
-        layout.addWidget(form_group)
+        top_row.addWidget(form_group)
 
-        # --- Exit / SL / TSL / Target ---
-        exit_group = QGroupBox("Exit Settings (P&L Based SL / TSL / Target)")
+        # Right: Exit Settings
+        exit_group = QGroupBox("Exit Settings (SL / TSL / Target)")
         exit_layout = QFormLayout(exit_group)
+        exit_layout.setSpacing(4)
 
         self.opt_exit_type = QComboBox()
         self.opt_exit_type.addItems([e.value for e in ExitType])
@@ -609,12 +617,15 @@ class MainWindow(QMainWindow):
         self.opt_tsl_value.setDecimals(2)
         exit_layout.addRow("TSL Value:", self.opt_tsl_value)
 
-        layout.addWidget(exit_group)
-
-        # Add position button
-        add_opt_btn = QPushButton("Add Option Position")
+        # Add button inside exit group
+        add_opt_btn = QPushButton(">>> Add Option Position <<<")
+        add_opt_btn.setMinimumHeight(35)
         add_opt_btn.clicked.connect(self._add_option_position)
-        layout.addWidget(add_opt_btn)
+        exit_layout.addRow(add_opt_btn)
+
+        top_row.addWidget(exit_group)
+
+        layout.addLayout(top_row)
 
         # --- Active Option Positions Table ---
         positions_group = QGroupBox("Active Option Positions")
@@ -627,6 +638,7 @@ class MainWindow(QMainWindow):
             "Total P&L", "P&L %", "Max P&L", "Exit Type", "Actions"
         ])
         self.opt_positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.opt_positions_table.setMaximumHeight(180)
         positions_layout.addWidget(self.opt_positions_table)
 
         # Legs detail table
@@ -637,18 +649,19 @@ class MainWindow(QMainWindow):
             "Leg", "Strike", "Type", "Action", "Qty", "Entry", "LTP", "P&L", "P&L %"
         ])
         self.opt_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.opt_legs_table.setMaximumHeight(150)
         positions_layout.addWidget(self.opt_legs_table)
 
         self.opt_positions_table.cellClicked.connect(self._on_opt_position_selected)
 
-        # Refresh button
         opt_refresh_btn = QPushButton("Refresh Positions")
         opt_refresh_btn.clicked.connect(self._refresh_option_positions)
         positions_layout.addWidget(opt_refresh_btn)
 
         layout.addWidget(positions_group)
 
-        self.tabs.addTab(options, "Options")
+        scroll.setWidget(options)
+        self.tabs.addTab(scroll, "Options")
 
     def _create_backtest_tab(self):
         """Create backtesting tab"""

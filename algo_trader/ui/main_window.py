@@ -307,19 +307,31 @@ class MainWindow(QMainWindow):
         # Right column - Capital & Limits
         right_form = QFormLayout()
 
-        self.chartink_total_amount = QDoubleSpinBox()
-        self.chartink_total_amount.setRange(0, 99999999)
-        self.chartink_total_amount.setDecimals(0)
-        self.chartink_total_amount.setValue(0)
-        self.chartink_total_amount.setPrefix("₹ ")
-        self.chartink_total_amount.setSpecialValueText("Unlimited")
-        right_form.addRow("Total Capital:", self.chartink_total_amount)
+        # Per-Stock Allocation Type
+        self.chartink_alloc_type = QComboBox()
+        self.chartink_alloc_type.addItems(["Auto (Capital ÷ Stocks)", "Fixed Qty", "Fixed Amount"])
+        self.chartink_alloc_type.currentIndexChanged.connect(self._on_chartink_alloc_type_changed)
+        right_form.addRow("Per-Stock:", self.chartink_alloc_type)
 
-        self.chartink_stock_quantity = QSpinBox()
-        self.chartink_stock_quantity.setRange(0, 10000)
-        self.chartink_stock_quantity.setValue(0)
-        self.chartink_stock_quantity.setSpecialValueText("Use Default Qty")
-        right_form.addRow("Per-Stock Qty:", self.chartink_stock_quantity)
+        # Per-Stock Value (qty or amount based on type)
+        alloc_value_layout = QHBoxLayout()
+        self.chartink_alloc_value = QDoubleSpinBox()
+        self.chartink_alloc_value.setRange(0, 99999999)
+        self.chartink_alloc_value.setDecimals(0)
+        self.chartink_alloc_value.setValue(0)
+        self.chartink_alloc_value.setEnabled(False)  # Disabled for "Auto" mode
+        self.chartink_alloc_value_label = QLabel("(Auto)")
+        alloc_value_layout.addWidget(self.chartink_alloc_value)
+        alloc_value_layout.addWidget(self.chartink_alloc_value_label)
+        right_form.addRow("Value:", alloc_value_layout)
+
+        self.chartink_total_capital = QDoubleSpinBox()
+        self.chartink_total_capital.setRange(0, 99999999)
+        self.chartink_total_capital.setDecimals(0)
+        self.chartink_total_capital.setValue(0)
+        self.chartink_total_capital.setPrefix("₹ ")
+        self.chartink_total_capital.setSpecialValueText("Unlimited")
+        right_form.addRow("Total Capital:", self.chartink_total_capital)
 
         self.chartink_max_trades = QSpinBox()
         self.chartink_max_trades.setRange(0, 1000)
@@ -349,7 +361,7 @@ class MainWindow(QMainWindow):
         self.chartink_scans_table = QTableWidget()
         self.chartink_scans_table.setColumnCount(10)
         self.chartink_scans_table.setHorizontalHeaderLabels([
-            "Name", "Action", "Qty", "Start", "Exit", "No New",
+            "Name", "Action", "Per-Stock", "Start", "Exit", "No New",
             "Capital", "Max Trades", "Trades Done", "Remove"
         ])
         self.chartink_scans_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -1278,13 +1290,31 @@ class MainWindow(QMainWindow):
                     start_time=scan.get('start_time', '09:15'),
                     exit_time=scan.get('exit_time', '15:15'),
                     no_new_trade_time=scan.get('no_new_trade_time', '14:30'),
-                    total_amount=scan.get('total_amount', 0),
-                    stock_quantity=scan.get('stock_quantity', 0),
+                    total_capital=scan.get('total_capital', scan.get('total_amount', 0)),
+                    alloc_type=scan.get('alloc_type', 'auto'),
+                    alloc_value=scan.get('alloc_value', scan.get('stock_quantity', 0)),
                     max_trades=scan.get('max_trades', 0)
                 )
             self._refresh_chartink_scans_table()
         except Exception as e:
             logger.error(f"Error loading Chartink scans: {e}")
+
+    def _on_chartink_alloc_type_changed(self, index):
+        """Handle allocation type change"""
+        if index == 0:  # Auto
+            self.chartink_alloc_value.setEnabled(False)
+            self.chartink_alloc_value.setValue(0)
+            self.chartink_alloc_value_label.setText("(Auto)")
+        elif index == 1:  # Fixed Qty
+            self.chartink_alloc_value.setEnabled(True)
+            self.chartink_alloc_value.setPrefix("")
+            self.chartink_alloc_value.setSuffix(" shares")
+            self.chartink_alloc_value_label.setText("")
+        elif index == 2:  # Fixed Amount
+            self.chartink_alloc_value.setEnabled(True)
+            self.chartink_alloc_value.setPrefix("₹ ")
+            self.chartink_alloc_value.setSuffix("")
+            self.chartink_alloc_value_label.setText("per stock")
 
     def _add_chartink_scan(self):
         """Add a new Chartink scan with time controls and allocation"""
@@ -1309,9 +1339,13 @@ class MainWindow(QMainWindow):
         start_time = self.chartink_start_time.currentText().strip()
         exit_time = self.chartink_exit_time.currentText().strip()
         no_new_trade_time = self.chartink_no_new_trade_time.currentText().strip()
-        total_amount = self.chartink_total_amount.value()
-        stock_quantity = self.chartink_stock_quantity.value()
+        total_capital = self.chartink_total_capital.value()
         max_trades = self.chartink_max_trades.value()
+
+        # Get allocation type and value
+        alloc_type_index = self.chartink_alloc_type.currentIndex()
+        alloc_type = ["auto", "fixed_qty", "fixed_amount"][alloc_type_index]
+        alloc_value = self.chartink_alloc_value.value()
 
         # Add to scanner
         self.chartink_scanner.add_scan(
@@ -1323,8 +1357,9 @@ class MainWindow(QMainWindow):
             start_time=start_time,
             exit_time=exit_time,
             no_new_trade_time=no_new_trade_time,
-            total_amount=total_amount,
-            stock_quantity=stock_quantity,
+            total_capital=total_capital,
+            alloc_type=alloc_type,
+            alloc_value=alloc_value,
             max_trades=max_trades
         )
 
@@ -1339,8 +1374,9 @@ class MainWindow(QMainWindow):
             'start_time': start_time,
             'exit_time': exit_time,
             'no_new_trade_time': no_new_trade_time,
-            'total_amount': total_amount,
-            'stock_quantity': stock_quantity,
+            'total_capital': total_capital,
+            'alloc_type': alloc_type,
+            'alloc_value': alloc_value,
             'max_trades': max_trades
         })
         self.config.set('chartink.scans', scans)
@@ -1395,12 +1431,22 @@ class MainWindow(QMainWindow):
         for i, scan in enumerate(scans):
             self.chartink_scans_table.setItem(i, 0, QTableWidgetItem(scan['name']))
             self.chartink_scans_table.setItem(i, 1, QTableWidgetItem(scan['action']))
-            qty_text = str(scan.get('stock_quantity', 0)) if scan.get('stock_quantity', 0) > 0 else str(scan['quantity'])
-            self.chartink_scans_table.setItem(i, 2, QTableWidgetItem(qty_text))
+
+            # Show allocation type and value
+            alloc_type = scan.get('alloc_type', 'auto')
+            alloc_value = scan.get('alloc_value', 0)
+            if alloc_type == 'fixed_qty':
+                alloc_text = f"{int(alloc_value)} shares"
+            elif alloc_type == 'fixed_amount':
+                alloc_text = f"₹{alloc_value:,.0f}/stock"
+            else:
+                alloc_text = "Auto"
+            self.chartink_scans_table.setItem(i, 2, QTableWidgetItem(alloc_text))
+
             self.chartink_scans_table.setItem(i, 3, QTableWidgetItem(scan.get('start_time', '09:15')))
             self.chartink_scans_table.setItem(i, 4, QTableWidgetItem(scan.get('exit_time', '15:15')))
             self.chartink_scans_table.setItem(i, 5, QTableWidgetItem(scan.get('no_new_trade_time', '14:30')))
-            amt = scan.get('total_amount', 0)
+            amt = scan.get('total_capital', 0)
             self.chartink_scans_table.setItem(i, 6, QTableWidgetItem(f"₹{amt:,.0f}" if amt > 0 else "Unlimited"))
             max_t = scan.get('max_trades', 0)
             self.chartink_scans_table.setItem(i, 7, QTableWidgetItem(str(max_t) if max_t > 0 else "Unlimited"))

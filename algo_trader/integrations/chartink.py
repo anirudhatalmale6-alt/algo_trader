@@ -59,8 +59,10 @@ class ChartinkScanner:
                  interval: int = 60, action: str = "BUY", quantity: int = 1,
                  start_time: str = "09:15", exit_time: str = "15:15",
                  no_new_trade_time: str = "14:30",
-                 total_amount: float = 0, stock_quantity: int = 0,
-                 max_trades: int = 0):
+                 total_capital: float = 0, alloc_type: str = "auto",
+                 alloc_value: float = 0, max_trades: int = 0,
+                 # Legacy support
+                 total_amount: float = None, stock_quantity: int = None):
         """
         Add a scan to monitor
 
@@ -74,10 +76,18 @@ class ChartinkScanner:
             start_time: Time to start scanning (HH:MM format)
             exit_time: Time to square-off all positions (HH:MM format)
             no_new_trade_time: Stop taking new trades after this time (HH:MM format)
-            total_amount: Total capital allocated for this scanner (0 = unlimited)
-            stock_quantity: Per-stock quantity override (0 = use default quantity)
+            total_capital: Total capital for this scanner (0 = unlimited)
+            alloc_type: Per-stock allocation type: 'auto', 'fixed_qty', 'fixed_amount'
+            alloc_value: Value for allocation (qty for fixed_qty, amount for fixed_amount)
             max_trades: Max number of trades allowed (0 = unlimited)
         """
+        # Handle legacy parameters
+        if total_amount is not None:
+            total_capital = total_amount
+        if stock_quantity is not None and stock_quantity > 0:
+            alloc_type = 'fixed_qty'
+            alloc_value = stock_quantity
+
         self.active_scans[scan_name] = {
             'url': scan_url,
             'condition': scan_condition,
@@ -91,10 +101,11 @@ class ChartinkScanner:
             'exit_time': exit_time,
             'no_new_trade_time': no_new_trade_time,
             # Capital allocation
-            'total_amount': total_amount,
+            'total_capital': total_capital,
             'amount_used': 0.0,
-            # Stock-wise quantity
-            'stock_quantity': stock_quantity,
+            # Per-stock allocation
+            'alloc_type': alloc_type,  # 'auto', 'fixed_qty', 'fixed_amount'
+            'alloc_value': alloc_value,
             # Trade limits
             'max_trades': max_trades,
             'trade_count': 0,
@@ -102,7 +113,7 @@ class ChartinkScanner:
             'open_positions': {},  # symbol -> {'quantity': int, 'action': str, 'price': float, 'time': str}
             'squared_off': set(),  # symbols that have been squared off
         }
-        logger.info(f"Added Chartink scan: {scan_name} (start={start_time}, exit={exit_time}, no_new={no_new_trade_time})")
+        logger.info(f"Added Chartink scan: {scan_name} (alloc={alloc_type}, value={alloc_value}, capital={total_capital})")
 
     def remove_scan(self, scan_name: str):
         """Remove a scan from monitoring"""
@@ -139,9 +150,9 @@ class ChartinkScanner:
         if max_trades > 0 and scan_config.get('trade_count', 0) >= max_trades:
             return False
 
-        # Capital check
-        total_amount = scan_config.get('total_amount', 0)
-        if total_amount > 0 and scan_config.get('amount_used', 0) >= total_amount:
+        # Capital check (use total_capital, fallback to total_amount for legacy)
+        total_capital = scan_config.get('total_capital', scan_config.get('total_amount', 0))
+        if total_capital > 0 and scan_config.get('amount_used', 0) >= total_capital:
             return False
 
         return True
@@ -154,19 +165,31 @@ class ChartinkScanner:
 
     def _get_trade_quantity(self, scan_config: Dict, price: float = 0) -> int:
         """Calculate quantity for a trade based on allocation settings"""
-        # Stock-wise quantity takes priority
-        stock_qty = scan_config.get('stock_quantity', 0)
-        if stock_qty > 0:
-            return stock_qty
+        alloc_type = scan_config.get('alloc_type', 'auto')
+        alloc_value = scan_config.get('alloc_value', 0)
+        total_capital = scan_config.get('total_capital', 0)
 
-        # If total_amount is set, calculate quantity from price
-        total_amount = scan_config.get('total_amount', 0)
-        if total_amount > 0 and price > 0:
-            remaining = total_amount - scan_config.get('amount_used', 0)
+        # Fixed Quantity per stock
+        if alloc_type == 'fixed_qty' and alloc_value > 0:
+            return int(alloc_value)
+
+        # Fixed Amount per stock (calculate qty from price)
+        if alloc_type == 'fixed_amount' and alloc_value > 0 and price > 0:
+            qty = int(alloc_value / price)
+            return max(qty, 1)
+
+        # Auto mode - use total capital / price if available
+        if total_capital > 0 and price > 0:
+            remaining = total_capital - scan_config.get('amount_used', 0)
             if remaining > 0:
                 qty = int(remaining / price)
                 return max(qty, 1)
             return 0
+
+        # Legacy support - check old stock_quantity field
+        stock_qty = scan_config.get('stock_quantity', 0)
+        if stock_qty > 0:
+            return stock_qty
 
         # Fall back to default quantity
         return scan_config.get('quantity', 1)
@@ -457,8 +480,9 @@ class ChartinkScanner:
                 'start_time': config.get('start_time', '09:15'),
                 'exit_time': config.get('exit_time', '15:15'),
                 'no_new_trade_time': config.get('no_new_trade_time', '14:30'),
-                'total_amount': config.get('total_amount', 0),
-                'stock_quantity': config.get('stock_quantity', 0),
+                'total_capital': config.get('total_capital', config.get('total_amount', 0)),
+                'alloc_type': config.get('alloc_type', 'auto'),
+                'alloc_value': config.get('alloc_value', 0),
                 'max_trades': config.get('max_trades', 0),
                 'trade_count': config.get('trade_count', 0),
                 'amount_used': config.get('amount_used', 0),

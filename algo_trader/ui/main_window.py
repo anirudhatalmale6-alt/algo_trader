@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QLabel, QComboBox, QLineEdit, QTextEdit, QSplitter,
     QMessageBox, QStatusBar, QToolBar, QGroupBox, QFormLayout,
     QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QScrollArea
+    QScrollArea, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal
 from PyQt6.QtGui import QAction, QFont
@@ -996,42 +996,148 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(scroll, "Options")
 
     def _create_backtest_tab(self):
-        """Create backtesting tab"""
+        """Create advanced backtesting simulator tab"""
         backtest = QWidget()
         layout = QVBoxLayout(backtest)
 
-        # Backtest config
+        # Top section - Config and Controls in horizontal layout
+        top_layout = QHBoxLayout()
+
+        # Left - Configuration
         config_group = QGroupBox("Backtest Configuration")
         config_layout = QFormLayout(config_group)
 
         self.bt_strategy_combo = QComboBox()
         config_layout.addRow("Strategy:", self.bt_strategy_combo)
 
-        self.bt_symbol = QLineEdit()
-        self.bt_symbol.setPlaceholderText("e.g., NIFTY, RELIANCE")
-        config_layout.addRow("Symbol:", self.bt_symbol)
+        # Symbol with preset options
+        symbol_layout = QHBoxLayout()
+        self.bt_symbol = QComboBox()
+        self.bt_symbol.setEditable(True)
+        self.bt_symbol.addItems(["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "HDFCBANK",
+                                  "INFY", "ICICIBANK", "SBIN", "TATASTEEL", "WIPRO"])
+        symbol_layout.addWidget(self.bt_symbol)
+        config_layout.addRow("Symbol:", symbol_layout)
+
+        # Date range
+        self.bt_days = QSpinBox()
+        self.bt_days.setRange(30, 1000)
+        self.bt_days.setValue(365)
+        self.bt_days.setSuffix(" days")
+        config_layout.addRow("History:", self.bt_days)
+
+        # Interval
+        self.bt_interval = QComboBox()
+        self.bt_interval.addItems(["1d (Daily)", "1h (Hourly)", "15m (15 min)", "5m (5 min)"])
+        config_layout.addRow("Interval:", self.bt_interval)
 
         self.bt_capital = QDoubleSpinBox()
         self.bt_capital.setRange(10000, 10000000)
         self.bt_capital.setValue(100000)
-        self.bt_capital.setPrefix("₹")
+        self.bt_capital.setPrefix("₹ ")
+        self.bt_capital.setDecimals(0)
         config_layout.addRow("Initial Capital:", self.bt_capital)
 
-        self.run_backtest_btn = QPushButton("Run Backtest")
-        self.run_backtest_btn.clicked.connect(self._run_backtest)
-        config_layout.addRow(self.run_backtest_btn)
+        top_layout.addWidget(config_group)
 
-        layout.addWidget(config_group)
+        # Middle - Risk Settings
+        risk_group = QGroupBox("Risk Settings")
+        risk_layout = QFormLayout(risk_group)
 
-        # Results
-        results_group = QGroupBox("Backtest Results")
-        results_layout = QVBoxLayout(results_group)
+        self.bt_sl = QDoubleSpinBox()
+        self.bt_sl.setRange(0, 50)
+        self.bt_sl.setValue(2)
+        self.bt_sl.setSuffix(" %")
+        self.bt_sl.setSpecialValueText("No SL")
+        risk_layout.addRow("Stop Loss:", self.bt_sl)
 
-        self.backtest_results = QTextEdit()
-        self.backtest_results.setReadOnly(True)
-        results_layout.addWidget(self.backtest_results)
+        self.bt_target = QDoubleSpinBox()
+        self.bt_target.setRange(0, 100)
+        self.bt_target.setValue(4)
+        self.bt_target.setSuffix(" %")
+        self.bt_target.setSpecialValueText("No Target")
+        risk_layout.addRow("Target:", self.bt_target)
 
-        layout.addWidget(results_group)
+        self.bt_tsl = QDoubleSpinBox()
+        self.bt_tsl.setRange(0, 50)
+        self.bt_tsl.setValue(0)
+        self.bt_tsl.setSuffix(" %")
+        self.bt_tsl.setSpecialValueText("No TSL")
+        risk_layout.addRow("Trailing SL:", self.bt_tsl)
+
+        top_layout.addWidget(risk_group)
+
+        # Right - Controls
+        control_group = QGroupBox("Simulation Controls")
+        control_layout = QVBoxLayout(control_group)
+
+        self.run_backtest_btn = QPushButton("▶ Start Backtest")
+        self.run_backtest_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.run_backtest_btn.clicked.connect(self._run_advanced_backtest)
+        control_layout.addWidget(self.run_backtest_btn)
+
+        self.bt_realtime_mode = QCheckBox("Real-time Mode (Slow)")
+        control_layout.addWidget(self.bt_realtime_mode)
+
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel("Speed:"))
+        self.bt_speed = QComboBox()
+        self.bt_speed.addItems(["1x", "2x", "5x", "10x"])
+        self.bt_speed.setCurrentIndex(1)
+        speed_layout.addWidget(self.bt_speed)
+        control_layout.addLayout(speed_layout)
+
+        self.bt_progress = QLabel("Ready")
+        self.bt_progress.setStyleSheet("font-weight: bold;")
+        control_layout.addWidget(self.bt_progress)
+
+        self.export_trades_btn = QPushButton("Export Trades CSV")
+        self.export_trades_btn.clicked.connect(self._export_backtest_trades)
+        self.export_trades_btn.setEnabled(False)
+        control_layout.addWidget(self.export_trades_btn)
+
+        control_layout.addStretch()
+        top_layout.addWidget(control_group)
+
+        layout.addLayout(top_layout)
+
+        # Middle - Results Summary
+        summary_group = QGroupBox("Results Summary")
+        summary_layout = QHBoxLayout(summary_group)
+
+        # Stats in a horizontal row
+        self.bt_stat_pnl = QLabel("P&L: --")
+        self.bt_stat_pnl.setStyleSheet("font-size: 14px; font-weight: bold;")
+        summary_layout.addWidget(self.bt_stat_pnl)
+
+        self.bt_stat_trades = QLabel("Trades: --")
+        summary_layout.addWidget(self.bt_stat_trades)
+
+        self.bt_stat_winrate = QLabel("Win Rate: --")
+        summary_layout.addWidget(self.bt_stat_winrate)
+
+        self.bt_stat_pf = QLabel("Profit Factor: --")
+        summary_layout.addWidget(self.bt_stat_pf)
+
+        self.bt_stat_dd = QLabel("Max Drawdown: --")
+        summary_layout.addWidget(self.bt_stat_dd)
+
+        layout.addWidget(summary_group)
+
+        # Bottom - Trade Log Table
+        trades_group = QGroupBox("Trade Log (Step-by-Step)")
+        trades_layout = QVBoxLayout(trades_group)
+
+        self.bt_trades_table = QTableWidget()
+        self.bt_trades_table.setColumnCount(10)
+        self.bt_trades_table.setHorizontalHeaderLabels([
+            "ID", "Type", "Entry Time", "Entry Price", "Exit Time",
+            "Exit Price", "Qty", "P&L", "P&L %", "Exit Reason"
+        ])
+        self.bt_trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        trades_layout.addWidget(self.bt_trades_table)
+
+        layout.addWidget(trades_group)
 
         self.tabs.addTab(backtest, "Backtest")
 
@@ -1427,22 +1533,193 @@ class MainWindow(QMainWindow):
         interpreter.load_data(sample_data)
         results = interpreter.run_backtest(capital)
 
-        # Display results
-        self.backtest_results.setText(
-            f"Backtest Results for {strategy_name}\n"
-            f"{'=' * 50}\n\n"
-            f"Symbol: {symbol}\n"
-            f"Initial Capital: ₹{results['initial_capital']:,.2f}\n"
-            f"Final Capital: ₹{results['final_capital']:,.2f}\n"
-            f"Total Return: {results['total_return']:.2f}%\n\n"
-            f"Total Trades: {results['total_trades']}\n"
-            f"Winning Trades: {results['winning_trades']}\n"
-            f"Losing Trades: {results['losing_trades']}\n"
-            f"Win Rate: {results['win_rate']:.2f}%\n\n"
-            f"Max Drawdown: {results['max_drawdown']:.2f}%\n"
-            f"Sharpe Ratio: {results['sharpe_ratio']:.2f}\n"
-            f"Profit Factor: {results['profit_factor']:.2f}"
-        )
+        # Display results (old format for backward compat)
+        self.bt_stat_pnl.setText(f"P&L: ₹{results['final_capital'] - results['initial_capital']:,.2f}")
+        self.bt_stat_trades.setText(f"Trades: {results['total_trades']}")
+        self.bt_stat_winrate.setText(f"Win Rate: {results['win_rate']:.1f}%")
+        self.bt_stat_pf.setText(f"Profit Factor: {results['profit_factor']:.2f}")
+        self.bt_stat_dd.setText(f"Max DD: {results['max_drawdown']:.1f}%")
+
+    def _run_advanced_backtest(self):
+        """Run advanced backtest with step-by-step simulation"""
+        strategy_name = self.bt_strategy_combo.currentText()
+        if not strategy_name:
+            QMessageBox.warning(self, "Error", "Please select a strategy")
+            return
+
+        symbol = self.bt_symbol.currentText().strip().upper()
+        if not symbol:
+            QMessageBox.warning(self, "Error", "Please enter a symbol")
+            return
+
+        capital = self.bt_capital.value()
+        days = self.bt_days.value()
+
+        # Get interval
+        interval_text = self.bt_interval.currentText()
+        interval_map = {"1d": "1d", "1h": "1h", "15m": "15m", "5m": "5m"}
+        interval = "1d"
+        for key in interval_map:
+            if key in interval_text:
+                interval = interval_map[key]
+                break
+
+        # Risk settings
+        sl_pct = self.bt_sl.value()
+        target_pct = self.bt_target.value()
+        tsl_pct = self.bt_tsl.value()
+
+        self.bt_progress.setText("Fetching data...")
+        self.run_backtest_btn.setEnabled(False)
+        QApplication.processEvents()
+
+        try:
+            # Load strategy
+            strategy = self.db.get_strategy(strategy_name)
+            if not strategy:
+                QMessageBox.warning(self, "Error", "Strategy not found")
+                return
+
+            from algo_trader.strategies.pine_parser import PineScriptParser
+            from algo_trader.strategies.pine_interpreter import PineScriptInterpreter
+            from algo_trader.backtest.simulator import BacktestSimulator
+            from algo_trader.data.historical import HistoricalDataManager
+
+            # Parse strategy
+            parser = PineScriptParser()
+            parsed = parser.parse(strategy['pine_script'])
+            if not parsed:
+                QMessageBox.warning(self, "Error", "Failed to parse strategy")
+                return
+
+            interpreter = PineScriptInterpreter(parsed)
+
+            # Fetch historical data
+            self.bt_progress.setText("Downloading historical data...")
+            QApplication.processEvents()
+
+            data_manager = HistoricalDataManager()
+            data = data_manager.get_data_for_backtest(symbol, days, interval)
+
+            if data is None or len(data) == 0:
+                QMessageBox.warning(self, "Error", "Could not fetch historical data")
+                return
+
+            self.bt_progress.setText(f"Running backtest on {len(data)} candles...")
+            QApplication.processEvents()
+
+            # Create strategy function for simulator
+            interpreter.load_data(data.set_index('datetime') if 'datetime' in data.columns else data)
+
+            def strategy_signal(row, idx, full_data):
+                """Generate strategy signal for each candle"""
+                try:
+                    # Update interpreter with current candle
+                    result = interpreter.process_candle({
+                        'open': row['open'],
+                        'high': row['high'],
+                        'low': row['low'],
+                        'close': row['close'],
+                        'volume': row.get('volume', 0)
+                    })
+                    if result and 'signal' in result:
+                        return result['signal']  # 'BUY' or 'SELL'
+                except Exception:
+                    pass
+                return None
+
+            # Create and configure simulator
+            simulator = BacktestSimulator(initial_capital=capital)
+            simulator.set_risk_params(
+                stop_loss=sl_pct,
+                target=target_pct,
+                trailing_sl=tsl_pct
+            )
+
+            # Register progress callback
+            def on_progress(idx, total, time, price, equity, open_trades):
+                if idx % 50 == 0:
+                    self.bt_progress.setText(f"Processing: {idx}/{total} ({time.strftime('%Y-%m-%d') if hasattr(time, 'strftime') else time})")
+                    QApplication.processEvents()
+
+            simulator.register_progress_callback(on_progress)
+
+            # Get speed setting
+            speed_text = self.bt_speed.currentText()
+            speed = float(speed_text.replace('x', ''))
+
+            # Run backtest
+            realtime = self.bt_realtime_mode.isChecked()
+            simulator.set_speed(speed)
+
+            self.bt_simulator = simulator  # Store for export
+            result = simulator.run_backtest(
+                data=data,
+                strategy_func=strategy_signal,
+                symbol=symbol,
+                strategy_name=strategy_name,
+                realtime_mode=realtime
+            )
+
+            # Update UI with results
+            self._display_backtest_results(result)
+
+        except Exception as e:
+            logger.error(f"Backtest error: {e}")
+            QMessageBox.warning(self, "Error", f"Backtest failed: {str(e)}")
+        finally:
+            self.run_backtest_btn.setEnabled(True)
+            self.bt_progress.setText("Complete")
+
+    def _display_backtest_results(self, result):
+        """Display backtest results in UI"""
+        # Update summary stats
+        pnl_color = "green" if result.total_pnl >= 0 else "red"
+        self.bt_stat_pnl.setText(f"P&L: ₹{result.total_pnl:,.2f}")
+        self.bt_stat_pnl.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {pnl_color};")
+
+        self.bt_stat_trades.setText(f"Trades: {result.total_trades}")
+        self.bt_stat_winrate.setText(f"Win Rate: {result.win_rate:.1f}%")
+        self.bt_stat_pf.setText(f"PF: {result.profit_factor:.2f}")
+        self.bt_stat_dd.setText(f"Max DD: ₹{result.max_drawdown:,.0f} ({result.max_drawdown_percent:.1f}%)")
+
+        # Populate trade log table
+        self.bt_trades_table.setRowCount(len(result.trades))
+        for i, trade in enumerate(result.trades):
+            self.bt_trades_table.setItem(i, 0, QTableWidgetItem(str(trade.trade_id)))
+            self.bt_trades_table.setItem(i, 1, QTableWidgetItem(trade.trade_type.value))
+            self.bt_trades_table.setItem(i, 2, QTableWidgetItem(
+                trade.entry_time.strftime('%Y-%m-%d %H:%M') if trade.entry_time else ''))
+            self.bt_trades_table.setItem(i, 3, QTableWidgetItem(f"₹{trade.entry_price:.2f}"))
+            self.bt_trades_table.setItem(i, 4, QTableWidgetItem(
+                trade.exit_time.strftime('%Y-%m-%d %H:%M') if trade.exit_time else ''))
+            self.bt_trades_table.setItem(i, 5, QTableWidgetItem(f"₹{trade.exit_price:.2f}"))
+            self.bt_trades_table.setItem(i, 6, QTableWidgetItem(str(trade.quantity)))
+
+            pnl_item = QTableWidgetItem(f"₹{trade.pnl:,.2f}")
+            pnl_item.setForeground(Qt.GlobalColor.green if trade.pnl >= 0 else Qt.GlobalColor.red)
+            self.bt_trades_table.setItem(i, 7, pnl_item)
+
+            self.bt_trades_table.setItem(i, 8, QTableWidgetItem(f"{trade.pnl_percent:.2f}%"))
+            self.bt_trades_table.setItem(i, 9, QTableWidgetItem(trade.exit_reason))
+
+        self.export_trades_btn.setEnabled(True)
+        logger.info(f"Backtest complete: {result.total_trades} trades, P&L: ₹{result.total_pnl:.2f}")
+
+    def _export_backtest_trades(self):
+        """Export backtest trades to CSV"""
+        if not hasattr(self, 'bt_simulator') or not self.bt_simulator:
+            QMessageBox.warning(self, "Error", "No backtest results to export")
+            return
+
+        from datetime import datetime
+        filename = f"backtest_trades_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        try:
+            self.bt_simulator.export_trades_csv(filename)
+            QMessageBox.information(self, "Exported", f"Trades exported to: {filename}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Export failed: {e}")
 
     def _save_settings(self):
         """Save trading settings"""

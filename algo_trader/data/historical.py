@@ -1,13 +1,23 @@
 """
 Historical Data Manager
-Fetches and caches historical OHLCV data from brokers
+Fetches and caches historical OHLCV data from brokers and Yahoo Finance
 """
 import pandas as pd
+import requests
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from pathlib import Path
 import json
 from loguru import logger
+
+
+# Yahoo Finance symbol mapping for Indian stocks
+NSE_SUFFIX = ".NS"
+BSE_SUFFIX = ".BO"
+INDEX_SYMBOLS = {
+    'NIFTY': '^NSEI', 'NIFTY50': '^NSEI',
+    'BANKNIFTY': '^NSEBANK', 'SENSEX': '^BSESN',
+}
 
 
 class HistoricalDataManager:
@@ -207,3 +217,119 @@ class HistoricalDataManager:
             for file in self.cache_dir.glob("*"):
                 file.unlink()
             logger.info("Cleared all data cache")
+
+    def fetch_yahoo_data(self, symbol: str, start_date: datetime, end_date: datetime,
+                         interval: str = "1d") -> Optional[pd.DataFrame]:
+        """
+        Fetch historical data from Yahoo Finance (free, no broker needed)
+
+        Args:
+            symbol: Stock symbol (e.g., 'RELIANCE', 'NIFTY', 'TCS')
+            start_date: Start date
+            end_date: End date
+            interval: Candle interval - 1m, 5m, 15m, 30m, 1h, 1d, 1wk
+
+        Returns:
+            DataFrame with columns: datetime, open, high, low, close, volume
+        """
+        # Convert to Yahoo symbol
+        symbol_upper = symbol.upper().strip()
+        if symbol_upper in INDEX_SYMBOLS:
+            yahoo_symbol = INDEX_SYMBOLS[symbol_upper]
+        elif not (symbol_upper.endswith('.NS') or symbol_upper.endswith('.BO') or symbol_upper.startswith('^')):
+            yahoo_symbol = f"{symbol_upper}{NSE_SUFFIX}"
+        else:
+            yahoo_symbol = symbol_upper
+
+        start_ts = int(start_date.timestamp())
+        end_ts = int(end_date.timestamp())
+
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
+        params = {
+            'period1': start_ts,
+            'period2': end_ts,
+            'interval': interval,
+            'events': 'history'
+        }
+
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            response = requests.get(url, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if 'chart' not in data or 'result' not in data['chart']:
+                logger.error(f"Invalid response from Yahoo Finance for {symbol}")
+                return None
+
+            result = data['chart']['result'][0]
+
+            if 'timestamp' not in result:
+                logger.error(f"No data available for {symbol}")
+                return None
+
+            timestamps = result['timestamp']
+            quotes = result['indicators']['quote'][0]
+
+            df = pd.DataFrame({
+                'datetime': pd.to_datetime(timestamps, unit='s'),
+                'open': quotes.get('open', []),
+                'high': quotes.get('high', []),
+                'low': quotes.get('low', []),
+                'close': quotes.get('close', []),
+                'volume': quotes.get('volume', [])
+            })
+
+            df = df.dropna()
+            df = df.sort_values('datetime').reset_index(drop=True)
+
+            logger.info(f"Fetched {len(df)} candles for {symbol} from Yahoo Finance")
+            return df
+
+        except Exception as e:
+            logger.error(f"Error fetching Yahoo data: {e}")
+            return None
+
+    def get_data_for_backtest(self, symbol: str, days: int = 365,
+                              interval: str = "1d") -> pd.DataFrame:
+        """
+        Get data suitable for backtesting - tries Yahoo first, then sample data
+
+        Args:
+            symbol: Stock symbol
+            days: Number of days of history
+            interval: Candle interval (1d, 1h, etc.)
+
+        Returns:
+            DataFrame with datetime, open, high, low, close, volume
+        """
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+
+        # Try Yahoo Finance first
+        df = self.fetch_yahoo_data(symbol, start_date, end_date, interval)
+
+        if df is not None and len(df) > 0:
+            return df
+
+        # Fall back to sample data
+        logger.warning(f"Using sample data for {symbol}")
+        sample_df = self._get_sample_data(symbol, days)
+        sample_df = sample_df.reset_index()
+        sample_df = sample_df.rename(columns={'index': 'datetime'})
+        return sample_df
+
+    @staticmethod
+    def get_available_symbols() -> List[str]:
+        """Get list of commonly used NSE symbols"""
+        return [
+            # Indices
+            "NIFTY", "BANKNIFTY",
+            # Large Cap
+            "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+            "HINDUNILVR", "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK",
+            "LT", "AXISBANK", "ASIANPAINT", "MARUTI", "TITAN",
+            "SUNPHARMA", "ULTRACEMCO", "WIPRO", "HCLTECH", "BAJFINANCE",
+            "ADANIPORTS", "POWERGRID", "NTPC", "TATASTEEL", "ONGC",
+        ]

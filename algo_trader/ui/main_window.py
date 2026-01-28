@@ -50,7 +50,13 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         """Initialize the user interface"""
         self.setWindowTitle("Algo Trader - Pine Script & Chartink Trading")
-        self.setMinimumSize(1200, 800)
+
+        # Window size settings - resizable from small to large
+        self.setMinimumSize(600, 400)  # Minimum size for corner mode
+        self.resize(1200, 800)  # Default size
+
+        # Load saved window geometry if available
+        self._load_window_geometry()
 
         # Central widget
         central_widget = QWidget()
@@ -2250,6 +2256,42 @@ class MainWindow(QMainWindow):
         """Handle P&L update for options"""
         self._refresh_option_positions()
 
+    def _load_window_geometry(self):
+        """Load saved window size and position"""
+        try:
+            import json
+            import os
+            settings_file = os.path.join(os.path.dirname(__file__), '..', 'window_settings.json')
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                    if 'width' in settings and 'height' in settings:
+                        self.resize(settings['width'], settings['height'])
+                    if 'x' in settings and 'y' in settings:
+                        self.move(settings['x'], settings['y'])
+                    if settings.get('maximized', False):
+                        self.showMaximized()
+        except Exception as e:
+            logger.debug(f"Could not load window geometry: {e}")
+
+    def _save_window_geometry(self):
+        """Save window size and position"""
+        try:
+            import json
+            import os
+            settings_file = os.path.join(os.path.dirname(__file__), '..', 'window_settings.json')
+            settings = {
+                'width': self.width(),
+                'height': self.height(),
+                'x': self.x(),
+                'y': self.y(),
+                'maximized': self.isMaximized()
+            }
+            with open(settings_file, 'w') as f:
+                json.dump(settings, f)
+        except Exception as e:
+            logger.debug(f"Could not save window geometry: {e}")
+
     def closeEvent(self, event):
         """Handle window close"""
         reply = QMessageBox.question(
@@ -2258,6 +2300,7 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
+            self._save_window_geometry()  # Save window size before closing
             event.accept()
         else:
             event.ignore()

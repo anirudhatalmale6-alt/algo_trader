@@ -43,9 +43,20 @@ class MainWindow(QMainWindow):
         # Active broker connections
         self.brokers = {}
 
+        # Paper trading simulator
+        self.paper_simulator = None
+
+        # Telegram alerts
+        self.telegram = None
+
         self._init_ui()
         self._load_configured_brokers()
         self._setup_timers()
+        self._init_telegram()
+
+        # Initialize paper trading if enabled
+        if self.config.get('trading.paper_mode', False):
+            self._init_paper_trading()
 
     def _init_ui(self):
         """Initialize the user interface"""
@@ -936,6 +947,82 @@ class MainWindow(QMainWindow):
         settings = QWidget()
         layout = QVBoxLayout(settings)
 
+        # Use scroll area for settings
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+
+        # === Paper Trading Mode ===
+        paper_group = QGroupBox("Trading Mode")
+        paper_layout = QVBoxLayout(paper_group)
+
+        mode_layout = QHBoxLayout()
+        self.paper_trading_toggle = QCheckBox("Paper Trading Mode (Simulator)")
+        self.paper_trading_toggle.setChecked(self.config.get('trading.paper_mode', False))
+        self.paper_trading_toggle.stateChanged.connect(self._on_paper_mode_changed)
+        mode_layout.addWidget(self.paper_trading_toggle)
+
+        self.paper_mode_label = QLabel("🟢 LIVE TRADING" if not self.paper_trading_toggle.isChecked() else "📝 PAPER TRADING")
+        self.paper_mode_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        mode_layout.addWidget(self.paper_mode_label)
+        mode_layout.addStretch()
+        paper_layout.addLayout(mode_layout)
+
+        # Paper trading capital
+        paper_capital_layout = QHBoxLayout()
+        paper_capital_layout.addWidget(QLabel("Simulator Capital:"))
+        self.paper_capital = QDoubleSpinBox()
+        self.paper_capital.setRange(1000, 99999999)
+        self.paper_capital.setDecimals(0)
+        self.paper_capital.setPrefix("₹ ")
+        self.paper_capital.setValue(self.config.get('trading.paper_capital', 100000))
+        paper_capital_layout.addWidget(self.paper_capital)
+
+        self.reset_paper_btn = QPushButton("Reset Simulator")
+        self.reset_paper_btn.clicked.connect(self._reset_paper_trading)
+        paper_capital_layout.addWidget(self.reset_paper_btn)
+        paper_capital_layout.addStretch()
+        paper_layout.addLayout(paper_capital_layout)
+
+        scroll_layout.addWidget(paper_group)
+
+        # === Telegram Alerts ===
+        telegram_group = QGroupBox("Telegram Alerts")
+        telegram_layout = QFormLayout(telegram_group)
+
+        self.telegram_enabled = QCheckBox("Enable Telegram Alerts")
+        self.telegram_enabled.setChecked(self.config.get('telegram.enabled', False))
+        self.telegram_enabled.stateChanged.connect(self._on_telegram_toggle)
+        telegram_layout.addRow(self.telegram_enabled)
+
+        self.telegram_bot_token = QLineEdit()
+        self.telegram_bot_token.setPlaceholderText("Enter Bot Token from @BotFather")
+        self.telegram_bot_token.setText(self.config.get('telegram.bot_token', ''))
+        self.telegram_bot_token.setEchoMode(QLineEdit.EchoMode.Password)
+        telegram_layout.addRow("Bot Token:", self.telegram_bot_token)
+
+        self.telegram_chat_id = QLineEdit()
+        self.telegram_chat_id.setPlaceholderText("Enter Chat ID")
+        self.telegram_chat_id.setText(self.config.get('telegram.chat_id', ''))
+        telegram_layout.addRow("Chat ID:", self.telegram_chat_id)
+
+        telegram_btn_layout = QHBoxLayout()
+        self.save_telegram_btn = QPushButton("Save Telegram")
+        self.save_telegram_btn.clicked.connect(self._save_telegram_settings)
+        self.test_telegram_btn = QPushButton("Test Connection")
+        self.test_telegram_btn.clicked.connect(self._test_telegram)
+        telegram_btn_layout.addWidget(self.save_telegram_btn)
+        telegram_btn_layout.addWidget(self.test_telegram_btn)
+        telegram_layout.addRow(telegram_btn_layout)
+
+        # Help text
+        help_label = QLabel("How to setup:\n1. Open Telegram, search @BotFather\n2. Send /newbot, follow steps\n3. Copy Bot Token\n4. Send message to your bot, then visit:\n   https://api.telegram.org/bot<TOKEN>/getUpdates\n5. Copy chat_id from response")
+        help_label.setStyleSheet("color: gray; font-size: 11px;")
+        telegram_layout.addRow(help_label)
+
+        scroll_layout.addWidget(telegram_group)
+
         # Broker settings
         broker_group = QGroupBox("Broker Connections")
         broker_layout = QVBoxLayout(broker_group)
@@ -954,7 +1041,7 @@ class MainWindow(QMainWindow):
         broker_btn_layout.addWidget(add_broker_btn)
         broker_layout.addLayout(broker_btn_layout)
 
-        layout.addWidget(broker_group)
+        scroll_layout.addWidget(broker_group)
 
         # Trading settings
         trading_group = QGroupBox("Trading Settings")
@@ -980,8 +1067,11 @@ class MainWindow(QMainWindow):
         save_settings_btn.clicked.connect(self._save_settings)
         trading_layout.addRow(save_settings_btn)
 
-        layout.addWidget(trading_group)
-        layout.addStretch()
+        scroll_layout.addWidget(trading_group)
+        scroll_layout.addStretch()
+
+        scroll.setWidget(scroll_widget)
+        layout.addWidget(scroll)
 
         self.tabs.addTab(settings, "Settings")
 
@@ -1266,7 +1356,132 @@ class MainWindow(QMainWindow):
         self.config.set('trading.default_quantity', self.default_qty.value())
         self.config.set('trading.max_positions', self.max_positions.value())
         self.config.set('trading.risk_percent', self.risk_percent.value())
+        self.config.set('trading.paper_capital', self.paper_capital.value())
         QMessageBox.information(self, "Success", "Settings saved")
+
+    # Paper Trading methods
+    def _init_paper_trading(self):
+        """Initialize paper trading simulator"""
+        from algo_trader.core.paper_trading import PaperTradingSimulator
+        capital = self.config.get('trading.paper_capital', 100000)
+        self.paper_simulator = PaperTradingSimulator(initial_capital=capital)
+        logger.info(f"Paper Trading Simulator initialized with ₹{capital:,.2f}")
+
+    def _on_paper_mode_changed(self, state):
+        """Handle paper trading mode toggle"""
+        is_paper = state == Qt.CheckState.Checked.value
+        self.config.set('trading.paper_mode', is_paper)
+
+        if is_paper:
+            self.paper_mode_label.setText("📝 PAPER TRADING")
+            self.paper_mode_label.setStyleSheet("font-weight: bold; font-size: 14px; color: orange;")
+            self._init_paper_trading()
+            QMessageBox.information(self, "Paper Trading",
+                "Paper Trading Mode enabled!\n\nAll trades will be simulated - no real money will be used.")
+        else:
+            self.paper_mode_label.setText("🟢 LIVE TRADING")
+            self.paper_mode_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+            QMessageBox.warning(self, "Live Trading",
+                "Live Trading Mode enabled!\n\nReal orders will be placed with your broker.")
+
+    def _reset_paper_trading(self):
+        """Reset paper trading simulator"""
+        if hasattr(self, 'paper_simulator'):
+            capital = self.paper_capital.value()
+            self.paper_simulator.reset(capital)
+            QMessageBox.information(self, "Reset", f"Simulator reset with ₹{capital:,.0f}")
+        else:
+            self._init_paper_trading()
+            QMessageBox.information(self, "Initialized", "Paper Trading Simulator initialized")
+
+    def is_paper_mode(self) -> bool:
+        """Check if paper trading mode is enabled"""
+        return self.paper_trading_toggle.isChecked()
+
+    # Telegram Alert methods
+    def _init_telegram(self):
+        """Initialize Telegram alerts"""
+        from algo_trader.integrations.telegram_alerts import TelegramAlerts
+        self.telegram = TelegramAlerts()
+        bot_token = self.config.get('telegram.bot_token', '')
+        chat_id = self.config.get('telegram.chat_id', '')
+        if bot_token and chat_id:
+            self.telegram.configure(bot_token, chat_id)
+            if self.config.get('telegram.enabled', False):
+                self.telegram.enable()
+
+    def _on_telegram_toggle(self, state):
+        """Handle Telegram enable/disable"""
+        enabled = state == Qt.CheckState.Checked.value
+        if enabled:
+            if not hasattr(self, 'telegram'):
+                self._init_telegram()
+            if self.telegram.is_configured():
+                self.telegram.enable()
+                self.config.set('telegram.enabled', True)
+            else:
+                QMessageBox.warning(self, "Error", "Please enter Bot Token and Chat ID first")
+                self.telegram_enabled.setChecked(False)
+        else:
+            if hasattr(self, 'telegram'):
+                self.telegram.disable()
+            self.config.set('telegram.enabled', False)
+
+    def _save_telegram_settings(self):
+        """Save Telegram configuration"""
+        bot_token = self.telegram_bot_token.text().strip()
+        chat_id = self.telegram_chat_id.text().strip()
+
+        self.config.set('telegram.bot_token', bot_token)
+        self.config.set('telegram.chat_id', chat_id)
+
+        if not hasattr(self, 'telegram'):
+            self._init_telegram()
+
+        if bot_token and chat_id:
+            self.telegram.configure(bot_token, chat_id)
+            QMessageBox.information(self, "Saved", "Telegram settings saved!")
+        else:
+            QMessageBox.warning(self, "Warning", "Please enter both Bot Token and Chat ID")
+
+    def _test_telegram(self):
+        """Test Telegram connection"""
+        if not hasattr(self, 'telegram'):
+            self._init_telegram()
+
+        bot_token = self.telegram_bot_token.text().strip()
+        chat_id = self.telegram_chat_id.text().strip()
+
+        if not bot_token or not chat_id:
+            QMessageBox.warning(self, "Error", "Please enter Bot Token and Chat ID")
+            return
+
+        self.telegram.configure(bot_token, chat_id)
+        if self.telegram.test_connection():
+            QMessageBox.information(self, "Success", "Telegram connection successful! Check your Telegram.")
+        else:
+            QMessageBox.warning(self, "Failed", "Could not connect to Telegram. Check your credentials.")
+
+    def _send_telegram_alert(self, message_type: str, **kwargs):
+        """Send alert to Telegram if enabled"""
+        if not hasattr(self, 'telegram') or not self.telegram.enabled:
+            return
+
+        try:
+            if message_type == 'trade':
+                self.telegram.send_trade_alert(**kwargs)
+            elif message_type == 'signal':
+                self.telegram.send_signal_alert(**kwargs)
+            elif message_type == 'chartink':
+                self.telegram.send_chartink_alert(**kwargs)
+            elif message_type == 'option':
+                self.telegram.send_option_alert(**kwargs)
+            elif message_type == 'sl_hit':
+                self.telegram.send_sl_hit_alert(**kwargs)
+            elif message_type == 'target_hit':
+                self.telegram.send_target_hit_alert(**kwargs)
+        except Exception as e:
+            logger.error(f"Telegram alert error: {e}")
 
     # Chartink methods
     def _init_chartink(self):

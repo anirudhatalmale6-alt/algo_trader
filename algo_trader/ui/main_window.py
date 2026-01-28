@@ -354,6 +354,99 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(add_scan_group)
 
+        # === Risk Management Section ===
+        risk_group = QGroupBox("Risk Management (Per Stock & Scanner MTM)")
+        risk_main = QHBoxLayout(risk_group)
+
+        # Left - Per Stock SL/Target
+        stock_risk_form = QFormLayout()
+        stock_risk_form.addRow(QLabel("<b>Per Stock Exit:</b>"))
+
+        # Stop Loss Type
+        self.chartink_sl_type = QComboBox()
+        self.chartink_sl_type.addItems(["None", "Fixed Points", "Fixed %", "Fixed Amount"])
+        self.chartink_sl_type.currentIndexChanged.connect(self._on_chartink_sl_type_changed)
+        stock_risk_form.addRow("Stop Loss:", self.chartink_sl_type)
+
+        self.chartink_sl_value = QDoubleSpinBox()
+        self.chartink_sl_value.setRange(0, 99999)
+        self.chartink_sl_value.setValue(0)
+        self.chartink_sl_value.setEnabled(False)
+        stock_risk_form.addRow("SL Value:", self.chartink_sl_value)
+
+        # Target
+        self.chartink_target_type = QComboBox()
+        self.chartink_target_type.addItems(["None", "Fixed Points", "Fixed %", "Fixed Amount"])
+        self.chartink_target_type.currentIndexChanged.connect(self._on_chartink_target_type_changed)
+        stock_risk_form.addRow("Target:", self.chartink_target_type)
+
+        self.chartink_target_value = QDoubleSpinBox()
+        self.chartink_target_value.setRange(0, 99999)
+        self.chartink_target_value.setValue(0)
+        self.chartink_target_value.setEnabled(False)
+        stock_risk_form.addRow("Target Value:", self.chartink_target_value)
+
+        risk_main.addLayout(stock_risk_form)
+
+        # Middle - Trailing SL
+        tsl_form = QFormLayout()
+        tsl_form.addRow(QLabel("<b>Trailing Stop Loss:</b>"))
+
+        self.chartink_tsl_enabled = QCheckBox("Enable TSL")
+        self.chartink_tsl_enabled.stateChanged.connect(self._on_chartink_tsl_toggle)
+        tsl_form.addRow(self.chartink_tsl_enabled)
+
+        self.chartink_tsl_type = QComboBox()
+        self.chartink_tsl_type.addItems(["Points", "Percentage"])
+        self.chartink_tsl_type.setEnabled(False)
+        tsl_form.addRow("TSL Type:", self.chartink_tsl_type)
+
+        self.chartink_tsl_value = QDoubleSpinBox()
+        self.chartink_tsl_value.setRange(0, 9999)
+        self.chartink_tsl_value.setValue(0)
+        self.chartink_tsl_value.setEnabled(False)
+        tsl_form.addRow("TSL Value:", self.chartink_tsl_value)
+
+        # Profit Lock (move SL to breakeven after X profit)
+        tsl_form.addRow(QLabel("<b>Profit Lock:</b>"))
+        self.chartink_profit_lock_enabled = QCheckBox("Enable Profit Lock")
+        tsl_form.addRow(self.chartink_profit_lock_enabled)
+
+        self.chartink_profit_lock_type = QComboBox()
+        self.chartink_profit_lock_type.addItems(["Points", "Amount"])
+        tsl_form.addRow("Lock After:", self.chartink_profit_lock_type)
+
+        self.chartink_profit_lock_value = QDoubleSpinBox()
+        self.chartink_profit_lock_value.setRange(0, 99999)
+        self.chartink_profit_lock_value.setValue(0)
+        tsl_form.addRow("Lock Value:", self.chartink_profit_lock_value)
+
+        risk_main.addLayout(tsl_form)
+
+        # Right - Scanner MTM
+        mtm_form = QFormLayout()
+        mtm_form.addRow(QLabel("<b>Scanner MTM Limits:</b>"))
+
+        self.chartink_mtm_profit = QDoubleSpinBox()
+        self.chartink_mtm_profit.setRange(0, 9999999)
+        self.chartink_mtm_profit.setDecimals(0)
+        self.chartink_mtm_profit.setPrefix("₹ ")
+        self.chartink_mtm_profit.setSpecialValueText("No Limit")
+        mtm_form.addRow("MTM Profit Target:", self.chartink_mtm_profit)
+
+        self.chartink_mtm_loss = QDoubleSpinBox()
+        self.chartink_mtm_loss.setRange(0, 9999999)
+        self.chartink_mtm_loss.setDecimals(0)
+        self.chartink_mtm_loss.setPrefix("₹ ")
+        self.chartink_mtm_loss.setSpecialValueText("No Limit")
+        mtm_form.addRow("MTM Loss Limit:", self.chartink_mtm_loss)
+
+        mtm_form.addRow(QLabel("(Scanner stops when MTM limit hit)"))
+
+        risk_main.addLayout(mtm_form)
+
+        layout.addWidget(risk_group)
+
         # Buttons row
         btn_layout = QHBoxLayout()
         self.add_chartink_scan_btn = QPushButton("Add Scanner")
@@ -1508,7 +1601,8 @@ class MainWindow(QMainWindow):
                     total_capital=scan.get('total_capital', scan.get('total_amount', 0)),
                     alloc_type=scan.get('alloc_type', 'auto'),
                     alloc_value=scan.get('alloc_value', scan.get('stock_quantity', 0)),
-                    max_trades=scan.get('max_trades', 0)
+                    max_trades=scan.get('max_trades', 0),
+                    risk_config=scan.get('risk_config', None)
                 )
             self._refresh_chartink_scans_table()
         except Exception as e:
@@ -1530,6 +1624,38 @@ class MainWindow(QMainWindow):
             self.chartink_alloc_value.setPrefix("₹ ")
             self.chartink_alloc_value.setSuffix("")
             self.chartink_alloc_value_label.setText("per stock")
+
+    def _on_chartink_sl_type_changed(self, index):
+        """Handle SL type change"""
+        self.chartink_sl_value.setEnabled(index > 0)
+        if index == 1:  # Points
+            self.chartink_sl_value.setSuffix(" pts")
+            self.chartink_sl_value.setPrefix("")
+        elif index == 2:  # Percentage
+            self.chartink_sl_value.setSuffix(" %")
+            self.chartink_sl_value.setPrefix("")
+        elif index == 3:  # Amount
+            self.chartink_sl_value.setSuffix("")
+            self.chartink_sl_value.setPrefix("₹ ")
+
+    def _on_chartink_target_type_changed(self, index):
+        """Handle Target type change"""
+        self.chartink_target_value.setEnabled(index > 0)
+        if index == 1:  # Points
+            self.chartink_target_value.setSuffix(" pts")
+            self.chartink_target_value.setPrefix("")
+        elif index == 2:  # Percentage
+            self.chartink_target_value.setSuffix(" %")
+            self.chartink_target_value.setPrefix("")
+        elif index == 3:  # Amount
+            self.chartink_target_value.setSuffix("")
+            self.chartink_target_value.setPrefix("₹ ")
+
+    def _on_chartink_tsl_toggle(self, state):
+        """Handle TSL enable/disable"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.chartink_tsl_type.setEnabled(enabled)
+        self.chartink_tsl_value.setEnabled(enabled)
 
     def _add_chartink_scan(self):
         """Add a new Chartink scan with time controls and allocation"""
@@ -1562,6 +1688,42 @@ class MainWindow(QMainWindow):
         alloc_type = ["auto", "fixed_qty", "fixed_amount"][alloc_type_index]
         alloc_value = self.chartink_alloc_value.value()
 
+        # Get risk settings
+        sl_type_index = self.chartink_sl_type.currentIndex()
+        sl_type = ["none", "points", "percent", "amount"][sl_type_index]
+        sl_value = self.chartink_sl_value.value()
+
+        target_type_index = self.chartink_target_type.currentIndex()
+        target_type = ["none", "points", "percent", "amount"][target_type_index]
+        target_value = self.chartink_target_value.value()
+
+        tsl_enabled = self.chartink_tsl_enabled.isChecked()
+        tsl_type = "points" if self.chartink_tsl_type.currentIndex() == 0 else "percent"
+        tsl_value = self.chartink_tsl_value.value()
+
+        profit_lock_enabled = self.chartink_profit_lock_enabled.isChecked()
+        profit_lock_type = "points" if self.chartink_profit_lock_type.currentIndex() == 0 else "amount"
+        profit_lock_value = self.chartink_profit_lock_value.value()
+
+        mtm_profit = self.chartink_mtm_profit.value()
+        mtm_loss = self.chartink_mtm_loss.value()
+
+        # Risk config dict
+        risk_config = {
+            'sl_type': sl_type,
+            'sl_value': sl_value,
+            'target_type': target_type,
+            'target_value': target_value,
+            'tsl_enabled': tsl_enabled,
+            'tsl_type': tsl_type,
+            'tsl_value': tsl_value,
+            'profit_lock_enabled': profit_lock_enabled,
+            'profit_lock_type': profit_lock_type,
+            'profit_lock_value': profit_lock_value,
+            'mtm_profit': mtm_profit,
+            'mtm_loss': mtm_loss
+        }
+
         # Add to scanner
         self.chartink_scanner.add_scan(
             scan_name=name,
@@ -1575,7 +1737,8 @@ class MainWindow(QMainWindow):
             total_capital=total_capital,
             alloc_type=alloc_type,
             alloc_value=alloc_value,
-            max_trades=max_trades
+            max_trades=max_trades,
+            risk_config=risk_config
         )
 
         # Save to config
@@ -1592,7 +1755,8 @@ class MainWindow(QMainWindow):
             'total_capital': total_capital,
             'alloc_type': alloc_type,
             'alloc_value': alloc_value,
-            'max_trades': max_trades
+            'max_trades': max_trades,
+            'risk_config': risk_config
         })
         self.config.set('chartink.scans', scans)
 

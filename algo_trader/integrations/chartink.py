@@ -61,6 +61,7 @@ class ChartinkScanner:
                  no_new_trade_time: str = "14:30",
                  total_capital: float = 0, alloc_type: str = "auto",
                  alloc_value: float = 0, max_trades: int = 0,
+                 risk_config: Dict = None,
                  # Legacy support
                  total_amount: float = None, stock_quantity: int = None):
         """
@@ -80,6 +81,7 @@ class ChartinkScanner:
             alloc_type: Per-stock allocation type: 'auto', 'fixed_qty', 'fixed_amount'
             alloc_value: Value for allocation (qty for fixed_qty, amount for fixed_amount)
             max_trades: Max number of trades allowed (0 = unlimited)
+            risk_config: Risk management settings (SL, TSL, Target, MTM)
         """
         # Handle legacy parameters
         if total_amount is not None:
@@ -87,6 +89,16 @@ class ChartinkScanner:
         if stock_quantity is not None and stock_quantity > 0:
             alloc_type = 'fixed_qty'
             alloc_value = stock_quantity
+
+        # Default risk config
+        if risk_config is None:
+            risk_config = {
+                'sl_type': 'none', 'sl_value': 0,
+                'target_type': 'none', 'target_value': 0,
+                'tsl_enabled': False, 'tsl_type': 'points', 'tsl_value': 0,
+                'profit_lock_enabled': False, 'profit_lock_type': 'points', 'profit_lock_value': 0,
+                'mtm_profit': 0, 'mtm_loss': 0
+            }
 
         self.active_scans[scan_name] = {
             'url': scan_url,
@@ -110,10 +122,14 @@ class ChartinkScanner:
             'max_trades': max_trades,
             'trade_count': 0,
             # Position tracking - tracks what was actually bought/sold
-            'open_positions': {},  # symbol -> {'quantity': int, 'action': str, 'price': float, 'time': str}
+            'open_positions': {},  # symbol -> {'quantity': int, 'action': str, 'price': float, 'time': str, 'high': float}
             'squared_off': set(),  # symbols that have been squared off
+            # Risk management
+            'risk_config': risk_config,
+            'mtm_pnl': 0.0,  # Current MTM P&L for scanner
+            'mtm_stopped': False,  # If MTM limit was hit
         }
-        logger.info(f"Added Chartink scan: {scan_name} (alloc={alloc_type}, value={alloc_value}, capital={total_capital})")
+        logger.info(f"Added Chartink scan: {scan_name} (alloc={alloc_type}, SL={risk_config.get('sl_type')}, MTM_Loss={risk_config.get('mtm_loss')})")
 
     def remove_scan(self, scan_name: str):
         """Remove a scan from monitoring"""
@@ -203,14 +219,185 @@ class ChartinkScanner:
         config['trade_count'] = config.get('trade_count', 0) + 1
         config['amount_used'] = config.get('amount_used', 0) + (price * quantity)
 
-        # Track open position
+        # Track open position with high price for TSL
         config['open_positions'][symbol] = {
             'quantity': quantity,
             'action': action,
             'price': price,
-            'time': datetime.now().strftime("%H:%M:%S")
+            'high': price,  # Track highest price for TSL
+            'low': price,   # Track lowest price for short TSL
+            'time': datetime.now().strftime("%H:%M:%S"),
+            'profit_locked': False  # For profit lock feature
         }
         logger.info(f"Recorded trade: {scan_name} -> {action} {quantity} {symbol} @ {price}")
+
+    def update_position_price(self, scan_name: str, symbol: str, current_price: float) -> Dict:
+        """
+        Update position with current price and check risk conditions.
+        Returns dict with exit signals if any triggered.
+        """
+        if scan_name not in self.active_scans:
+            return {}
+
+        config = self.active_scans[scan_name]
+        if symbol not in config['open_positions']:
+            return {}
+
+        pos = config['open_positions'][symbol]
+        risk = config.get('risk_config', {})
+
+        entry_price = pos['price']
+        quantity = pos['quantity']
+        action = pos['action']
+
+        # Calculate P&L
+        if action == "BUY":
+            pnl = (current_price - entry_price) * quantity
+            pnl_points = current_price - entry_price
+            pnl_percent = ((current_price - entry_price) / entry_price) * 100
+            # Update high for TSL
+            pos['high'] = max(pos.get('high', entry_price), current_price)
+        else:  # SELL / Short
+            pnl = (entry_price - current_price) * quantity
+            pnl_points = entry_price - current_price
+            pnl_percent = ((entry_price - current_price) / entry_price) * 100
+            # Update low for TSL
+            pos['low'] = min(pos.get('low', entry_price), current_price)
+
+        pos['current_price'] = current_price
+        pos['pnl'] = pnl
+        pos['pnl_points'] = pnl_points
+        pos['pnl_percent'] = pnl_percent
+
+        exit_signal = {}
+
+        # Check Stop Loss
+        sl_type = risk.get('sl_type', 'none')
+        sl_value = risk.get('sl_value', 0)
+        if sl_type != 'none' and sl_value > 0:
+            sl_hit = False
+            if sl_type == 'points' and pnl_points <= -sl_value:
+                sl_hit = True
+            elif sl_type == 'percent' and pnl_percent <= -sl_value:
+                sl_hit = True
+            elif sl_type == 'amount' and pnl <= -sl_value:
+                sl_hit = True
+
+            if sl_hit:
+                exit_signal = {'type': 'SL', 'reason': f'Stop Loss hit ({sl_type}: {sl_value})'}
+                logger.info(f"SL hit for {symbol}: {exit_signal['reason']}")
+
+        # Check Target
+        if not exit_signal:
+            target_type = risk.get('target_type', 'none')
+            target_value = risk.get('target_value', 0)
+            if target_type != 'none' and target_value > 0:
+                target_hit = False
+                if target_type == 'points' and pnl_points >= target_value:
+                    target_hit = True
+                elif target_type == 'percent' and pnl_percent >= target_value:
+                    target_hit = True
+                elif target_type == 'amount' and pnl >= target_value:
+                    target_hit = True
+
+                if target_hit:
+                    exit_signal = {'type': 'TARGET', 'reason': f'Target hit ({target_type}: {target_value})'}
+                    logger.info(f"Target hit for {symbol}: {exit_signal['reason']}")
+
+        # Check Trailing Stop Loss
+        if not exit_signal and risk.get('tsl_enabled', False):
+            tsl_type = risk.get('tsl_type', 'points')
+            tsl_value = risk.get('tsl_value', 0)
+
+            if tsl_value > 0:
+                if action == "BUY":
+                    high = pos.get('high', entry_price)
+                    if tsl_type == 'points':
+                        tsl_price = high - tsl_value
+                    else:  # percent
+                        tsl_price = high * (1 - tsl_value / 100)
+
+                    if current_price <= tsl_price and current_price > entry_price:
+                        exit_signal = {'type': 'TSL', 'reason': f'Trailing SL hit (from high {high:.2f})'}
+                else:  # SELL
+                    low = pos.get('low', entry_price)
+                    if tsl_type == 'points':
+                        tsl_price = low + tsl_value
+                    else:
+                        tsl_price = low * (1 + tsl_value / 100)
+
+                    if current_price >= tsl_price and current_price < entry_price:
+                        exit_signal = {'type': 'TSL', 'reason': f'Trailing SL hit (from low {low:.2f})'}
+
+        # Check Profit Lock (move SL to breakeven)
+        if not exit_signal and risk.get('profit_lock_enabled', False) and not pos.get('profit_locked', False):
+            lock_type = risk.get('profit_lock_type', 'points')
+            lock_value = risk.get('profit_lock_value', 0)
+
+            if lock_value > 0:
+                lock_triggered = False
+                if lock_type == 'points' and pnl_points >= lock_value:
+                    lock_triggered = True
+                elif lock_type == 'amount' and pnl >= lock_value:
+                    lock_triggered = True
+
+                if lock_triggered:
+                    pos['profit_locked'] = True
+                    pos['lock_price'] = entry_price  # SL moved to breakeven
+                    logger.info(f"Profit locked for {symbol} at breakeven")
+
+        # If profit is locked and price falls below entry
+        if not exit_signal and pos.get('profit_locked', False):
+            if action == "BUY" and current_price <= entry_price:
+                exit_signal = {'type': 'PROFIT_LOCK', 'reason': 'Profit lock triggered - price fell to entry'}
+            elif action == "SELL" and current_price >= entry_price:
+                exit_signal = {'type': 'PROFIT_LOCK', 'reason': 'Profit lock triggered - price rose to entry'}
+
+        return exit_signal
+
+    def get_scanner_mtm(self, scan_name: str) -> float:
+        """Get total MTM P&L for a scanner"""
+        if scan_name not in self.active_scans:
+            return 0.0
+
+        config = self.active_scans[scan_name]
+        total_pnl = 0.0
+        for symbol, pos in config.get('open_positions', {}).items():
+            total_pnl += pos.get('pnl', 0.0)
+
+        config['mtm_pnl'] = total_pnl
+        return total_pnl
+
+    def check_mtm_limits(self, scan_name: str) -> Optional[str]:
+        """Check if MTM limits are breached. Returns reason if breached, None otherwise."""
+        if scan_name not in self.active_scans:
+            return None
+
+        config = self.active_scans[scan_name]
+        if config.get('mtm_stopped', False):
+            return "MTM limit already triggered"
+
+        risk = config.get('risk_config', {})
+        mtm_profit = risk.get('mtm_profit', 0)
+        mtm_loss = risk.get('mtm_loss', 0)
+
+        current_mtm = self.get_scanner_mtm(scan_name)
+
+        if mtm_profit > 0 and current_mtm >= mtm_profit:
+            config['mtm_stopped'] = True
+            return f"MTM Profit target hit: ₹{current_mtm:.2f}"
+
+        if mtm_loss > 0 and current_mtm <= -mtm_loss:
+            config['mtm_stopped'] = True
+            return f"MTM Loss limit hit: ₹{current_mtm:.2f}"
+
+        return None
+
+    def is_mtm_stopped(self, scan_name: str) -> bool:
+        """Check if scanner is stopped due to MTM limit"""
+        if scan_name not in self.active_scans:
+            return False
+        return self.active_scans[scan_name].get('mtm_stopped', False)
 
     def record_squareoff(self, scan_name: str, symbol: str):
         """Record that a position was squared off"""
@@ -487,6 +674,9 @@ class ChartinkScanner:
                 'trade_count': config.get('trade_count', 0),
                 'amount_used': config.get('amount_used', 0),
                 'open_positions_count': len(config.get('open_positions', {})),
+                'risk_config': config.get('risk_config', {}),
+                'mtm_pnl': config.get('mtm_pnl', 0.0),
+                'mtm_stopped': config.get('mtm_stopped', False),
             }
             for name, config in self.active_scans.items()
         ]

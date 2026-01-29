@@ -11,7 +11,7 @@ from PyQt6.QtGui import QDesktopServices
 import webbrowser
 
 from algo_trader.core.config import Config
-from algo_trader.brokers import UpstoxBroker, AliceBlueBroker, ZerodhaBroker, AngelOneBroker
+from algo_trader.brokers import UpstoxBroker, AliceBlueBroker, ZerodhaBroker, AngelOneBroker, MT5Broker
 
 from loguru import logger
 
@@ -38,7 +38,7 @@ class BrokerConfigDialog(QDialog):
         broker_layout = QFormLayout(broker_group)
 
         self.broker_combo = QComboBox()
-        self.broker_combo.addItems(["Upstox", "Alice Blue", "Zerodha", "Angel One"])
+        self.broker_combo.addItems(["Upstox", "Alice Blue", "Zerodha", "Angel One", "MT5 (Forex/Crypto)"])
         self.broker_combo.currentTextChanged.connect(self._on_broker_changed)
         broker_layout.addRow("Broker:", self.broker_combo)
 
@@ -82,6 +82,28 @@ class BrokerConfigDialog(QDialog):
         creds_layout.addRow(self.totp_label, self.totp_secret)
         self.totp_label.setVisible(False)
         self.totp_secret.setVisible(False)
+
+        # MT5-specific fields
+        self.mt5_login_label = QLabel("MT5 Account:")
+        self.mt5_login = QLineEdit()
+        self.mt5_login.setPlaceholderText("MT5 Account Number (e.g., 12345678)")
+        creds_layout.addRow(self.mt5_login_label, self.mt5_login)
+        self.mt5_login_label.setVisible(False)
+        self.mt5_login.setVisible(False)
+
+        self.mt5_server_label = QLabel("MT5 Server:")
+        self.mt5_server = QLineEdit()
+        self.mt5_server.setPlaceholderText("Server name (e.g., Exness-MT5Real, XMGlobal-MT5)")
+        creds_layout.addRow(self.mt5_server_label, self.mt5_server)
+        self.mt5_server_label.setVisible(False)
+        self.mt5_server.setVisible(False)
+
+        self.mt5_path_label = QLabel("MT5 Path (Optional):")
+        self.mt5_path = QLineEdit()
+        self.mt5_path.setPlaceholderText("Path to terminal64.exe (leave empty for default)")
+        creds_layout.addRow(self.mt5_path_label, self.mt5_path)
+        self.mt5_path_label.setVisible(False)
+        self.mt5_path.setVisible(False)
 
         layout.addWidget(creds_group)
 
@@ -144,6 +166,24 @@ class BrokerConfigDialog(QDialog):
         self.totp_label.setVisible(False)
         self.totp_secret.setVisible(False)
 
+        # Hide MT5 fields by default
+        self.mt5_login_label.setVisible(False)
+        self.mt5_login.setVisible(False)
+        self.mt5_server_label.setVisible(False)
+        self.mt5_server.setVisible(False)
+        self.mt5_path_label.setVisible(False)
+        self.mt5_path.setVisible(False)
+
+        # Show/hide API key fields based on broker
+        self.api_key.setVisible(True)
+        self.api_secret.setVisible(True)
+        self.redirect_uri.setVisible(True)
+        self.get_login_url_btn.setVisible(True)
+        self.login_url_display.setVisible(True)
+        self.open_browser_btn.setVisible(True)
+        self.auth_code.setVisible(True)
+        self.authenticate_btn.setVisible(True)
+
         if broker == "Alice Blue":
             self.user_id.setEnabled(True)
             self.user_id.setPlaceholderText("User ID (required)")
@@ -163,17 +203,60 @@ class BrokerConfigDialog(QDialog):
                 QMessageBox.warning(self, "Missing Package",
                     "Angel One requires 'pyotp' package.\n\nInstall with: pip install pyotp")
 
+        elif broker == "MT5 (Forex/Crypto)":
+            # MT5 uses different authentication
+            self.api_key.setVisible(False)
+            self.api_secret.setVisible(False)
+            self.redirect_uri.setVisible(False)
+            self.user_id.setEnabled(False)
+
+            # Hide OAuth flow
+            self.get_login_url_btn.setVisible(False)
+            self.login_url_display.setVisible(False)
+            self.open_browser_btn.setVisible(False)
+            self.auth_code.setVisible(False)
+            self.authenticate_btn.setText("Connect to MT5")
+
+            # Show MT5 fields
+            self.mt5_login_label.setVisible(True)
+            self.mt5_login.setVisible(True)
+            self.mt5_server_label.setVisible(True)
+            self.mt5_server.setVisible(True)
+            self.mt5_path_label.setVisible(True)
+            self.mt5_path.setVisible(True)
+            self.password_label.setVisible(True)
+            self.password.setVisible(True)
+            self.password.setPlaceholderText("MT5 Password")
+
+            if MT5Broker is None:
+                QMessageBox.warning(self, "Missing Package",
+                    "MT5 requires 'MetaTrader5' package.\n\n"
+                    "Install with: pip install MetaTrader5\n\n"
+                    "Note: MT5 package only works on Windows with MT5 terminal installed.")
+
         self._load_existing_credentials()
 
     def _load_existing_credentials(self):
         """Load existing credentials for selected broker"""
-        broker = self.broker_combo.currentText().lower().replace(" ", "_")
-        creds = self.config.get_broker_credentials(broker)
+        broker = self.broker_combo.currentText()
+        broker_key = broker.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
+
+        # Map display name to config key
+        if broker == "MT5 (Forex/Crypto)":
+            broker_key = "mt5"
+
+        creds = self.config.get_broker_credentials(broker_key)
 
         if creds:
-            self.api_key.setText(creds.get('api_key', ''))
-            self.api_secret.setText(creds.get('api_secret', ''))
-            self.user_id.setText(creds.get('user_id', ''))
+            if broker == "MT5 (Forex/Crypto)":
+                self.mt5_login.setText(creds.get('api_key', ''))
+                self.password.setText(creds.get('api_secret', ''))
+                self.mt5_server.setText(creds.get('server', ''))
+                self.mt5_path.setText(creds.get('path', ''))
+            else:
+                self.api_key.setText(creds.get('api_key', ''))
+                self.api_secret.setText(creds.get('api_secret', ''))
+                self.user_id.setText(creds.get('user_id', ''))
 
     def _get_login_url(self):
         """Get OAuth login URL"""
@@ -182,6 +265,11 @@ class BrokerConfigDialog(QDialog):
         redirect_uri = self.redirect_uri.text().strip()
 
         broker = self.broker_combo.currentText()
+
+        # MT5 doesn't use OAuth
+        if broker == "MT5 (Forex/Crypto)":
+            self._connect_mt5()
+            return
 
         # Alice Blue doesn't need API Secret
         if broker != "Alice Blue" and (not api_key or not api_secret):
@@ -238,6 +326,66 @@ class BrokerConfigDialog(QDialog):
         url = self.login_url_display.toPlainText()
         if url:
             webbrowser.open(url)
+
+    def _connect_mt5(self):
+        """Connect to MT5 broker"""
+        login = self.mt5_login.text().strip()
+        password = self.password.text().strip()
+        server = self.mt5_server.text().strip()
+        path = self.mt5_path.text().strip() or None
+
+        if not login or not password or not server:
+            QMessageBox.warning(self, "Error",
+                "Please enter MT5 Account Number, Password, and Server name")
+            return
+
+        if MT5Broker is None:
+            QMessageBox.warning(self, "Error",
+                "MT5 requires 'MetaTrader5' package.\n\n"
+                "Install with: pip install MetaTrader5\n\n"
+                "Note: Only works on Windows with MT5 terminal installed.")
+            return
+
+        try:
+            self.broker_instance = MT5Broker(
+                login=int(login),
+                password=password,
+                server=server,
+                path=path
+            )
+
+            if self.broker_instance.authenticate():
+                # Get account info to show
+                account = self.broker_instance.get_account_info()
+                QMessageBox.information(self, "Success",
+                    f"MT5 Connected Successfully!\n\n"
+                    f"Account: {account.get('login')}\n"
+                    f"Name: {account.get('name')}\n"
+                    f"Server: {account.get('server')}\n"
+                    f"Balance: {account.get('balance')} {account.get('currency')}\n"
+                    f"Leverage: 1:{account.get('leverage')}")
+
+                # Save credentials
+                self.config.save_broker_credentials(
+                    'mt5',
+                    api_key=login,
+                    api_secret=password,
+                    server=server,
+                    path=path or ''
+                )
+                self.accept()
+            else:
+                QMessageBox.warning(self, "Error",
+                    "MT5 connection failed.\n\n"
+                    "Please check:\n"
+                    "1. MT5 terminal is installed\n"
+                    "2. Account number is correct\n"
+                    "3. Password is correct\n"
+                    "4. Server name is correct")
+
+        except Exception as e:
+            logger.error(f"MT5 connection error: {e}")
+            QMessageBox.warning(self, "Error", f"MT5 connection failed: {e}")
 
     def _authenticate(self):
         """Authenticate with authorization code"""

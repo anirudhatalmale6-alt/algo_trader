@@ -2237,16 +2237,33 @@ class MainWindow(QMainWindow):
         """Show broker configuration dialog"""
         from algo_trader.ui.broker_dialog import BrokerConfigDialog
         dialog = BrokerConfigDialog(self.config, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        result = dialog.exec()
+
+        logger.info(f"Dialog result: {result}, Accepted: {QDialog.DialogCode.Accepted}")
+
+        if result == QDialog.DialogCode.Accepted:
+            broker_name = dialog.broker_combo.currentText().lower().replace(" ", "_")
+            logger.info(f"Dialog accepted for broker: {broker_name}")
+            logger.info(f"broker_instance exists: {dialog.broker_instance is not None}")
+
             # If broker was authenticated, add it to active brokers
             if dialog.broker_instance:
-                broker_name = dialog.broker_combo.currentText().lower().replace(" ", "_")
+                logger.info(f"is_authenticated: {dialog.broker_instance.is_authenticated}")
                 if dialog.broker_instance.is_authenticated:
                     self.brokers[broker_name] = dialog.broker_instance
-                    logger.info(f"Broker {broker_name} connected successfully")
+                    logger.info(f"Broker {broker_name} added to self.brokers")
                     QMessageBox.information(self, "Connected", f"{broker_name.title()} broker connected successfully!")
                 else:
                     logger.warning(f"Broker {broker_name} instance exists but not authenticated")
+                    QMessageBox.warning(self, "Not Connected",
+                        f"Broker was not fully authenticated.\n\nPlease try again and make sure to:\n"
+                        "1. Click 'Get Login URL'\n"
+                        "2. Login in browser\n"
+                        "3. Copy the code from URL\n"
+                        "4. Paste and click 'Authenticate'")
+            else:
+                logger.warning("No broker_instance after dialog closed")
+
             self._load_configured_brokers()
             self._update_broker_settings_table()
             self._refresh_dashboard()

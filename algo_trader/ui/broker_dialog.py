@@ -251,13 +251,39 @@ class BrokerConfigDialog(QDialog):
             return
 
         try:
+            logger.info(f"Attempting authentication with code: {auth_code[:10]}...")
             if self.broker_instance.generate_session(auth_code):
+                logger.info(f"generate_session returned True, is_authenticated = {self.broker_instance.is_authenticated}")
                 QMessageBox.information(self, "Success", "Authentication successful!")
-                self._save_credentials()
+                # Save and close - skip validation since we just authenticated
+                self._save_credentials_and_close()
             else:
+                logger.warning("generate_session returned False")
                 QMessageBox.warning(self, "Error", "Authentication failed. Check your credentials.")
         except Exception as e:
+            logger.error(f"Authentication exception: {e}")
             QMessageBox.warning(self, "Error", f"Authentication failed: {e}")
+
+    def _save_credentials_and_close(self):
+        """Save credentials after successful authentication and close dialog"""
+        try:
+            api_key = self.api_key.text().strip()
+            api_secret = self.api_secret.text().strip()
+            broker = self.broker_combo.currentText().lower().replace(" ", "_")
+
+            kwargs = {}
+            if broker in ["alice_blue", "zerodha", "angel_one"]:
+                kwargs['user_id'] = self.user_id.text().strip()
+            if broker == "angel_one":
+                kwargs['password'] = self.password.text().strip()
+                kwargs['totp_secret'] = self.totp_secret.text().strip()
+
+            self.config.save_broker_credentials(broker, api_key, api_secret, **kwargs)
+            logger.info(f"Credentials saved for {broker}")
+            self.accept()  # Close dialog with Accepted status
+        except Exception as e:
+            logger.error(f"Error saving credentials: {e}")
+            self.accept()  # Still close so broker gets added
 
     def _save_credentials(self):
         """Save broker credentials"""

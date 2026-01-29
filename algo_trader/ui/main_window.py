@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal
 from PyQt6.QtGui import QAction, QFont
+from datetime import datetime
 
 from algo_trader.core.config import Config
 from algo_trader.core.database import Database
@@ -51,6 +52,9 @@ class MainWindow(QMainWindow):
 
         # Risk manager for auto square-off
         self.risk_manager = None
+
+        # Alert manager
+        self.alert_manager = None
 
         self._init_ui()
         self._load_configured_brokers()
@@ -96,6 +100,7 @@ class MainWindow(QMainWindow):
         self._create_options_tab()
         self._create_backtest_tab()
         self._create_journal_tab()
+        self._create_alerts_tab()
         self._create_settings_tab()
 
         # Load strategies after all tabs are created
@@ -103,6 +108,7 @@ class MainWindow(QMainWindow):
         self._load_chartink_scans()
         self._init_risk_manager()
         self._init_options_manager()
+        self._init_alert_manager()
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -1922,6 +1928,229 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"CSV export error: {e}")
             QMessageBox.critical(self, "Export Error", f"Failed to export: {str(e)}")
+
+    def _create_alerts_tab(self):
+        """Create alerts tab for price and indicator alerts"""
+        alerts_widget = QWidget()
+        layout = QVBoxLayout(alerts_widget)
+
+        # Create new alert section
+        create_group = QGroupBox("Create New Alert")
+        create_layout = QFormLayout(create_group)
+
+        # Symbol input
+        self.alert_symbol = QLineEdit()
+        self.alert_symbol.setPlaceholderText("e.g., RELIANCE, NIFTY")
+        create_layout.addRow("Symbol:", self.alert_symbol)
+
+        # Alert type
+        self.alert_type_combo = QComboBox()
+        self.alert_type_combo.addItems([
+            "Price Above", "Price Below", "Price Cross Up", "Price Cross Down",
+            "RSI Overbought (>70)", "RSI Oversold (<30)",
+            "MACD Bullish Cross", "MACD Bearish Cross",
+            "Supertrend Buy", "Supertrend Sell"
+        ])
+        create_layout.addRow("Alert Type:", self.alert_type_combo)
+
+        # Target value
+        self.alert_value = QDoubleSpinBox()
+        self.alert_value.setRange(0, 999999)
+        self.alert_value.setDecimals(2)
+        self.alert_value.setValue(100)
+        create_layout.addRow("Value/Price:", self.alert_value)
+
+        # Message
+        self.alert_message = QLineEdit()
+        self.alert_message.setPlaceholderText("Custom message (optional)")
+        create_layout.addRow("Message:", self.alert_message)
+
+        # Repeat checkbox
+        self.alert_repeat = QCheckBox("Repeat alert (trigger multiple times)")
+        create_layout.addRow(self.alert_repeat)
+
+        # Create button
+        create_btn = QPushButton("➕ Create Alert")
+        create_btn.setStyleSheet("background-color: #26a69a; color: white; font-weight: bold; padding: 8px;")
+        create_btn.clicked.connect(self._create_alert)
+        create_layout.addRow(create_btn)
+
+        layout.addWidget(create_group)
+
+        # Active alerts table
+        alerts_group = QGroupBox("Active Alerts")
+        alerts_layout = QVBoxLayout(alerts_group)
+
+        self.alerts_table = QTableWidget()
+        self.alerts_table.setColumnCount(7)
+        self.alerts_table.setHorizontalHeaderLabels([
+            "ID", "Symbol", "Type", "Target", "Status", "Created", "Actions"
+        ])
+        self.alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.alerts_table.setMinimumHeight(200)
+        alerts_layout.addWidget(self.alerts_table)
+
+        # Refresh and clear buttons
+        btn_layout = QHBoxLayout()
+        refresh_alerts_btn = QPushButton("🔄 Refresh")
+        refresh_alerts_btn.clicked.connect(self._refresh_alerts_table)
+        btn_layout.addWidget(refresh_alerts_btn)
+
+        clear_triggered_btn = QPushButton("🗑️ Clear Triggered")
+        clear_triggered_btn.clicked.connect(self._clear_triggered_alerts)
+        btn_layout.addWidget(clear_triggered_btn)
+
+        btn_layout.addStretch()
+        alerts_layout.addLayout(btn_layout)
+
+        layout.addWidget(alerts_group)
+
+        # Alert history
+        history_group = QGroupBox("Recent Alert History")
+        history_layout = QVBoxLayout(history_group)
+
+        self.alert_history = QTableWidget()
+        self.alert_history.setColumnCount(5)
+        self.alert_history.setHorizontalHeaderLabels([
+            "Symbol", "Type", "Target", "Triggered At", "Message"
+        ])
+        self.alert_history.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.alert_history.setMaximumHeight(150)
+        history_layout.addWidget(self.alert_history)
+
+        layout.addWidget(history_group)
+        layout.addStretch()
+
+        self.tabs.addTab(alerts_widget, "🔔 Alerts")
+
+    def _init_alert_manager(self):
+        """Initialize alert manager"""
+        from algo_trader.core.alert_manager import AlertManager
+        self.alert_manager = AlertManager()
+
+        # Register callback
+        self.alert_manager.register_callback(self._on_alert_triggered)
+
+        # Set Telegram if available
+        if hasattr(self, 'telegram') and self.telegram:
+            self.alert_manager.set_telegram(self.telegram)
+
+        logger.info("Alert manager initialized")
+
+    def _create_alert(self):
+        """Create a new alert from UI"""
+        if not hasattr(self, 'alert_manager') or not self.alert_manager:
+            QMessageBox.warning(self, "Error", "Alert manager not initialized")
+            return
+
+        symbol = self.alert_symbol.text().strip().upper()
+        if not symbol:
+            QMessageBox.warning(self, "Error", "Please enter a symbol")
+            return
+
+        alert_type_text = self.alert_type_combo.currentText()
+        value = self.alert_value.value()
+        message = self.alert_message.text().strip()
+        repeat = self.alert_repeat.isChecked()
+
+        # Map combo text to alert creation
+        if "Price Above" in alert_type_text:
+            self.alert_manager.create_price_alert(symbol, "above", value, message=message, repeat=repeat)
+        elif "Price Below" in alert_type_text:
+            self.alert_manager.create_price_alert(symbol, "below", value, message=message, repeat=repeat)
+        elif "Price Cross Up" in alert_type_text:
+            self.alert_manager.create_price_alert(symbol, "cross_up", value, message=message, repeat=repeat)
+        elif "Price Cross Down" in alert_type_text:
+            self.alert_manager.create_price_alert(symbol, "cross_down", value, message=message, repeat=repeat)
+        elif "RSI Overbought" in alert_type_text:
+            self.alert_manager.create_indicator_alert(symbol, "rsi", "overbought", value if value != 100 else 70, message=message)
+        elif "RSI Oversold" in alert_type_text:
+            self.alert_manager.create_indicator_alert(symbol, "rsi", "oversold", value if value != 100 else 30, message=message)
+        elif "MACD Bullish" in alert_type_text:
+            self.alert_manager.create_indicator_alert(symbol, "macd", "bullish", message=message)
+        elif "MACD Bearish" in alert_type_text:
+            self.alert_manager.create_indicator_alert(symbol, "macd", "bearish", message=message)
+        elif "Supertrend Buy" in alert_type_text:
+            self.alert_manager.create_indicator_alert(symbol, "supertrend", "buy", message=message)
+        elif "Supertrend Sell" in alert_type_text:
+            self.alert_manager.create_indicator_alert(symbol, "supertrend", "sell", message=message)
+
+        # Clear inputs
+        self.alert_symbol.clear()
+        self.alert_message.clear()
+        self.alert_value.setValue(100)
+
+        # Refresh table
+        self._refresh_alerts_table()
+        QMessageBox.information(self, "Success", f"Alert created for {symbol}")
+
+    def _refresh_alerts_table(self):
+        """Refresh the alerts table"""
+        if not hasattr(self, 'alert_manager') or not self.alert_manager:
+            return
+
+        alerts = self.alert_manager.get_all_alerts()
+        self.alerts_table.setRowCount(len(alerts))
+
+        for i, alert in enumerate(alerts):
+            self.alerts_table.setItem(i, 0, QTableWidgetItem(alert.id))
+            self.alerts_table.setItem(i, 1, QTableWidgetItem(alert.symbol))
+            self.alerts_table.setItem(i, 2, QTableWidgetItem(alert.alert_type.value))
+            self.alerts_table.setItem(i, 3, QTableWidgetItem(f"{alert.target_value:.2f}"))
+            self.alerts_table.setItem(i, 4, QTableWidgetItem(alert.status.value))
+            self.alerts_table.setItem(i, 5, QTableWidgetItem(alert.created_at.strftime("%H:%M:%S")))
+
+            # Delete button
+            delete_btn = QPushButton("🗑️")
+            delete_btn.setMaximumWidth(40)
+            delete_btn.clicked.connect(lambda checked, aid=alert.id: self._delete_alert(aid))
+            self.alerts_table.setCellWidget(i, 6, delete_btn)
+
+    def _delete_alert(self, alert_id: str):
+        """Delete an alert"""
+        if self.alert_manager:
+            self.alert_manager.delete_alert(alert_id)
+            self._refresh_alerts_table()
+
+    def _clear_triggered_alerts(self):
+        """Clear all triggered alerts"""
+        if not self.alert_manager:
+            return
+
+        from algo_trader.core.alert_manager import AlertStatus
+        for alert in self.alert_manager.get_all_alerts():
+            if alert.status == AlertStatus.TRIGGERED:
+                self.alert_manager.delete_alert(alert.id)
+
+        self._refresh_alerts_table()
+        QMessageBox.information(self, "Cleared", "Triggered alerts cleared")
+
+    def _on_alert_triggered(self, event_data: dict):
+        """Handle alert trigger event"""
+        symbol = event_data.get('symbol', 'Unknown')
+        alert_type = event_data.get('alert_type', 'Unknown')
+        message = event_data.get('message', '')
+
+        # Show notification
+        QMessageBox.information(self, "🔔 Alert Triggered!",
+            f"Symbol: {symbol}\n"
+            f"Type: {alert_type}\n"
+            f"Message: {message}")
+
+        # Update history table
+        self._refresh_alerts_table()
+        self._add_alert_to_history(event_data)
+
+    def _add_alert_to_history(self, event_data: dict):
+        """Add triggered alert to history table"""
+        row = self.alert_history.rowCount()
+        self.alert_history.insertRow(row)
+        self.alert_history.setItem(row, 0, QTableWidgetItem(event_data.get('symbol', '')))
+        self.alert_history.setItem(row, 1, QTableWidgetItem(event_data.get('alert_type', '')))
+        self.alert_history.setItem(row, 2, QTableWidgetItem(f"{event_data.get('target_value', 0):.2f}"))
+        self.alert_history.setItem(row, 3, QTableWidgetItem(
+            event_data.get('timestamp', datetime.now()).strftime("%H:%M:%S")))
+        self.alert_history.setItem(row, 4, QTableWidgetItem(event_data.get('message', '')))
 
     def _create_settings_tab(self):
         """Create settings tab"""

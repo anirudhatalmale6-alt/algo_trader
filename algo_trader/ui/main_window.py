@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         self._create_dashboard_tab()
         self._create_strategies_tab()
         self._create_chartink_tab()
+        self._create_chart_tab()
         self._create_orders_tab()
         self._create_positions_tab()
         self._create_risk_tab()
@@ -616,6 +617,70 @@ class MainWindow(QMainWindow):
 
         chartink_scroll.setWidget(chartink_inner)
         self.tabs.addTab(chartink_scroll, "Chartink")
+
+    def _create_chart_tab(self):
+        """Create advanced interactive chart tab"""
+        try:
+            from algo_trader.ui.chart_widget import ChartWidget
+
+            self.chart_widget = ChartWidget(self)
+            self.chart_widget.order_placed.connect(self._on_chart_order)
+
+            self.tabs.addTab(self.chart_widget, "Chart")
+        except ImportError as e:
+            logger.warning(f"Chart widget not available: {e}")
+            # Create placeholder
+            placeholder = QWidget()
+            layout = QVBoxLayout(placeholder)
+            layout.addWidget(QLabel("Advanced Charting requires matplotlib.\n\nInstall with: pip install matplotlib mplfinance"))
+            self.tabs.addTab(placeholder, "Chart")
+
+    def _on_chart_order(self, order_data: dict):
+        """Handle order from chart widget"""
+        logger.info(f"Chart order: {order_data}")
+
+        # Check if paper trading mode
+        if self.config.get('trading.paper_mode', False):
+            if hasattr(self, 'paper_simulator') and self.paper_simulator:
+                self.paper_simulator.place_order(
+                    symbol=order_data['symbol'],
+                    side=order_data['side'],
+                    quantity=order_data['quantity'],
+                    price=order_data.get('price', 0)
+                )
+                self.status_bar.showMessage(f"Paper order placed: {order_data['side']} {order_data['symbol']}", 5000)
+            return
+
+        # Real order
+        if not self.brokers:
+            QMessageBox.warning(self, "Error", "No broker connected")
+            return
+
+        broker = list(self.brokers.values())[0]
+        try:
+            from algo_trader.brokers.base import BrokerOrder
+
+            order = BrokerOrder(
+                symbol=order_data['symbol'],
+                exchange="NSE",
+                transaction_type=order_data['side'],
+                order_type=order_data['order_type'],
+                quantity=order_data['quantity'],
+                price=order_data.get('price', 0),
+                trigger_price=order_data.get('trigger_price', 0),
+                product=order_data.get('product', 'MIS')
+            )
+
+            result = broker.place_order(order)
+            if result.get('success'):
+                self.status_bar.showMessage(f"Order placed: {result.get('order_id')}", 5000)
+                self._load_orders()
+            else:
+                QMessageBox.warning(self, "Order Failed", result.get('message', 'Unknown error'))
+
+        except Exception as e:
+            logger.error(f"Chart order error: {e}")
+            QMessageBox.warning(self, "Error", f"Order failed: {str(e)}")
 
     def _create_orders_tab(self):
         """Create orders management tab"""

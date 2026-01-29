@@ -30,8 +30,9 @@ loguru>=0.6.0
 # Async support
 asyncio-throttle>=1.0.0
 
-# Plotting for backtesting
+# Plotting for backtesting and charting
 matplotlib>=3.6.0
+mplfinance>=0.12.0
 
 # Technical indicators
 ta>=0.10.0

@@ -785,6 +785,93 @@ class MainWindow(QMainWindow):
         self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.orders_table)
 
+        # GTT Orders Section
+        gtt_group = QGroupBox("GTT Orders (Good Till Triggered)")
+        gtt_layout = QVBoxLayout(gtt_group)
+
+        gtt_info = QLabel("GTT orders stay active on broker servers even when app is closed!")
+        gtt_info.setStyleSheet("color: green; font-weight: bold;")
+        gtt_layout.addWidget(gtt_info)
+
+        # Create GTT Order form
+        gtt_form = QHBoxLayout()
+
+        gtt_form.addWidget(QLabel("Symbol:"))
+        self.gtt_symbol = QLineEdit()
+        self.gtt_symbol.setPlaceholderText("RELIANCE")
+        self.gtt_symbol.setMaximumWidth(100)
+        gtt_form.addWidget(self.gtt_symbol)
+
+        gtt_form.addWidget(QLabel("Type:"))
+        self.gtt_type = QComboBox()
+        self.gtt_type.addItems(["SELL (Stop Loss)", "BUY (Target)", "OCO (SL + Target)"])
+        gtt_form.addWidget(self.gtt_type)
+
+        gtt_form.addWidget(QLabel("Trigger:"))
+        self.gtt_trigger = QDoubleSpinBox()
+        self.gtt_trigger.setRange(0.01, 999999)
+        self.gtt_trigger.setDecimals(2)
+        self.gtt_trigger.setPrefix("₹ ")
+        gtt_form.addWidget(self.gtt_trigger)
+
+        gtt_form.addWidget(QLabel("Price:"))
+        self.gtt_price = QDoubleSpinBox()
+        self.gtt_price.setRange(0.01, 999999)
+        self.gtt_price.setDecimals(2)
+        self.gtt_price.setPrefix("₹ ")
+        gtt_form.addWidget(self.gtt_price)
+
+        gtt_form.addWidget(QLabel("Qty:"))
+        self.gtt_qty = QSpinBox()
+        self.gtt_qty.setRange(1, 10000)
+        self.gtt_qty.setValue(1)
+        gtt_form.addWidget(self.gtt_qty)
+
+        self.place_gtt_btn = QPushButton("Place GTT")
+        self.place_gtt_btn.setStyleSheet("background-color: #ff9800; color: white; font-weight: bold;")
+        self.place_gtt_btn.clicked.connect(self._place_gtt_order)
+        gtt_form.addWidget(self.place_gtt_btn)
+
+        gtt_form.addStretch()
+        gtt_layout.addLayout(gtt_form)
+
+        # OCO specific fields (Target price for OCO orders)
+        oco_form = QHBoxLayout()
+        oco_form.addWidget(QLabel("For OCO - Target Trigger:"))
+        self.gtt_target_trigger = QDoubleSpinBox()
+        self.gtt_target_trigger.setRange(0.01, 999999)
+        self.gtt_target_trigger.setDecimals(2)
+        self.gtt_target_trigger.setPrefix("₹ ")
+        oco_form.addWidget(self.gtt_target_trigger)
+
+        oco_form.addWidget(QLabel("Target Price:"))
+        self.gtt_target_price = QDoubleSpinBox()
+        self.gtt_target_price.setRange(0.01, 999999)
+        self.gtt_target_price.setDecimals(2)
+        self.gtt_target_price.setPrefix("₹ ")
+        oco_form.addWidget(self.gtt_target_price)
+
+        oco_form.addStretch()
+        gtt_layout.addLayout(oco_form)
+
+        # GTT Orders table
+        gtt_layout.addWidget(QLabel("Active GTT Orders:"))
+        self.gtt_table = QTableWidget()
+        self.gtt_table.setColumnCount(7)
+        self.gtt_table.setHorizontalHeaderLabels([
+            "GTT ID", "Symbol", "Type", "Trigger", "Price", "Qty", "Actions"
+        ])
+        self.gtt_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.gtt_table.setMaximumHeight(150)
+        gtt_layout.addWidget(self.gtt_table)
+
+        # Refresh GTT button
+        refresh_gtt_btn = QPushButton("🔄 Refresh GTT Orders")
+        refresh_gtt_btn.clicked.connect(self._refresh_gtt_orders)
+        gtt_layout.addWidget(refresh_gtt_btn)
+
+        layout.addWidget(gtt_group)
+
         self.tabs.addTab(orders, "Orders")
 
     def _create_positions_tab(self):
@@ -2820,6 +2907,133 @@ class MainWindow(QMainWindow):
             self._load_orders()
         else:
             QMessageBox.warning(self, "Error", f"Order failed: {result.message}")
+
+    def _place_gtt_order(self):
+        """Place a GTT (Good Till Triggered) order"""
+        current_broker = self.broker_combo.currentText().lower()
+        if not current_broker or current_broker not in self.brokers:
+            QMessageBox.warning(self, "Error", "Please connect to a broker first")
+            return
+
+        broker = self.brokers[current_broker]
+        if not hasattr(broker, 'place_gtt_order'):
+            QMessageBox.warning(self, "Error", f"{current_broker.title()} does not support GTT orders")
+            return
+
+        symbol = self.gtt_symbol.text().strip().upper()
+        if not symbol:
+            QMessageBox.warning(self, "Error", "Please enter a symbol")
+            return
+
+        gtt_type = self.gtt_type.currentText()
+        trigger_price = self.gtt_trigger.value()
+        limit_price = self.gtt_price.value()
+        quantity = self.gtt_qty.value()
+
+        if trigger_price <= 0 or limit_price <= 0:
+            QMessageBox.warning(self, "Error", "Please enter valid trigger and limit prices")
+            return
+
+        try:
+            if "OCO" in gtt_type:
+                # OCO order - both SL and Target
+                target_trigger = self.gtt_target_trigger.value()
+                target_price = self.gtt_target_price.value()
+
+                if target_trigger <= 0 or target_price <= 0:
+                    QMessageBox.warning(self, "Error", "Please enter target trigger and price for OCO order")
+                    return
+
+                result = broker.place_gtt_oco(
+                    symbol=symbol,
+                    exchange="NSE",
+                    transaction_type="SELL",
+                    stop_loss_trigger=trigger_price,
+                    stop_loss_price=limit_price,
+                    target_trigger=target_trigger,
+                    target_price=target_price,
+                    quantity=quantity
+                )
+            else:
+                # Single GTT order
+                transaction_type = "SELL" if "Stop Loss" in gtt_type else "BUY"
+                result = broker.place_gtt_order(
+                    symbol=symbol,
+                    exchange="NSE",
+                    transaction_type=transaction_type,
+                    trigger_price=trigger_price,
+                    limit_price=limit_price,
+                    quantity=quantity
+                )
+
+            if result.get('success'):
+                QMessageBox.information(self, "GTT Order Placed",
+                    f"GTT Order placed successfully!\n\n"
+                    f"GTT ID: {result.get('gtt_id')}\n"
+                    f"Symbol: {symbol}\n"
+                    f"Trigger: ₹{trigger_price:.2f}\n\n"
+                    f"This order will stay active on broker server even when app is closed.")
+                self._refresh_gtt_orders()
+            else:
+                QMessageBox.warning(self, "Error", f"GTT order failed: {result.get('message', 'Unknown error')}")
+
+        except Exception as e:
+            logger.error(f"GTT order error: {e}")
+            QMessageBox.warning(self, "Error", f"GTT order failed: {str(e)}")
+
+    def _refresh_gtt_orders(self):
+        """Refresh GTT orders table"""
+        current_broker = self.broker_combo.currentText().lower()
+        if not current_broker or current_broker not in self.brokers:
+            return
+
+        broker = self.brokers[current_broker]
+        if not hasattr(broker, 'get_gtt_orders'):
+            return
+
+        try:
+            gtt_orders = broker.get_gtt_orders()
+            self.gtt_table.setRowCount(len(gtt_orders))
+
+            for i, order in enumerate(gtt_orders):
+                self.gtt_table.setItem(i, 0, QTableWidgetItem(str(order.get('gtt_id', ''))))
+                self.gtt_table.setItem(i, 1, QTableWidgetItem(order.get('symbol', '')))
+                self.gtt_table.setItem(i, 2, QTableWidgetItem(order.get('transaction_type', '')))
+                self.gtt_table.setItem(i, 3, QTableWidgetItem(f"₹{order.get('trigger_price', 0):.2f}"))
+                self.gtt_table.setItem(i, 4, QTableWidgetItem(f"₹{order.get('price', 0):.2f}"))
+                self.gtt_table.setItem(i, 5, QTableWidgetItem(str(order.get('quantity', 0))))
+
+                # Cancel button
+                cancel_btn = QPushButton("🗑️ Cancel")
+                cancel_btn.setMaximumWidth(80)
+                cancel_btn.clicked.connect(lambda checked, gid=order.get('gtt_id'): self._cancel_gtt_order(gid))
+                self.gtt_table.setCellWidget(i, 6, cancel_btn)
+
+        except Exception as e:
+            logger.error(f"Error fetching GTT orders: {e}")
+
+    def _cancel_gtt_order(self, gtt_id: str):
+        """Cancel a GTT order"""
+        current_broker = self.broker_combo.currentText().lower()
+        if not current_broker or current_broker not in self.brokers:
+            return
+
+        broker = self.brokers[current_broker]
+
+        reply = QMessageBox.question(self, "Cancel GTT Order",
+            f"Are you sure you want to cancel GTT order {gtt_id}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                result = broker.cancel_gtt_order(gtt_id)
+                if result.get('success'):
+                    QMessageBox.information(self, "Success", "GTT order cancelled")
+                    self._refresh_gtt_orders()
+                else:
+                    QMessageBox.warning(self, "Error", f"Failed to cancel: {result.get('message')}")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Cancel failed: {str(e)}")
 
     def _run_backtest(self):
         """Run backtest on selected strategy"""

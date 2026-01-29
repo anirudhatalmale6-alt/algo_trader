@@ -313,3 +313,138 @@ class UpstoxBroker(BaseBroker):
             return [i for i in instruments if query.upper() in i.get('name', '').upper()
                     or query.upper() in i.get('trading_symbol', '').upper()]
         return []
+
+    # ==================== GTT (Good Till Triggered) Orders ====================
+
+    def place_gtt_order(self, symbol: str, exchange: str, transaction_type: str,
+                        trigger_price: float, limit_price: float, quantity: int,
+                        product: str = "CNC", order_type: str = "LIMIT") -> Dict:
+        """
+        Place a GTT (Good Till Triggered) order
+
+        GTT orders remain active until triggered or cancelled.
+        Useful for Stop Loss and Target orders that persist even when app is closed.
+
+        Args:
+            symbol: Stock symbol (e.g., RELIANCE)
+            exchange: Exchange (NSE, BSE)
+            transaction_type: BUY or SELL
+            trigger_price: Price at which order gets triggered
+            limit_price: Limit price for the order (use 0 for market)
+            quantity: Number of shares
+            product: CNC (Delivery) or MIS (Intraday)
+            order_type: LIMIT or MARKET
+        """
+        product_map = {'CNC': 'D', 'MIS': 'I', 'NRML': 'D'}
+
+        payload = {
+            'instrument_token': self._format_symbol(symbol, exchange),
+            'quantity': quantity,
+            'product': product_map.get(product, 'D'),
+            'transaction_type': transaction_type,
+            'trigger_price': trigger_price,
+            'price': limit_price,
+            'order_type': order_type
+        }
+
+        result = self._make_request("POST", "/gtt/create", payload)
+
+        if result.get('success') and result.get('data'):
+            return {
+                'success': True,
+                'gtt_id': result['data'].get('gtt_id'),
+                'message': 'GTT order placed successfully'
+            }
+        return result
+
+    def place_gtt_oco(self, symbol: str, exchange: str, transaction_type: str,
+                      stop_loss_trigger: float, stop_loss_price: float,
+                      target_trigger: float, target_price: float,
+                      quantity: int, product: str = "CNC") -> Dict:
+        """
+        Place a GTT OCO (One Cancels Other) order
+
+        Places both SL and Target - whichever triggers first cancels the other.
+        Perfect for bracket-style risk management.
+
+        Args:
+            symbol: Stock symbol
+            exchange: Exchange
+            transaction_type: BUY or SELL (opposite of your position)
+            stop_loss_trigger: Price at which SL gets triggered
+            stop_loss_price: Limit price for SL order
+            target_trigger: Price at which target gets triggered
+            target_price: Limit price for target order
+            quantity: Number of shares
+            product: CNC or MIS
+        """
+        product_map = {'CNC': 'D', 'MIS': 'I', 'NRML': 'D'}
+
+        payload = {
+            'instrument_token': self._format_symbol(symbol, exchange),
+            'quantity': quantity,
+            'product': product_map.get(product, 'D'),
+            'transaction_type': transaction_type,
+            'type': 'OCO',  # One Cancels Other
+            'legs': [
+                {
+                    'trigger_price': stop_loss_trigger,
+                    'price': stop_loss_price,
+                    'order_type': 'LIMIT'
+                },
+                {
+                    'trigger_price': target_trigger,
+                    'price': target_price,
+                    'order_type': 'LIMIT'
+                }
+            ]
+        }
+
+        result = self._make_request("POST", "/gtt/create-oco", payload)
+
+        if result.get('success') and result.get('data'):
+            return {
+                'success': True,
+                'gtt_id': result['data'].get('gtt_id'),
+                'message': 'GTT OCO order placed successfully'
+            }
+        return result
+
+    def get_gtt_orders(self) -> List[Dict]:
+        """Get all active GTT orders"""
+        result = self._make_request("GET", "/gtt/list")
+        if result.get('success') and result.get('data'):
+            return result['data']
+        return []
+
+    def get_gtt_order(self, gtt_id: str) -> Dict:
+        """Get details of a specific GTT order"""
+        result = self._make_request("GET", f"/gtt/details?gtt_id={gtt_id}")
+        if result.get('success') and result.get('data'):
+            return result['data']
+        return {}
+
+    def modify_gtt_order(self, gtt_id: str, trigger_price: float = None,
+                         limit_price: float = None, quantity: int = None) -> Dict:
+        """Modify an existing GTT order"""
+        payload = {'gtt_id': gtt_id}
+
+        if trigger_price:
+            payload['trigger_price'] = trigger_price
+        if limit_price:
+            payload['price'] = limit_price
+        if quantity:
+            payload['quantity'] = quantity
+
+        result = self._make_request("PUT", "/gtt/modify", payload)
+
+        if result.get('success'):
+            return {'success': True, 'message': 'GTT order modified'}
+        return result
+
+    def cancel_gtt_order(self, gtt_id: str) -> Dict:
+        """Cancel a GTT order"""
+        result = self._make_request("DELETE", f"/gtt/cancel?gtt_id={gtt_id}")
+        if result.get('success'):
+            return {'success': True, 'message': 'GTT order cancelled'}
+        return result

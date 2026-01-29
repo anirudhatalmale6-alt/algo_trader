@@ -16,10 +16,12 @@ from .base import BaseBroker, BrokerOrder
 class AliceBlueBroker(BaseBroker):
     """
     Alice Blue ANT API Integration
+    Updated for v2 API
     """
 
     BASE_URL = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api"
-    AUTH_URL = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/sso/auth"
+    AUTH_URL = "https://ant.aliceblueonline.com"
+    SESSION_URL = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/customer/getUserDetails"
 
     def __init__(self, api_key: str, api_secret: str, user_id: str = None,
                  redirect_uri: str = "http://127.0.0.1:5000/callback"):
@@ -31,12 +33,8 @@ class AliceBlueBroker(BaseBroker):
 
     def get_login_url(self) -> str:
         """Get Alice Blue OAuth login URL"""
-        params = {
-            'response_type': 'code',
-            'state': 'algotrader',
-            'appcode': self.api_key
-        }
-        return f"{self.AUTH_URL}?{urlencode(params)}"
+        # New format: https://ant.aliceblueonline.com/?appcode=YOUR_API_KEY
+        return f"{self.AUTH_URL}/?appcode={self.api_key}"
 
     def authenticate(self, access_token: str = None, session_id: str = None, **kwargs) -> bool:
         """Authenticate using existing access token or session"""

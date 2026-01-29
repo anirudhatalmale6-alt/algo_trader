@@ -35,3 +35,10 @@ matplotlib>=3.6.0
 
 # Technical indicators
 ta>=0.10.0
+
+# Broker APIs
+pyotp>=2.8.0  # For Angel One TOTP authentication
+yfinance>=0.2.0  # For Yahoo Finance historical data
+
+# Excel Export
+openpyxl>=3.1.0

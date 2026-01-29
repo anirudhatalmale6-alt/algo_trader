@@ -644,9 +644,11 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'paper_simulator') and self.paper_simulator:
                 self.paper_simulator.place_order(
                     symbol=order_data['symbol'],
-                    side=order_data['side'],
+                    action=order_data['side'],  # paper_trading uses 'action' not 'side'
                     quantity=order_data['quantity'],
-                    price=order_data.get('price', 0)
+                    order_type=order_data.get('order_type', 'MARKET'),
+                    price=order_data.get('price', 0),
+                    source="Chart"
                 )
                 self.status_bar.showMessage(f"Paper order placed: {order_data['side']} {order_data['symbol']}", 5000)
             return

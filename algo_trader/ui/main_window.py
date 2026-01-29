@@ -49,10 +49,14 @@ class MainWindow(QMainWindow):
         # Telegram alerts
         self.telegram = None
 
+        # Risk manager for auto square-off
+        self.risk_manager = None
+
         self._init_ui()
         self._load_configured_brokers()
         self._setup_timers()
         self._init_telegram()
+        self._init_risk_manager()
 
         # Initialize paper trading if enabled
         if self.config.get('trading.paper_mode', False):
@@ -2045,6 +2049,86 @@ class MainWindow(QMainWindow):
         trading_layout.addRow(save_settings_btn)
 
         scroll_layout.addWidget(trading_group)
+
+        # === Auto Square-off Settings ===
+        squareoff_group = QGroupBox("Auto Square-off")
+        squareoff_layout = QFormLayout(squareoff_group)
+
+        self.auto_squareoff_enabled = QCheckBox("Enable Auto Square-off")
+        self.auto_squareoff_enabled.setChecked(self.config.get('squareoff.enabled', False))
+        squareoff_layout.addRow(self.auto_squareoff_enabled)
+
+        # Daily limits
+        daily_limits_label = QLabel("Daily P&L Limits:")
+        daily_limits_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        squareoff_layout.addRow(daily_limits_label)
+
+        self.daily_profit_target = QDoubleSpinBox()
+        self.daily_profit_target.setRange(0, 9999999)
+        self.daily_profit_target.setDecimals(0)
+        self.daily_profit_target.setPrefix("₹ ")
+        self.daily_profit_target.setSpecialValueText("Disabled")
+        self.daily_profit_target.setValue(self.config.get('squareoff.daily_profit_target', 0))
+        squareoff_layout.addRow("Profit Target:", self.daily_profit_target)
+
+        self.daily_loss_limit = QDoubleSpinBox()
+        self.daily_loss_limit.setRange(0, 9999999)
+        self.daily_loss_limit.setDecimals(0)
+        self.daily_loss_limit.setPrefix("₹ ")
+        self.daily_loss_limit.setSpecialValueText("Disabled")
+        self.daily_loss_limit.setValue(self.config.get('squareoff.daily_loss_limit', 0))
+        squareoff_layout.addRow("Loss Limit:", self.daily_loss_limit)
+
+        # Time-based square-off
+        time_label = QLabel("Time-based Square-off:")
+        time_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        squareoff_layout.addRow(time_label)
+
+        self.squareoff_time = QLineEdit()
+        self.squareoff_time.setPlaceholderText("15:15 (3:15 PM)")
+        self.squareoff_time.setText(self.config.get('squareoff.time', ''))
+        squareoff_layout.addRow("Square-off Time:", self.squareoff_time)
+
+        # Per-position limits
+        position_label = QLabel("Per-Position Limits:")
+        position_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        squareoff_layout.addRow(position_label)
+
+        self.position_profit_percent = QDoubleSpinBox()
+        self.position_profit_percent.setRange(0, 100)
+        self.position_profit_percent.setDecimals(1)
+        self.position_profit_percent.setSuffix(" %")
+        self.position_profit_percent.setSpecialValueText("Disabled")
+        self.position_profit_percent.setValue(self.config.get('squareoff.position_profit_percent', 0))
+        squareoff_layout.addRow("Position Profit %:", self.position_profit_percent)
+
+        self.position_loss_percent = QDoubleSpinBox()
+        self.position_loss_percent.setRange(0, 100)
+        self.position_loss_percent.setDecimals(1)
+        self.position_loss_percent.setSuffix(" %")
+        self.position_loss_percent.setSpecialValueText("Disabled")
+        self.position_loss_percent.setValue(self.config.get('squareoff.position_loss_percent', 0))
+        squareoff_layout.addRow("Position Loss %:", self.position_loss_percent)
+
+        self.trailing_profit_percent = QDoubleSpinBox()
+        self.trailing_profit_percent.setRange(0, 50)
+        self.trailing_profit_percent.setDecimals(1)
+        self.trailing_profit_percent.setSuffix(" %")
+        self.trailing_profit_percent.setSpecialValueText("Disabled")
+        self.trailing_profit_percent.setValue(self.config.get('squareoff.trailing_profit_percent', 0))
+        self.trailing_profit_percent.setToolTip("Lock profits - square off when profit falls this % from peak")
+        squareoff_layout.addRow("Trailing Profit %:", self.trailing_profit_percent)
+
+        save_squareoff_btn = QPushButton("Save Auto Square-off Settings")
+        save_squareoff_btn.clicked.connect(self._save_squareoff_settings)
+        squareoff_layout.addRow(save_squareoff_btn)
+
+        # Status label
+        self.squareoff_status_label = QLabel("Status: Not active")
+        self.squareoff_status_label.setStyleSheet("color: gray;")
+        squareoff_layout.addRow(self.squareoff_status_label)
+
+        scroll_layout.addWidget(squareoff_group)
         scroll_layout.addStretch()
 
         scroll.setWidget(scroll_widget)
@@ -2760,6 +2844,40 @@ class MainWindow(QMainWindow):
         self.config.set('trading.paper_capital', self.paper_capital.value())
         QMessageBox.information(self, "Success", "Settings saved")
 
+    def _save_squareoff_settings(self):
+        """Save auto square-off settings"""
+        enabled = self.auto_squareoff_enabled.isChecked()
+
+        self.config.set('squareoff.enabled', enabled)
+        self.config.set('squareoff.daily_profit_target', self.daily_profit_target.value())
+        self.config.set('squareoff.daily_loss_limit', self.daily_loss_limit.value())
+        self.config.set('squareoff.time', self.squareoff_time.text())
+        self.config.set('squareoff.position_profit_percent', self.position_profit_percent.value())
+        self.config.set('squareoff.position_loss_percent', self.position_loss_percent.value())
+        self.config.set('squareoff.trailing_profit_percent', self.trailing_profit_percent.value())
+
+        # Apply settings to risk manager
+        if hasattr(self, 'risk_manager'):
+            self.risk_manager.configure_auto_square_off(
+                daily_profit_target=self.daily_profit_target.value() if self.daily_profit_target.value() > 0 else None,
+                daily_loss_limit=self.daily_loss_limit.value() if self.daily_loss_limit.value() > 0 else None,
+                square_off_time=self.squareoff_time.text() if self.squareoff_time.text() else None,
+                position_profit_percent=self.position_profit_percent.value() if self.position_profit_percent.value() > 0 else None,
+                position_loss_percent=self.position_loss_percent.value() if self.position_loss_percent.value() > 0 else None,
+                trailing_profit_percent=self.trailing_profit_percent.value() if self.trailing_profit_percent.value() > 0 else None,
+                enabled=enabled
+            )
+
+            # Update status
+            if enabled:
+                self.squareoff_status_label.setText("Status: ✅ Active")
+                self.squareoff_status_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.squareoff_status_label.setText("Status: ⚪ Disabled")
+                self.squareoff_status_label.setStyleSheet("color: gray;")
+
+        QMessageBox.information(self, "Success", "Auto Square-off settings saved")
+
     # Paper Trading methods
     def _init_paper_trading(self):
         """Initialize paper trading simulator"""
@@ -2798,6 +2916,66 @@ class MainWindow(QMainWindow):
     def is_paper_mode(self) -> bool:
         """Check if paper trading mode is enabled"""
         return self.paper_trading_toggle.isChecked()
+
+    # Risk Manager / Auto Square-off methods
+    def _init_risk_manager(self):
+        """Initialize risk manager for auto square-off"""
+        from algo_trader.core.risk_manager import RiskManager
+        self.risk_manager = RiskManager()
+
+        # Register callbacks
+        self.risk_manager.register_square_off_callback(self._on_auto_square_off)
+        self.risk_manager.register_mtm_callback(self._on_mtm_update)
+
+        # Load saved settings
+        if self.config.get('squareoff.enabled', False):
+            self.risk_manager.configure_auto_square_off(
+                daily_profit_target=self.config.get('squareoff.daily_profit_target') or None,
+                daily_loss_limit=self.config.get('squareoff.daily_loss_limit') or None,
+                square_off_time=self.config.get('squareoff.time') or None,
+                position_profit_percent=self.config.get('squareoff.position_profit_percent') or None,
+                position_loss_percent=self.config.get('squareoff.position_loss_percent') or None,
+                trailing_profit_percent=self.config.get('squareoff.trailing_profit_percent') or None,
+                enabled=True
+            )
+            logger.info("Auto square-off enabled with saved settings")
+
+    def _on_auto_square_off(self, event_data: dict):
+        """Handle auto square-off event"""
+        symbol = event_data.get('symbol', 'Unknown')
+        reason = event_data.get('reason', 'Unknown')
+        pnl = event_data.get('pnl', 0)
+        message = event_data.get('message', '')
+
+        # Show notification
+        QMessageBox.warning(self, "Auto Square-off Triggered",
+            f"Position Squared Off!\n\n"
+            f"Symbol: {symbol}\n"
+            f"Reason: {reason}\n"
+            f"P&L: ₹{pnl:.2f}\n\n"
+            f"{message}")
+
+        # Send Telegram alert if enabled
+        if hasattr(self, 'telegram') and self.telegram and self.telegram.is_enabled():
+            self.telegram.send_alert(
+                f"🔴 AUTO SQUARE-OFF\n\n"
+                f"Symbol: {symbol}\n"
+                f"Reason: {reason}\n"
+                f"P&L: ₹{pnl:.2f}\n\n"
+                f"{message}"
+            )
+
+        # Refresh UI
+        self._refresh_dashboard()
+
+    def _on_mtm_update(self, mtm_summary):
+        """Handle MTM update from risk manager"""
+        # Update dashboard P&L display if available
+        if hasattr(self, 'daily_pnl_label'):
+            pnl = mtm_summary.total_pnl
+            color = "green" if pnl >= 0 else "red"
+            self.daily_pnl_label.setText(f"₹{pnl:,.2f}")
+            self.daily_pnl_label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
     # Telegram Alert methods
     def _init_telegram(self):

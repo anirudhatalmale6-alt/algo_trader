@@ -1,11 +1,11 @@
 """
-Risk Manager - Handles Trailing Stop Loss, MTM P&L, and Risk Management
+Risk Manager - Handles Trailing Stop Loss, MTM P&L, Risk Management, and Auto Square-off
 """
 import threading
 import time
 from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, date
+from datetime import datetime, date, time as dt_time
 from enum import Enum
 from loguru import logger
 
@@ -15,6 +15,43 @@ class StopLossType(Enum):
     PERCENTAGE = "PERCENTAGE"  # Percentage based
     TRAILING = "TRAILING"  # Trailing stop loss
     TRAILING_PERCENTAGE = "TRAILING_PERCENTAGE"  # Trailing with percentage
+
+
+class SquareOffReason(Enum):
+    MANUAL = "MANUAL"
+    STOP_LOSS = "STOP_LOSS"
+    TARGET = "TARGET"
+    DAILY_PROFIT_TARGET = "DAILY_PROFIT_TARGET"
+    DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"
+    TIME_BASED = "TIME_BASED"
+    POSITION_PROFIT = "POSITION_PROFIT"
+    POSITION_LOSS = "POSITION_LOSS"
+
+
+@dataclass
+class AutoSquareOffSettings:
+    """Settings for auto square-off"""
+    # Daily P&L limits
+    daily_profit_target: float = None  # Square off all if daily profit reaches this
+    daily_loss_limit: float = None  # Square off all if daily loss reaches this
+
+    # Time-based square-off
+    square_off_time: dt_time = None  # Auto square-off at this time (e.g., 3:15 PM)
+
+    # Per-position limits (percentage)
+    position_profit_percent: float = None  # Square off position at this profit %
+    position_loss_percent: float = None  # Square off position at this loss %
+
+    # Per-position limits (absolute)
+    position_profit_amount: float = None  # Square off position at this profit amount
+    position_loss_amount: float = None  # Square off position at this loss amount
+
+    # Trailing square-off
+    trailing_profit_percent: float = None  # Lock in profits with trailing
+
+    # Enable flags
+    enabled: bool = True
+    notify_on_square_off: bool = True
 
 
 @dataclass
@@ -76,15 +113,22 @@ class RiskManager:
         self.mtm_callbacks: List[Callable] = []
         self.sl_hit_callbacks: List[Callable] = []
         self.target_hit_callbacks: List[Callable] = []
+        self.square_off_callbacks: List[Callable] = []
 
         self._running = False
         self._thread = None
         self._price_feed = None
+        self._broker = None  # Broker instance for executing square-off orders
 
         # Risk settings
         self.max_loss_per_trade_percent = 2.0
         self.max_daily_loss = None
         self.max_positions = 10
+
+        # Auto square-off settings
+        self.auto_square_off = AutoSquareOffSettings()
+        self._squared_off_today = False  # Track if daily square-off already triggered
+        self._position_max_profits: Dict[str, float] = {}  # Track max profit for trailing
 
     def register_mtm_callback(self, callback: Callable):
         """Register callback for MTM updates"""
@@ -97,6 +141,14 @@ class RiskManager:
     def register_target_hit_callback(self, callback: Callable):
         """Register callback for target hits"""
         self.target_hit_callbacks.append(callback)
+
+    def register_square_off_callback(self, callback: Callable):
+        """Register callback for auto square-off events"""
+        self.square_off_callbacks.append(callback)
+
+    def set_broker(self, broker):
+        """Set broker instance for executing square-off orders"""
+        self._broker = broker
 
     def add_position(self, symbol: str, quantity: int, entry_price: float,
                     exchange: str = "NSE", stop_loss: float = None,
@@ -261,6 +313,9 @@ class RiskManager:
             except Exception as e:
                 logger.error(f"MTM callback error: {e}")
 
+        # Check auto square-off conditions
+        self.check_auto_square_off()
+
     def close_position(self, symbol: str, exit_price: float, exchange: str = "NSE"):
         """Close a position"""
         key = f"{exchange}:{symbol}"
@@ -422,3 +477,236 @@ class RiskManager:
             breaches['max_daily_loss'] = True
 
         return breaches
+
+    # ==================== AUTO SQUARE-OFF METHODS ====================
+
+    def configure_auto_square_off(self,
+                                   daily_profit_target: float = None,
+                                   daily_loss_limit: float = None,
+                                   square_off_time: str = None,  # "15:15" format
+                                   position_profit_percent: float = None,
+                                   position_loss_percent: float = None,
+                                   position_profit_amount: float = None,
+                                   position_loss_amount: float = None,
+                                   trailing_profit_percent: float = None,
+                                   enabled: bool = True):
+        """
+        Configure auto square-off settings
+
+        Args:
+            daily_profit_target: Square off all positions when total daily profit reaches this
+            daily_loss_limit: Square off all positions when total daily loss reaches this
+            square_off_time: Time to auto square-off (format: "HH:MM", e.g., "15:15")
+            position_profit_percent: Square off individual position at this profit %
+            position_loss_percent: Square off individual position at this loss %
+            position_profit_amount: Square off individual position at this profit amount
+            position_loss_amount: Square off individual position at this loss amount
+            trailing_profit_percent: Trailing profit lock (square off when price falls this % from peak)
+            enabled: Enable/disable auto square-off
+        """
+        self.auto_square_off.daily_profit_target = daily_profit_target
+        self.auto_square_off.daily_loss_limit = daily_loss_limit
+
+        if square_off_time:
+            try:
+                hours, minutes = map(int, square_off_time.split(':'))
+                self.auto_square_off.square_off_time = dt_time(hours, minutes)
+            except ValueError:
+                logger.error(f"Invalid square-off time format: {square_off_time}")
+
+        self.auto_square_off.position_profit_percent = position_profit_percent
+        self.auto_square_off.position_loss_percent = position_loss_percent
+        self.auto_square_off.position_profit_amount = position_profit_amount
+        self.auto_square_off.position_loss_amount = position_loss_amount
+        self.auto_square_off.trailing_profit_percent = trailing_profit_percent
+        self.auto_square_off.enabled = enabled
+
+        logger.info(f"Auto square-off configured: {self.auto_square_off}")
+
+    def check_auto_square_off(self):
+        """
+        Check all auto square-off conditions and execute if triggered.
+        Call this method periodically (e.g., on every price update)
+        """
+        if not self.auto_square_off.enabled or self._squared_off_today:
+            return
+
+        settings = self.auto_square_off
+        mtm = self.get_mtm_summary()
+        current_time = datetime.now().time()
+
+        # 1. Check time-based square-off
+        if settings.square_off_time:
+            if current_time >= settings.square_off_time:
+                self._execute_square_off_all(SquareOffReason.TIME_BASED,
+                    f"Market closing time {settings.square_off_time}")
+                return
+
+        # 2. Check daily profit target
+        if settings.daily_profit_target and mtm.total_pnl >= settings.daily_profit_target:
+            self._execute_square_off_all(SquareOffReason.DAILY_PROFIT_TARGET,
+                f"Daily profit target ₹{settings.daily_profit_target} reached! P&L: ₹{mtm.total_pnl:.2f}")
+            return
+
+        # 3. Check daily loss limit
+        if settings.daily_loss_limit and mtm.total_pnl <= -settings.daily_loss_limit:
+            self._execute_square_off_all(SquareOffReason.DAILY_LOSS_LIMIT,
+                f"Daily loss limit ₹{settings.daily_loss_limit} hit! P&L: ₹{mtm.total_pnl:.2f}")
+            return
+
+        # 4. Check per-position limits
+        for key, position in list(self.positions.items()):
+            self._check_position_square_off(position)
+
+    def _check_position_square_off(self, position: Position):
+        """Check if a single position should be squared off"""
+        settings = self.auto_square_off
+        key = f"{position.exchange}:{position.symbol}"
+
+        # Update max profit tracking for trailing
+        if key not in self._position_max_profits:
+            self._position_max_profits[key] = position.pnl
+        elif position.pnl > self._position_max_profits[key]:
+            self._position_max_profits[key] = position.pnl
+
+        # Check profit percentage
+        if settings.position_profit_percent and position.pnl_percent >= settings.position_profit_percent:
+            self._execute_square_off_position(position, SquareOffReason.POSITION_PROFIT,
+                f"Position profit {position.pnl_percent:.1f}% >= {settings.position_profit_percent}%")
+            return
+
+        # Check loss percentage
+        if settings.position_loss_percent and position.pnl_percent <= -settings.position_loss_percent:
+            self._execute_square_off_position(position, SquareOffReason.POSITION_LOSS,
+                f"Position loss {position.pnl_percent:.1f}% >= {settings.position_loss_percent}%")
+            return
+
+        # Check profit amount
+        if settings.position_profit_amount and position.pnl >= settings.position_profit_amount:
+            self._execute_square_off_position(position, SquareOffReason.POSITION_PROFIT,
+                f"Position profit ₹{position.pnl:.2f} >= ₹{settings.position_profit_amount}")
+            return
+
+        # Check loss amount
+        if settings.position_loss_amount and position.pnl <= -settings.position_loss_amount:
+            self._execute_square_off_position(position, SquareOffReason.POSITION_LOSS,
+                f"Position loss ₹{abs(position.pnl):.2f} >= ₹{settings.position_loss_amount}")
+            return
+
+        # Check trailing profit
+        if settings.trailing_profit_percent and key in self._position_max_profits:
+            max_profit = self._position_max_profits[key]
+            if max_profit > 0:  # Only trail when in profit
+                # Calculate how much profit has fallen from peak
+                profit_drop = max_profit - position.pnl
+                drop_percent = (profit_drop / max_profit) * 100 if max_profit > 0 else 0
+
+                if drop_percent >= settings.trailing_profit_percent:
+                    self._execute_square_off_position(position, SquareOffReason.POSITION_PROFIT,
+                        f"Trailing profit: fell {drop_percent:.1f}% from peak ₹{max_profit:.2f}")
+                    return
+
+    def _execute_square_off_position(self, position: Position, reason: SquareOffReason, message: str):
+        """Execute square-off for a single position"""
+        logger.warning(f"AUTO SQUARE-OFF [{reason.value}]: {position.symbol} - {message}")
+
+        # Execute order via broker
+        if self._broker:
+            try:
+                # Determine order side (opposite of position)
+                side = "SELL" if position.quantity > 0 else "BUY"
+
+                order_result = self._broker.place_order(
+                    symbol=position.symbol,
+                    exchange=position.exchange,
+                    side=side,
+                    quantity=abs(position.quantity),
+                    order_type="MARKET",
+                    product="MIS"
+                )
+                logger.info(f"Square-off order placed: {order_result}")
+
+            except Exception as e:
+                logger.error(f"Failed to place square-off order: {e}")
+
+        # Close position in tracking
+        self.close_position(position.symbol, position.current_price, position.exchange)
+
+        # Remove from max profit tracking
+        key = f"{position.exchange}:{position.symbol}"
+        if key in self._position_max_profits:
+            del self._position_max_profits[key]
+
+        # Notify callbacks
+        self._notify_square_off(position, reason, message)
+
+    def _execute_square_off_all(self, reason: SquareOffReason, message: str):
+        """Execute square-off for all positions"""
+        logger.warning(f"AUTO SQUARE-OFF ALL [{reason.value}]: {message}")
+
+        self._squared_off_today = True
+
+        for key, position in list(self.positions.items()):
+            self._execute_square_off_position(position, reason, message)
+
+        logger.info("All positions squared off")
+
+    def _notify_square_off(self, position: Position, reason: SquareOffReason, message: str):
+        """Notify square-off callbacks"""
+        event_data = {
+            'symbol': position.symbol,
+            'exchange': position.exchange,
+            'quantity': position.quantity,
+            'entry_price': position.entry_price,
+            'exit_price': position.current_price,
+            'pnl': position.pnl,
+            'pnl_percent': position.pnl_percent,
+            'reason': reason.value,
+            'message': message,
+            'timestamp': datetime.now()
+        }
+
+        for callback in self.square_off_callbacks:
+            try:
+                callback(event_data)
+            except Exception as e:
+                logger.error(f"Square-off callback error: {e}")
+
+    def reset_daily_tracking(self):
+        """Reset daily tracking (call at start of each trading day)"""
+        self._squared_off_today = False
+        self._position_max_profits.clear()
+        self.closed_positions = [p for p in self.closed_positions
+                                 if p.entry_time.date() != date.today()]
+        logger.info("Daily tracking reset")
+
+    def get_auto_square_off_status(self) -> Dict:
+        """Get current auto square-off status and settings"""
+        mtm = self.get_mtm_summary()
+        settings = self.auto_square_off
+
+        status = {
+            'enabled': settings.enabled,
+            'squared_off_today': self._squared_off_today,
+            'current_daily_pnl': mtm.total_pnl,
+            'settings': {
+                'daily_profit_target': settings.daily_profit_target,
+                'daily_loss_limit': settings.daily_loss_limit,
+                'square_off_time': str(settings.square_off_time) if settings.square_off_time else None,
+                'position_profit_percent': settings.position_profit_percent,
+                'position_loss_percent': settings.position_loss_percent,
+                'position_profit_amount': settings.position_profit_amount,
+                'position_loss_amount': settings.position_loss_amount,
+                'trailing_profit_percent': settings.trailing_profit_percent
+            },
+            'progress': {}
+        }
+
+        # Calculate progress towards limits
+        if settings.daily_profit_target:
+            status['progress']['daily_profit'] = (mtm.total_pnl / settings.daily_profit_target) * 100
+
+        if settings.daily_loss_limit:
+            status['progress']['daily_loss'] = (abs(mtm.total_pnl) / settings.daily_loss_limit) * 100 if mtm.total_pnl < 0 else 0
+
+        return status

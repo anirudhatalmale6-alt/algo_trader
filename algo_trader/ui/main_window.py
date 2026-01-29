@@ -2194,10 +2194,14 @@ class MainWindow(QMainWindow):
         dialog = BrokerConfigDialog(self.config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # If broker was authenticated, add it to active brokers
-            if dialog.broker_instance and dialog.broker_instance.is_authenticated:
+            if dialog.broker_instance:
                 broker_name = dialog.broker_combo.currentText().lower().replace(" ", "_")
-                self.brokers[broker_name] = dialog.broker_instance
-                logger.info(f"Broker {broker_name} connected successfully")
+                if dialog.broker_instance.is_authenticated:
+                    self.brokers[broker_name] = dialog.broker_instance
+                    logger.info(f"Broker {broker_name} connected successfully")
+                    QMessageBox.information(self, "Connected", f"{broker_name.title()} broker connected successfully!")
+                else:
+                    logger.warning(f"Broker {broker_name} instance exists but not authenticated")
             self._load_configured_brokers()
             self._update_broker_settings_table()
             self._refresh_dashboard()

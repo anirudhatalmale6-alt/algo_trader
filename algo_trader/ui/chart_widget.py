@@ -243,6 +243,11 @@ class InteractiveChart(FigureCanvas):
         self.mpl_connect('button_press_event', self._on_click)
         self.mpl_connect('motion_notify_event', self._on_motion)
         self.mpl_connect('button_release_event', self._on_release)
+        self.mpl_connect('scroll_event', self._on_scroll)
+
+        # Panning state
+        self.panning = False
+        self.pan_start = None
 
         self._setup_style()
 
@@ -595,6 +600,13 @@ class InteractiveChart(FigureCanvas):
             self._show_context_menu(event)
             return
 
+        # Middle click or Ctrl+Left click for panning
+        if event.button == 2 or (event.button == 1 and event.key == 'control'):
+            self.panning = True
+            self.pan_start = (event.xdata, event.ydata)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
+
         if event.button == 1:  # Left click
             # Check if clicking near an order line to start dragging
             nearest_line = self._find_nearest_order_line(event.ydata)
@@ -610,6 +622,26 @@ class InteractiveChart(FigureCanvas):
     def _on_motion(self, event):
         """Handle mouse motion"""
         if event.inaxes != self.ax:
+            return
+
+        # Handle panning
+        if self.panning and self.pan_start and event.xdata and event.ydata:
+            dx = self.pan_start[0] - event.xdata
+            dy = self.pan_start[1] - event.ydata
+
+            x_min, x_max = self.ax.get_xlim()
+            y_min, y_max = self.ax.get_ylim()
+
+            # Apply pan
+            self.ax.set_xlim(x_min + dx, x_max + dx)
+            self.ax.set_ylim(y_min + dy, y_max + dy)
+
+            # Update order line text positions
+            for order in self.order_lines:
+                if order.get('text_obj'):
+                    order['text_obj'].set_position(((x_max + dx) * 0.98, order['price']))
+
+            self.draw()
             return
 
         # Handle dragging order line
@@ -645,6 +677,13 @@ class InteractiveChart(FigureCanvas):
 
     def _on_release(self, event):
         """Handle mouse release"""
+        # Handle end of pan
+        if self.panning:
+            self.panning = False
+            self.pan_start = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
+
         # Handle end of drag
         if self.dragging_line:
             self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -707,6 +746,72 @@ class InteractiveChart(FigureCanvas):
         }
         self.order_modified.emit(modification_data)
         logger.info(f"Order modified: {order_data['type']} from ₹{old_price:.2f} to ₹{new_price:.2f}")
+
+    def _on_scroll(self, event):
+        """Handle mouse scroll for zoom in/out"""
+        if event.inaxes != self.ax:
+            return
+
+        # Get current axis limits
+        x_min, x_max = self.ax.get_xlim()
+        y_min, y_max = self.ax.get_ylim()
+
+        # Get cursor position as center point for zoom
+        x_center = event.xdata
+        y_center = event.ydata
+
+        if x_center is None or y_center is None:
+            return
+
+        # Zoom factor
+        zoom_factor = 0.9 if event.button == 'up' else 1.1  # scroll up = zoom in, scroll down = zoom out
+
+        # Calculate new limits centered on cursor position
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+
+        new_x_range = x_range * zoom_factor
+        new_y_range = y_range * zoom_factor
+
+        # Calculate how far cursor is from min (as fraction)
+        x_frac = (x_center - x_min) / x_range if x_range > 0 else 0.5
+        y_frac = (y_center - y_min) / y_range if y_range > 0 else 0.5
+
+        # Apply zoom centered on cursor
+        new_x_min = x_center - x_frac * new_x_range
+        new_x_max = x_center + (1 - x_frac) * new_x_range
+        new_y_min = y_center - y_frac * new_y_range
+        new_y_max = y_center + (1 - y_frac) * new_y_range
+
+        # Apply limits with bounds checking
+        if self.ohlc_data:
+            # Don't zoom out too far on x-axis
+            data_len = len(self.ohlc_data)
+            new_x_min = max(-5, new_x_min)
+            new_x_max = min(data_len + 5, new_x_max)
+
+            # Ensure minimum visible range (at least 10 candles)
+            if new_x_max - new_x_min < 10:
+                return
+
+            # Don't zoom out too far on y-axis
+            all_lows = [float(d.get('low', 0)) for d in self.ohlc_data]
+            all_highs = [float(d.get('high', 0)) for d in self.ohlc_data]
+            data_y_min = min(all_lows) * 0.95
+            data_y_max = max(all_highs) * 1.05
+
+            new_y_min = max(data_y_min, new_y_min)
+            new_y_max = min(data_y_max, new_y_max)
+
+        self.ax.set_xlim(new_x_min, new_x_max)
+        self.ax.set_ylim(new_y_min, new_y_max)
+
+        # Update order line text positions
+        for order in self.order_lines:
+            if order.get('text_obj'):
+                order['text_obj'].set_position((new_x_max * 0.98, order['price']))
+
+        self.draw()
 
     def _show_context_menu(self, event):
         """Show context menu for order placement"""
@@ -836,6 +941,13 @@ class ChartWidget(QWidget):
         self.clear_btn.clicked.connect(self._clear_drawings)
         toolbar.addWidget(self.clear_btn)
 
+        # Reset view button
+        self.reset_btn = QPushButton("⌂")
+        self.reset_btn.setToolTip("Reset View (Home)")
+        self.reset_btn.setMaximumWidth(30)
+        self.reset_btn.clicked.connect(self._reset_view)
+        toolbar.addWidget(self.reset_btn)
+
         layout.addLayout(toolbar)
 
         # Main content - splitter
@@ -930,7 +1042,7 @@ class ChartWidget(QWidget):
         layout.addWidget(splitter)
 
         # Instructions
-        instructions = QLabel("💡 Right-click on chart to place orders | Drag to draw lines")
+        instructions = QLabel("💡 Right-click: Place orders | Scroll: Zoom in/out | Ctrl+Drag or Middle-click: Pan | Drag order lines to modify")
         instructions.setStyleSheet("color: gray; font-size: 10px;")
         layout.addWidget(instructions)
 
@@ -1025,6 +1137,25 @@ class ChartWidget(QWidget):
         self.chart.drawings = []
         self.chart.clear_order_lines()
         self.chart.draw()
+
+    def _reset_view(self):
+        """Reset chart to original view (fit all data)"""
+        if self.chart.ohlc_data:
+            data = self.chart.ohlc_data
+            self.chart.ax.set_xlim(-1, len(data))
+
+            lows = [float(d.get('low', 0)) for d in data]
+            highs = [float(d.get('high', 0)) for d in data]
+            y_min = min(lows) * 0.99
+            y_max = max(highs) * 1.01
+            self.chart.ax.set_ylim(y_min, y_max)
+
+            # Update order line text positions
+            for order in self.chart.order_lines:
+                if order.get('text_obj'):
+                    order['text_obj'].set_position((len(data) * 0.98, order['price']))
+
+            self.chart.draw()
 
     def _update_indicators(self):
         """Update chart indicators"""

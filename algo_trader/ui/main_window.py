@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self._create_risk_tab()
         self._create_options_tab()
         self._create_backtest_tab()
+        self._create_journal_tab()
         self._create_settings_tab()
 
         # Load strategies after all tabs are created
@@ -129,49 +130,147 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.broker_combo)
 
     def _create_dashboard_tab(self):
-        """Create dashboard tab"""
+        """Create enhanced dashboard tab with live P&L"""
         dashboard = QWidget()
         layout = QVBoxLayout(dashboard)
 
-        # Top row - Account summary
-        summary_group = QGroupBox("Account Summary")
-        summary_layout = QHBoxLayout(summary_group)
+        # === Top Row - P&L Summary Cards ===
+        pnl_group = QGroupBox("Today's Performance")
+        pnl_layout = QHBoxLayout(pnl_group)
 
-        self.available_margin_label = QLabel("Available Margin: ₹0")
-        self.used_margin_label = QLabel("Used Margin: ₹0")
-        self.total_pnl_label = QLabel("Total P&L: ₹0")
+        # Realized P&L Card
+        realized_card = QGroupBox("Realized P&L")
+        realized_layout = QVBoxLayout(realized_card)
+        self.dash_realized_pnl = QLabel("₹0.00")
+        self.dash_realized_pnl.setStyleSheet("font-size: 24px; font-weight: bold; color: #4CAF50;")
+        self.dash_realized_pnl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        realized_layout.addWidget(self.dash_realized_pnl)
+        pnl_layout.addWidget(realized_card)
 
-        for label in [self.available_margin_label, self.used_margin_label, self.total_pnl_label]:
-            label.setFont(QFont("Arial", 12))
-            summary_layout.addWidget(label)
+        # Unrealized P&L Card
+        unrealized_card = QGroupBox("Unrealized P&L")
+        unrealized_layout = QVBoxLayout(unrealized_card)
+        self.dash_unrealized_pnl = QLabel("₹0.00")
+        self.dash_unrealized_pnl.setStyleSheet("font-size: 24px; font-weight: bold; color: #2196F3;")
+        self.dash_unrealized_pnl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        unrealized_layout.addWidget(self.dash_unrealized_pnl)
+        pnl_layout.addWidget(unrealized_card)
 
-        layout.addWidget(summary_group)
+        # Total P&L Card
+        total_card = QGroupBox("Total P&L")
+        total_layout = QVBoxLayout(total_card)
+        self.dash_total_pnl = QLabel("₹0.00")
+        self.dash_total_pnl.setStyleSheet("font-size: 24px; font-weight: bold;")
+        self.dash_total_pnl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        total_layout.addWidget(self.dash_total_pnl)
+        pnl_layout.addWidget(total_card)
 
-        # Active strategies section
-        strategies_group = QGroupBox("Active Strategies")
-        strategies_layout = QVBoxLayout(strategies_group)
+        # Trades Today Card
+        trades_card = QGroupBox("Trades Today")
+        trades_layout = QVBoxLayout(trades_card)
+        self.dash_trades_count = QLabel("0")
+        self.dash_trades_count.setStyleSheet("font-size: 24px; font-weight: bold; color: #FF9800;")
+        self.dash_trades_count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        trades_layout.addWidget(self.dash_trades_count)
+        pnl_layout.addWidget(trades_card)
 
-        self.active_strategies_table = QTableWidget()
-        self.active_strategies_table.setColumnCount(4)
-        self.active_strategies_table.setHorizontalHeaderLabels(["Strategy", "Status", "Signals Today", "P&L"])
-        self.active_strategies_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        strategies_layout.addWidget(self.active_strategies_table)
+        # Win Rate Card
+        winrate_card = QGroupBox("Win Rate")
+        winrate_layout = QVBoxLayout(winrate_card)
+        self.dash_win_rate = QLabel("0%")
+        self.dash_win_rate.setStyleSheet("font-size: 24px; font-weight: bold; color: #9C27B0;")
+        self.dash_win_rate.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        winrate_layout.addWidget(self.dash_win_rate)
+        pnl_layout.addWidget(winrate_card)
 
-        layout.addWidget(strategies_group)
+        layout.addWidget(pnl_group)
 
-        # Recent signals section
-        signals_group = QGroupBox("Recent Signals")
-        signals_layout = QVBoxLayout(signals_group)
+        # === Second Row - Account & Market Info ===
+        info_layout = QHBoxLayout()
 
-        self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(5)
-        self.signals_table.setHorizontalHeaderLabels(["Time", "Strategy", "Symbol", "Signal", "Price"])
-        self.signals_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        signals_layout.addWidget(self.signals_table)
+        # Account Summary
+        account_group = QGroupBox("Account Summary")
+        account_layout = QFormLayout(account_group)
+        self.dash_available_margin = QLabel("₹0")
+        self.dash_used_margin = QLabel("₹0")
+        self.dash_total_balance = QLabel("₹0")
+        self.dash_broker_status = QLabel("Not Connected")
+        self.dash_broker_status.setStyleSheet("color: red;")
+        account_layout.addRow("Available Margin:", self.dash_available_margin)
+        account_layout.addRow("Used Margin:", self.dash_used_margin)
+        account_layout.addRow("Total Balance:", self.dash_total_balance)
+        account_layout.addRow("Broker Status:", self.dash_broker_status)
+        info_layout.addWidget(account_group)
 
-        layout.addWidget(signals_group)
+        # Market Status
+        market_group = QGroupBox("Market Status")
+        market_layout = QFormLayout(market_group)
+        self.dash_market_status = QLabel("Closed")
+        self.dash_market_status.setStyleSheet("color: red; font-weight: bold;")
+        self.dash_nifty_price = QLabel("--")
+        self.dash_banknifty_price = QLabel("--")
+        self.dash_last_update = QLabel("--")
+        market_layout.addRow("Market:", self.dash_market_status)
+        market_layout.addRow("NIFTY:", self.dash_nifty_price)
+        market_layout.addRow("BANKNIFTY:", self.dash_banknifty_price)
+        market_layout.addRow("Last Update:", self.dash_last_update)
+        info_layout.addWidget(market_group)
+
+        # Quick Stats
+        stats_group = QGroupBox("Quick Stats")
+        stats_layout = QFormLayout(stats_group)
+        self.dash_open_positions = QLabel("0")
+        self.dash_active_scanners = QLabel("0")
+        self.dash_active_strategies = QLabel("0")
+        self.dash_pending_orders = QLabel("0")
+        stats_layout.addRow("Open Positions:", self.dash_open_positions)
+        stats_layout.addRow("Active Scanners:", self.dash_active_scanners)
+        stats_layout.addRow("Active Strategies:", self.dash_active_strategies)
+        stats_layout.addRow("Pending Orders:", self.dash_pending_orders)
+        info_layout.addWidget(stats_group)
+
+        layout.addLayout(info_layout)
+
+        # === Open Positions Table ===
+        positions_group = QGroupBox("Open Positions (Live P&L)")
+        positions_layout = QVBoxLayout(positions_group)
+
+        self.dash_positions_table = QTableWidget()
+        self.dash_positions_table.setColumnCount(9)
+        self.dash_positions_table.setHorizontalHeaderLabels([
+            "Symbol", "Type", "Qty", "Avg Price", "LTP", "P&L", "P&L %", "Source", "Action"
+        ])
+        self.dash_positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        positions_layout.addWidget(self.dash_positions_table)
+
+        layout.addWidget(positions_group)
+
+        # === Recent Activity / Signals ===
+        activity_group = QGroupBox("Recent Activity")
+        activity_layout = QVBoxLayout(activity_group)
+
+        self.dash_activity_table = QTableWidget()
+        self.dash_activity_table.setColumnCount(6)
+        self.dash_activity_table.setHorizontalHeaderLabels([
+            "Time", "Type", "Symbol", "Action", "Price", "Status"
+        ])
+        self.dash_activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.dash_activity_table.setMaximumHeight(150)
+        activity_layout.addWidget(self.dash_activity_table)
+
+        layout.addWidget(activity_group)
+
+        # Refresh button
+        refresh_btn = QPushButton("🔄 Refresh Dashboard")
+        refresh_btn.clicked.connect(self._refresh_dashboard)
+        layout.addWidget(refresh_btn)
 
         self.tabs.addTab(dashboard, "Dashboard")
+
+        # Set up auto-refresh timer for dashboard
+        self.dashboard_timer = QTimer(self)
+        self.dashboard_timer.timeout.connect(self._refresh_dashboard)
+        self.dashboard_timer.start(10000)  # Refresh every 10 seconds
 
     def _create_strategies_tab(self):
         """Create strategies management tab"""
@@ -1141,6 +1240,578 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(backtest, "Backtest")
 
+    def _create_journal_tab(self):
+        """Create Trade Journal / Performance Analytics tab"""
+        journal = QWidget()
+        layout = QVBoxLayout(journal)
+
+        # === Filter Controls ===
+        filter_group = QGroupBox("Filter & Export")
+        filter_layout = QHBoxLayout(filter_group)
+
+        filter_layout.addWidget(QLabel("Date Range:"))
+        self.journal_date_from = QComboBox()
+        self.journal_date_from.addItems(["Today", "This Week", "This Month", "Last 30 Days", "Last 90 Days", "This Year", "All Time"])
+        self.journal_date_from.setCurrentIndex(3)  # Last 30 Days
+        self.journal_date_from.currentIndexChanged.connect(self._refresh_journal)
+        filter_layout.addWidget(self.journal_date_from)
+
+        filter_layout.addWidget(QLabel("Symbol:"))
+        self.journal_symbol_filter = QComboBox()
+        self.journal_symbol_filter.addItem("All Symbols")
+        self.journal_symbol_filter.currentIndexChanged.connect(self._refresh_journal)
+        filter_layout.addWidget(self.journal_symbol_filter)
+
+        filter_layout.addWidget(QLabel("Side:"))
+        self.journal_side_filter = QComboBox()
+        self.journal_side_filter.addItems(["All", "BUY Only", "SELL Only"])
+        self.journal_side_filter.currentIndexChanged.connect(self._refresh_journal)
+        filter_layout.addWidget(self.journal_side_filter)
+
+        filter_layout.addStretch()
+
+        # Export buttons
+        self.export_excel_btn = QPushButton("📊 Export to Excel")
+        self.export_excel_btn.setStyleSheet("background-color: #217346; color: white; font-weight: bold; padding: 8px;")
+        self.export_excel_btn.clicked.connect(self._export_trades_excel)
+        filter_layout.addWidget(self.export_excel_btn)
+
+        self.export_csv_btn = QPushButton("📄 Export CSV")
+        self.export_csv_btn.clicked.connect(self._export_trades_csv)
+        filter_layout.addWidget(self.export_csv_btn)
+
+        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn.clicked.connect(self._refresh_journal)
+        filter_layout.addWidget(refresh_btn)
+
+        layout.addWidget(filter_group)
+
+        # === Performance Summary Cards ===
+        perf_group = QGroupBox("Performance Summary")
+        perf_layout = QHBoxLayout(perf_group)
+
+        # Total P&L Card
+        pnl_card = QGroupBox("Total P&L")
+        pnl_layout = QVBoxLayout(pnl_card)
+        self.journal_total_pnl = QLabel("₹0")
+        self.journal_total_pnl.setStyleSheet("font-size: 20px; font-weight: bold; color: #4CAF50;")
+        self.journal_total_pnl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pnl_layout.addWidget(self.journal_total_pnl)
+        perf_layout.addWidget(pnl_card)
+
+        # Total Trades Card
+        trades_card = QGroupBox("Total Trades")
+        trades_layout = QVBoxLayout(trades_card)
+        self.journal_total_trades = QLabel("0")
+        self.journal_total_trades.setStyleSheet("font-size: 20px; font-weight: bold; color: #2196F3;")
+        self.journal_total_trades.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        trades_layout.addWidget(self.journal_total_trades)
+        perf_layout.addWidget(trades_card)
+
+        # Win Rate Card
+        win_card = QGroupBox("Win Rate")
+        win_layout = QVBoxLayout(win_card)
+        self.journal_win_rate = QLabel("0%")
+        self.journal_win_rate.setStyleSheet("font-size: 20px; font-weight: bold; color: #9C27B0;")
+        self.journal_win_rate.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        win_layout.addWidget(self.journal_win_rate)
+        perf_layout.addWidget(win_card)
+
+        # Profit Factor Card
+        pf_card = QGroupBox("Profit Factor")
+        pf_layout = QVBoxLayout(pf_card)
+        self.journal_profit_factor = QLabel("0")
+        self.journal_profit_factor.setStyleSheet("font-size: 20px; font-weight: bold; color: #FF9800;")
+        self.journal_profit_factor.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pf_layout.addWidget(self.journal_profit_factor)
+        perf_layout.addWidget(pf_card)
+
+        # Avg Win/Loss Card
+        avg_card = QGroupBox("Avg Win / Avg Loss")
+        avg_layout = QVBoxLayout(avg_card)
+        self.journal_avg_win_loss = QLabel("₹0 / ₹0")
+        self.journal_avg_win_loss.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.journal_avg_win_loss.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        avg_layout.addWidget(self.journal_avg_win_loss)
+        perf_layout.addWidget(avg_card)
+
+        # Max Drawdown Card
+        dd_card = QGroupBox("Max Drawdown")
+        dd_layout = QVBoxLayout(dd_card)
+        self.journal_max_dd = QLabel("₹0")
+        self.journal_max_dd.setStyleSheet("font-size: 20px; font-weight: bold; color: #F44336;")
+        self.journal_max_dd.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        dd_layout.addWidget(self.journal_max_dd)
+        perf_layout.addWidget(dd_card)
+
+        layout.addWidget(perf_group)
+
+        # === Detailed Statistics ===
+        stats_group = QGroupBox("Detailed Statistics")
+        stats_layout = QHBoxLayout(stats_group)
+
+        # Left stats
+        left_stats = QFormLayout()
+        self.journal_winning_trades = QLabel("0")
+        self.journal_losing_trades = QLabel("0")
+        self.journal_largest_win = QLabel("₹0")
+        self.journal_largest_loss = QLabel("₹0")
+        left_stats.addRow("Winning Trades:", self.journal_winning_trades)
+        left_stats.addRow("Losing Trades:", self.journal_losing_trades)
+        left_stats.addRow("Largest Win:", self.journal_largest_win)
+        left_stats.addRow("Largest Loss:", self.journal_largest_loss)
+        stats_layout.addLayout(left_stats)
+
+        # Middle stats
+        mid_stats = QFormLayout()
+        self.journal_avg_trade = QLabel("₹0")
+        self.journal_avg_hold_time = QLabel("0 min")
+        self.journal_total_volume = QLabel("0")
+        self.journal_total_brokerage = QLabel("₹0")
+        mid_stats.addRow("Average Trade:", self.journal_avg_trade)
+        mid_stats.addRow("Avg Hold Time:", self.journal_avg_hold_time)
+        mid_stats.addRow("Total Volume:", self.journal_total_volume)
+        mid_stats.addRow("Est. Brokerage:", self.journal_total_brokerage)
+        stats_layout.addLayout(mid_stats)
+
+        # Right stats - Per symbol breakdown
+        right_stats = QFormLayout()
+        self.journal_best_symbol = QLabel("--")
+        self.journal_worst_symbol = QLabel("--")
+        self.journal_most_traded = QLabel("--")
+        self.journal_consecutive_wins = QLabel("0")
+        right_stats.addRow("Best Symbol:", self.journal_best_symbol)
+        right_stats.addRow("Worst Symbol:", self.journal_worst_symbol)
+        right_stats.addRow("Most Traded:", self.journal_most_traded)
+        right_stats.addRow("Max Consecutive Wins:", self.journal_consecutive_wins)
+        stats_layout.addLayout(right_stats)
+
+        layout.addWidget(stats_group)
+
+        # === Trade History Table ===
+        history_group = QGroupBox("Trade History")
+        history_layout = QVBoxLayout(history_group)
+
+        self.journal_trades_table = QTableWidget()
+        self.journal_trades_table.setColumnCount(12)
+        self.journal_trades_table.setHorizontalHeaderLabels([
+            "Date", "Time", "Symbol", "Side", "Qty", "Entry Price",
+            "Exit Price", "P&L", "P&L %", "Source", "Strategy", "Notes"
+        ])
+        self.journal_trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.journal_trades_table.setAlternatingRowColors(True)
+        self.journal_trades_table.setSortingEnabled(True)
+        history_layout.addWidget(self.journal_trades_table)
+
+        layout.addWidget(history_group)
+
+        self.tabs.addTab(journal, "Journal")
+
+        # Initial load
+        QTimer.singleShot(100, self._refresh_journal)
+
+    def _refresh_journal(self):
+        """Refresh trade journal with filtered data"""
+        try:
+            from datetime import datetime, timedelta
+            from collections import defaultdict
+
+            # Get date range
+            date_filter = self.journal_date_from.currentText()
+            now = datetime.now()
+
+            if date_filter == "Today":
+                start_date = now.replace(hour=0, minute=0, second=0)
+            elif date_filter == "This Week":
+                start_date = now - timedelta(days=now.weekday())
+                start_date = start_date.replace(hour=0, minute=0, second=0)
+            elif date_filter == "This Month":
+                start_date = now.replace(day=1, hour=0, minute=0, second=0)
+            elif date_filter == "Last 30 Days":
+                start_date = now - timedelta(days=30)
+            elif date_filter == "Last 90 Days":
+                start_date = now - timedelta(days=90)
+            elif date_filter == "This Year":
+                start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+            else:  # All Time
+                start_date = datetime(2000, 1, 1)
+
+            # Get all orders from database
+            all_orders = self.db.get_orders()
+
+            # Filter orders
+            filtered_orders = []
+            symbols_set = set()
+
+            for order in all_orders:
+                # Parse order date
+                order_date_str = order.get('created_at', '')
+                try:
+                    if isinstance(order_date_str, str):
+                        order_date = datetime.fromisoformat(order_date_str.replace('Z', '+00:00').replace('+00:00', ''))
+                    else:
+                        order_date = order_date_str
+                except:
+                    continue
+
+                if order_date < start_date:
+                    continue
+
+                symbol = order.get('symbol', '')
+                symbols_set.add(symbol)
+
+                # Symbol filter
+                symbol_filter = self.journal_symbol_filter.currentText()
+                if symbol_filter != "All Symbols" and symbol != symbol_filter:
+                    continue
+
+                # Side filter
+                side_filter = self.journal_side_filter.currentText()
+                side = order.get('transaction_type', order.get('side', ''))
+                if side_filter == "BUY Only" and side != "BUY":
+                    continue
+                if side_filter == "SELL Only" and side != "SELL":
+                    continue
+
+                filtered_orders.append(order)
+
+            # Update symbol filter dropdown
+            current_symbol = self.journal_symbol_filter.currentText()
+            self.journal_symbol_filter.blockSignals(True)
+            self.journal_symbol_filter.clear()
+            self.journal_symbol_filter.addItem("All Symbols")
+            for sym in sorted(symbols_set):
+                if sym:
+                    self.journal_symbol_filter.addItem(sym)
+            idx = self.journal_symbol_filter.findText(current_symbol)
+            if idx >= 0:
+                self.journal_symbol_filter.setCurrentIndex(idx)
+            self.journal_symbol_filter.blockSignals(False)
+
+            # Calculate statistics
+            self._calculate_journal_stats(filtered_orders)
+
+            # Populate table
+            self._populate_journal_table(filtered_orders)
+
+        except Exception as e:
+            logger.error(f"Error refreshing journal: {e}")
+
+    def _calculate_journal_stats(self, orders: list):
+        """Calculate performance statistics from orders"""
+        from collections import defaultdict
+
+        if not orders:
+            self.journal_total_pnl.setText("₹0")
+            self.journal_total_trades.setText("0")
+            self.journal_win_rate.setText("0%")
+            self.journal_profit_factor.setText("0")
+            self.journal_avg_win_loss.setText("₹0 / ₹0")
+            self.journal_max_dd.setText("₹0")
+            return
+
+        # Extract P&L from orders
+        pnls = []
+        symbol_pnl = defaultdict(float)
+        symbol_count = defaultdict(int)
+        total_volume = 0
+
+        for order in orders:
+            pnl = float(order.get('pnl', 0))
+            qty = int(order.get('quantity', 0))
+            symbol = order.get('symbol', '')
+
+            if order.get('status') == 'COMPLETE':
+                pnls.append(pnl)
+                symbol_pnl[symbol] += pnl
+                symbol_count[symbol] += 1
+                total_volume += qty
+
+        if not pnls:
+            return
+
+        total_pnl = sum(pnls)
+        total_trades = len(pnls)
+        winning_trades = [p for p in pnls if p > 0]
+        losing_trades = [p for p in pnls if p < 0]
+
+        win_count = len(winning_trades)
+        loss_count = len(losing_trades)
+        win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
+
+        total_wins = sum(winning_trades) if winning_trades else 0
+        total_losses = abs(sum(losing_trades)) if losing_trades else 0
+        profit_factor = (total_wins / total_losses) if total_losses > 0 else total_wins
+
+        avg_win = (total_wins / win_count) if win_count > 0 else 0
+        avg_loss = (total_losses / loss_count) if loss_count > 0 else 0
+
+        # Calculate max drawdown
+        cumulative = 0
+        peak = 0
+        max_dd = 0
+        for pnl in pnls:
+            cumulative += pnl
+            if cumulative > peak:
+                peak = cumulative
+            dd = peak - cumulative
+            if dd > max_dd:
+                max_dd = dd
+
+        # Consecutive wins
+        max_consecutive = 0
+        current_consecutive = 0
+        for pnl in pnls:
+            if pnl > 0:
+                current_consecutive += 1
+                max_consecutive = max(max_consecutive, current_consecutive)
+            else:
+                current_consecutive = 0
+
+        # Best/worst symbols
+        best_symbol = max(symbol_pnl.items(), key=lambda x: x[1]) if symbol_pnl else ("--", 0)
+        worst_symbol = min(symbol_pnl.items(), key=lambda x: x[1]) if symbol_pnl else ("--", 0)
+        most_traded = max(symbol_count.items(), key=lambda x: x[1]) if symbol_count else ("--", 0)
+
+        # Update UI
+        self.journal_total_pnl.setText(f"₹{total_pnl:+,.2f}")
+        color = "#4CAF50" if total_pnl >= 0 else "#F44336"
+        self.journal_total_pnl.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {color};")
+
+        self.journal_total_trades.setText(str(total_trades))
+        self.journal_win_rate.setText(f"{win_rate:.1f}%")
+        self.journal_profit_factor.setText(f"{profit_factor:.2f}")
+        self.journal_avg_win_loss.setText(f"₹{avg_win:,.0f} / ₹{avg_loss:,.0f}")
+        self.journal_max_dd.setText(f"₹{max_dd:,.2f}")
+
+        self.journal_winning_trades.setText(str(win_count))
+        self.journal_losing_trades.setText(str(loss_count))
+        self.journal_largest_win.setText(f"₹{max(winning_trades):,.2f}" if winning_trades else "₹0")
+        self.journal_largest_loss.setText(f"₹{min(losing_trades):,.2f}" if losing_trades else "₹0")
+
+        avg_trade = total_pnl / total_trades if total_trades > 0 else 0
+        self.journal_avg_trade.setText(f"₹{avg_trade:,.2f}")
+        self.journal_avg_hold_time.setText("--")  # Would need entry/exit times
+        self.journal_total_volume.setText(f"{total_volume:,}")
+        self.journal_total_brokerage.setText(f"₹{total_volume * 20 / 100000:,.2f}")  # Rough estimate
+
+        self.journal_best_symbol.setText(f"{best_symbol[0]} (₹{best_symbol[1]:+,.0f})")
+        self.journal_worst_symbol.setText(f"{worst_symbol[0]} (₹{worst_symbol[1]:+,.0f})")
+        self.journal_most_traded.setText(f"{most_traded[0]} ({most_traded[1]} trades)")
+        self.journal_consecutive_wins.setText(str(max_consecutive))
+
+    def _populate_journal_table(self, orders: list):
+        """Populate the journal trades table"""
+        self.journal_trades_table.setRowCount(len(orders))
+
+        for i, order in enumerate(orders):
+            date_str = order.get('created_at', '')[:10]
+            time_str = order.get('created_at', '')[11:19] if len(order.get('created_at', '')) > 11 else ''
+            symbol = order.get('symbol', '')
+            side = order.get('transaction_type', order.get('side', ''))
+            qty = order.get('quantity', 0)
+            entry_price = float(order.get('price', 0))
+            exit_price = float(order.get('exit_price', entry_price))
+            pnl = float(order.get('pnl', 0))
+            pnl_pct = (pnl / (entry_price * qty) * 100) if entry_price and qty else 0
+            source = order.get('source', 'Manual')
+            strategy = order.get('strategy', '')
+            notes = order.get('notes', '')
+
+            self.journal_trades_table.setItem(i, 0, QTableWidgetItem(date_str))
+            self.journal_trades_table.setItem(i, 1, QTableWidgetItem(time_str))
+            self.journal_trades_table.setItem(i, 2, QTableWidgetItem(symbol))
+
+            side_item = QTableWidgetItem(side)
+            side_item.setForeground(Qt.GlobalColor.green if side == "BUY" else Qt.GlobalColor.red)
+            self.journal_trades_table.setItem(i, 3, side_item)
+
+            self.journal_trades_table.setItem(i, 4, QTableWidgetItem(str(qty)))
+            self.journal_trades_table.setItem(i, 5, QTableWidgetItem(f"₹{entry_price:.2f}"))
+            self.journal_trades_table.setItem(i, 6, QTableWidgetItem(f"₹{exit_price:.2f}"))
+
+            pnl_item = QTableWidgetItem(f"₹{pnl:+,.2f}")
+            pnl_item.setForeground(Qt.GlobalColor.green if pnl >= 0 else Qt.GlobalColor.red)
+            self.journal_trades_table.setItem(i, 7, pnl_item)
+
+            self.journal_trades_table.setItem(i, 8, QTableWidgetItem(f"{pnl_pct:+.2f}%"))
+            self.journal_trades_table.setItem(i, 9, QTableWidgetItem(source))
+            self.journal_trades_table.setItem(i, 10, QTableWidgetItem(strategy))
+            self.journal_trades_table.setItem(i, 11, QTableWidgetItem(notes))
+
+    def _export_trades_excel(self):
+        """Export trade history to Excel with formatting"""
+        try:
+            from datetime import datetime
+            import os
+
+            # Check if openpyxl is available
+            try:
+                from openpyxl import Workbook
+                from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+                from openpyxl.utils import get_column_letter
+            except ImportError:
+                QMessageBox.warning(
+                    self, "Missing Package",
+                    "Excel export requires 'openpyxl' package.\n\nInstall with: pip install openpyxl"
+                )
+                return
+
+            # Get data from table
+            rows = self.journal_trades_table.rowCount()
+            if rows == 0:
+                QMessageBox.information(self, "No Data", "No trades to export")
+                return
+
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Trade History"
+
+            # Header style
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            header_alignment = Alignment(horizontal="center", vertical="center")
+
+            # Headers
+            headers = ["Date", "Time", "Symbol", "Side", "Qty", "Entry Price",
+                       "Exit Price", "P&L", "P&L %", "Source", "Strategy", "Notes"]
+
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+
+            # Data
+            green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+            for row in range(rows):
+                for col in range(12):
+                    item = self.journal_trades_table.item(row, col)
+                    value = item.text() if item else ""
+
+                    # Clean currency symbols for numeric columns
+                    if col in [5, 6, 7]:  # Price and P&L columns
+                        value = value.replace("₹", "").replace(",", "").replace("+", "")
+                        try:
+                            value = float(value)
+                        except:
+                            pass
+                    elif col == 8:  # P&L % column
+                        value = value.replace("%", "").replace("+", "")
+                        try:
+                            value = float(value)
+                        except:
+                            pass
+
+                    cell = ws.cell(row=row + 2, column=col + 1, value=value)
+
+                    # Color P&L cells
+                    if col == 7:  # P&L column
+                        try:
+                            if float(value) >= 0:
+                                cell.fill = green_fill
+                            else:
+                                cell.fill = red_fill
+                        except:
+                            pass
+
+            # Adjust column widths
+            for col in range(1, 13):
+                ws.column_dimensions[get_column_letter(col)].width = 15
+
+            # Add summary sheet
+            ws_summary = wb.create_sheet("Summary")
+            ws_summary.cell(row=1, column=1, value="Performance Summary").font = Font(bold=True, size=14)
+
+            summary_data = [
+                ("Total P&L", self.journal_total_pnl.text()),
+                ("Total Trades", self.journal_total_trades.text()),
+                ("Win Rate", self.journal_win_rate.text()),
+                ("Profit Factor", self.journal_profit_factor.text()),
+                ("Winning Trades", self.journal_winning_trades.text()),
+                ("Losing Trades", self.journal_losing_trades.text()),
+                ("Largest Win", self.journal_largest_win.text()),
+                ("Largest Loss", self.journal_largest_loss.text()),
+                ("Max Drawdown", self.journal_max_dd.text()),
+                ("Best Symbol", self.journal_best_symbol.text()),
+                ("Worst Symbol", self.journal_worst_symbol.text()),
+            ]
+
+            for row, (label, value) in enumerate(summary_data, 3):
+                ws_summary.cell(row=row, column=1, value=label).font = Font(bold=True)
+                ws_summary.cell(row=row, column=2, value=value)
+
+            ws_summary.column_dimensions['A'].width = 20
+            ws_summary.column_dimensions['B'].width = 25
+
+            # Save file
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"trade_history_{timestamp}.xlsx"
+            filepath = os.path.join(os.path.expanduser("~"), "Documents", filename)
+
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+            wb.save(filepath)
+
+            QMessageBox.information(
+                self, "Export Complete",
+                f"Trade history exported to:\n{filepath}"
+            )
+
+        except Exception as e:
+            logger.error(f"Excel export error: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export: {str(e)}")
+
+    def _export_trades_csv(self):
+        """Export trade history to CSV"""
+        try:
+            from datetime import datetime
+            import csv
+            import os
+
+            rows = self.journal_trades_table.rowCount()
+            if rows == 0:
+                QMessageBox.information(self, "No Data", "No trades to export")
+                return
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"trade_history_{timestamp}.csv"
+            filepath = os.path.join(os.path.expanduser("~"), "Documents", filename)
+
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+
+                # Headers
+                headers = ["Date", "Time", "Symbol", "Side", "Qty", "Entry Price",
+                           "Exit Price", "P&L", "P&L %", "Source", "Strategy", "Notes"]
+                writer.writerow(headers)
+
+                # Data
+                for row in range(rows):
+                    row_data = []
+                    for col in range(12):
+                        item = self.journal_trades_table.item(row, col)
+                        value = item.text() if item else ""
+                        # Clean currency symbols
+                        value = value.replace("₹", "").replace(",", "")
+                        row_data.append(value)
+                    writer.writerow(row_data)
+
+            QMessageBox.information(
+                self, "Export Complete",
+                f"Trade history exported to:\n{filepath}"
+            )
+
+        except Exception as e:
+            logger.error(f"CSV export error: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export: {str(e)}")
+
     def _create_settings_tab(self):
         """Create settings tab"""
         settings = QWidget()
@@ -1305,7 +1976,176 @@ class MainWindow(QMainWindow):
         """Refresh all data"""
         self._load_orders()
         self._load_positions()
+        self._refresh_dashboard()
         self.status_bar.showMessage("Data refreshed", 3000)
+
+    def _refresh_dashboard(self):
+        """Refresh dashboard with live data"""
+        try:
+            from datetime import datetime
+
+            # Update market status
+            if hasattr(self, 'brokers') and self.brokers:
+                broker = list(self.brokers.values())[0]
+                is_open = broker.is_market_open() if hasattr(broker, 'is_market_open') else False
+                self.dash_market_status.setText("Open" if is_open else "Closed")
+                self.dash_market_status.setStyleSheet(f"color: {'green' if is_open else 'red'}; font-weight: bold;")
+                self.dash_broker_status.setText("Connected")
+                self.dash_broker_status.setStyleSheet("color: green;")
+
+                # Get funds
+                try:
+                    funds = broker.get_funds()
+                    if funds:
+                        self.dash_available_margin.setText(f"₹{funds.get('available_margin', 0):,.2f}")
+                        self.dash_used_margin.setText(f"₹{funds.get('used_margin', 0):,.2f}")
+                        self.dash_total_balance.setText(f"₹{funds.get('total_balance', 0):,.2f}")
+                except:
+                    pass
+
+                # Get positions for P&L
+                try:
+                    positions = broker.get_positions()
+                    self._update_dashboard_positions(positions)
+                except:
+                    pass
+            else:
+                self.dash_broker_status.setText("Not Connected")
+                self.dash_broker_status.setStyleSheet("color: red;")
+
+            # Update quick stats
+            if hasattr(self, 'chartink_scanner'):
+                active_scans = len(self.chartink_scanner.active_scans)
+                self.dash_active_scanners.setText(str(active_scans))
+
+            # Count active strategies
+            strategies = self.db.get_all_strategies()
+            active_strategies = len([s for s in strategies if s.get('is_active')])
+            self.dash_active_strategies.setText(str(active_strategies))
+
+            # Update timestamp
+            self.dash_last_update.setText(datetime.now().strftime("%H:%M:%S"))
+
+            # Calculate P&L from orders
+            self._update_dashboard_pnl()
+
+        except Exception as e:
+            logger.debug(f"Dashboard refresh error: {e}")
+
+    def _update_dashboard_positions(self, positions: list):
+        """Update dashboard positions table"""
+        self.dash_positions_table.setRowCount(len(positions))
+        self.dash_open_positions.setText(str(len(positions)))
+
+        total_unrealized = 0
+        for i, pos in enumerate(positions):
+            symbol = pos.get('tradingsymbol', pos.get('symbol', ''))
+            qty = pos.get('quantity', pos.get('netqty', 0))
+            avg_price = float(pos.get('averageprice', pos.get('buyavgprice', 0)))
+            ltp = float(pos.get('ltp', pos.get('lastprice', avg_price)))
+            pnl = float(pos.get('pnl', pos.get('unrealizedpnl', 0)))
+            pnl_pct = (pnl / (avg_price * abs(qty)) * 100) if avg_price and qty else 0
+
+            total_unrealized += pnl
+
+            self.dash_positions_table.setItem(i, 0, QTableWidgetItem(symbol))
+            self.dash_positions_table.setItem(i, 1, QTableWidgetItem("LONG" if qty > 0 else "SHORT"))
+            self.dash_positions_table.setItem(i, 2, QTableWidgetItem(str(abs(qty))))
+            self.dash_positions_table.setItem(i, 3, QTableWidgetItem(f"₹{avg_price:.2f}"))
+            self.dash_positions_table.setItem(i, 4, QTableWidgetItem(f"₹{ltp:.2f}"))
+
+            pnl_item = QTableWidgetItem(f"₹{pnl:+,.2f}")
+            pnl_item.setForeground(Qt.GlobalColor.green if pnl >= 0 else Qt.GlobalColor.red)
+            self.dash_positions_table.setItem(i, 5, pnl_item)
+
+            self.dash_positions_table.setItem(i, 6, QTableWidgetItem(f"{pnl_pct:+.2f}%"))
+            self.dash_positions_table.setItem(i, 7, QTableWidgetItem(pos.get('product', '')))
+
+            # Add close button
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(lambda checked, s=symbol, q=qty: self._close_position(s, q))
+            self.dash_positions_table.setCellWidget(i, 8, close_btn)
+
+        # Update unrealized P&L
+        self.dash_unrealized_pnl.setText(f"₹{total_unrealized:+,.2f}")
+        color = "#4CAF50" if total_unrealized >= 0 else "#F44336"
+        self.dash_unrealized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+
+    def _update_dashboard_pnl(self):
+        """Update P&L summary from trade history"""
+        try:
+            orders = self.db.get_orders()
+            today = datetime.now().date()
+
+            today_orders = [o for o in orders if str(o.get('created_at', ''))[:10] == str(today)]
+
+            # Calculate realized P&L (from completed trades)
+            realized_pnl = sum(float(o.get('pnl', 0)) for o in today_orders if o.get('status') == 'COMPLETE')
+
+            # Count trades
+            completed_trades = [o for o in today_orders if o.get('status') == 'COMPLETE']
+            winning = len([t for t in completed_trades if float(t.get('pnl', 0)) > 0])
+            total = len(completed_trades)
+
+            self.dash_realized_pnl.setText(f"₹{realized_pnl:+,.2f}")
+            color = "#4CAF50" if realized_pnl >= 0 else "#F44336"
+            self.dash_realized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+
+            self.dash_trades_count.setText(str(total))
+            win_rate = (winning / total * 100) if total > 0 else 0
+            self.dash_win_rate.setText(f"{win_rate:.1f}%")
+
+            # Total P&L
+            unrealized_text = self.dash_unrealized_pnl.text().replace('₹', '').replace(',', '').replace('+', '')
+            try:
+                unrealized = float(unrealized_text)
+            except:
+                unrealized = 0
+
+            total_pnl = realized_pnl + unrealized
+            self.dash_total_pnl.setText(f"₹{total_pnl:+,.2f}")
+            color = "#4CAF50" if total_pnl >= 0 else "#F44336"
+            self.dash_total_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+
+        except Exception as e:
+            logger.debug(f"P&L update error: {e}")
+
+    def _close_position(self, symbol: str, quantity: int):
+        """Close a position from dashboard"""
+        reply = QMessageBox.question(
+            self, "Close Position",
+            f"Close position for {symbol} ({quantity} qty)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            # Place opposite order to close
+            action = "SELL" if quantity > 0 else "BUY"
+            self._quick_order(symbol, action, abs(quantity))
+
+    def _quick_order(self, symbol: str, action: str, quantity: int):
+        """Place a quick market order"""
+        if not self.brokers:
+            QMessageBox.warning(self, "Error", "No broker connected")
+            return
+
+        broker = list(self.brokers.values())[0]
+        from algo_trader.brokers.base import BrokerOrder
+
+        order = BrokerOrder(
+            symbol=symbol,
+            exchange="NSE",
+            transaction_type=action,
+            order_type="MARKET",
+            quantity=quantity,
+            product="MIS"
+        )
+
+        result = broker.place_order(order)
+        if result.get('success'):
+            QMessageBox.information(self, "Success", f"Order placed: {result.get('order_id')}")
+            self._refresh_dashboard()
+        else:
+            QMessageBox.warning(self, "Error", f"Order failed: {result.get('message')}")
 
     def _load_strategies(self):
         """Load strategies from database"""

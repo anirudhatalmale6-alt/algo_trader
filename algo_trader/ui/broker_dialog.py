@@ -11,7 +11,7 @@ from PyQt6.QtGui import QDesktopServices
 import webbrowser
 
 from algo_trader.core.config import Config
-from algo_trader.brokers import UpstoxBroker, AliceBlueBroker
+from algo_trader.brokers import UpstoxBroker, AliceBlueBroker, ZerodhaBroker, AngelOneBroker
 
 from loguru import logger
 
@@ -38,7 +38,7 @@ class BrokerConfigDialog(QDialog):
         broker_layout = QFormLayout(broker_group)
 
         self.broker_combo = QComboBox()
-        self.broker_combo.addItems(["Upstox", "Alice Blue"])
+        self.broker_combo.addItems(["Upstox", "Alice Blue", "Zerodha", "Angel One"])
         self.broker_combo.currentTextChanged.connect(self._on_broker_changed)
         broker_layout.addRow("Broker:", self.broker_combo)
 
@@ -64,6 +64,20 @@ class BrokerConfigDialog(QDialog):
         self.redirect_uri = QLineEdit()
         self.redirect_uri.setText("http://127.0.0.1:5000/callback")
         creds_layout.addRow("Redirect URI:", self.redirect_uri)
+
+        # Password field (for Angel One)
+        self.password = QLineEdit()
+        self.password.setPlaceholderText("Password (for Angel One)")
+        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        creds_layout.addRow("Password:", self.password)
+        self.password.setVisible(False)
+
+        # TOTP Secret field (for Angel One)
+        self.totp_secret = QLineEdit()
+        self.totp_secret.setPlaceholderText("TOTP Secret (for Angel One 2FA)")
+        self.totp_secret.setEchoMode(QLineEdit.EchoMode.Password)
+        creds_layout.addRow("TOTP Secret:", self.totp_secret)
+        self.totp_secret.setVisible(False)
 
         layout.addWidget(creds_group)
 
@@ -116,12 +130,26 @@ class BrokerConfigDialog(QDialog):
 
     def _on_broker_changed(self, broker: str):
         """Handle broker selection change"""
+        # Reset all optional fields
+        self.user_id.setEnabled(False)
+        self.user_id.setPlaceholderText("Not required")
+        self.password.setVisible(False)
+        self.totp_secret.setVisible(False)
+
         if broker == "Alice Blue":
             self.user_id.setEnabled(True)
             self.user_id.setPlaceholderText("User ID (required)")
-        else:
-            self.user_id.setEnabled(False)
-            self.user_id.setPlaceholderText("Not required for Upstox")
+        elif broker == "Zerodha":
+            self.user_id.setEnabled(True)
+            self.user_id.setPlaceholderText("User ID (required)")
+        elif broker == "Angel One":
+            self.user_id.setEnabled(True)
+            self.user_id.setPlaceholderText("Client ID (required)")
+            self.password.setVisible(True)
+            self.totp_secret.setVisible(True)
+            if AngelOneBroker is None:
+                QMessageBox.warning(self, "Missing Package",
+                    "Angel One requires 'pyotp' package.\n\nInstall with: pip install pyotp")
 
         self._load_existing_credentials()
 
@@ -150,12 +178,37 @@ class BrokerConfigDialog(QDialog):
         try:
             if broker == "Upstox":
                 self.broker_instance = UpstoxBroker(api_key, api_secret, redirect_uri)
-            else:
+            elif broker == "Alice Blue":
                 user_id = self.user_id.text().strip()
                 if not user_id:
                     QMessageBox.warning(self, "Error", "User ID is required for Alice Blue")
                     return
                 self.broker_instance = AliceBlueBroker(api_key, api_secret, user_id, redirect_uri)
+            elif broker == "Zerodha":
+                user_id = self.user_id.text().strip()
+                if not user_id:
+                    QMessageBox.warning(self, "Error", "User ID is required for Zerodha")
+                    return
+                self.broker_instance = ZerodhaBroker(api_key, api_secret, user_id, redirect_uri)
+            elif broker == "Angel One":
+                user_id = self.user_id.text().strip()
+                password = self.password.text().strip()
+                totp_secret = self.totp_secret.text().strip()
+                if not user_id or not password:
+                    QMessageBox.warning(self, "Error", "Client ID and Password are required for Angel One")
+                    return
+                if AngelOneBroker is None:
+                    QMessageBox.warning(self, "Error", "Angel One requires 'pyotp' package.\n\nInstall with: pip install pyotp")
+                    return
+                self.broker_instance = AngelOneBroker(api_key, api_secret, user_id, password, totp_secret)
+                # Angel One doesn't use OAuth URL - directly authenticate
+                if self.broker_instance.generate_session():
+                    QMessageBox.information(self, "Success", "Angel One authenticated successfully!")
+                    self._save_credentials()
+                    return
+                else:
+                    QMessageBox.warning(self, "Error", "Angel One authentication failed")
+                    return
 
             login_url = self.broker_instance.get_login_url()
             self.login_url_display.setText(login_url)
@@ -208,6 +261,22 @@ class BrokerConfigDialog(QDialog):
                 QMessageBox.warning(self, "Error", "User ID is required for Alice Blue")
                 return
             kwargs['user_id'] = user_id
+        elif broker == "zerodha":
+            user_id = self.user_id.text().strip()
+            if not user_id:
+                QMessageBox.warning(self, "Error", "User ID is required for Zerodha")
+                return
+            kwargs['user_id'] = user_id
+        elif broker == "angel_one":
+            user_id = self.user_id.text().strip()
+            password = self.password.text().strip()
+            totp_secret = self.totp_secret.text().strip()
+            if not user_id or not password:
+                QMessageBox.warning(self, "Error", "Client ID and Password are required for Angel One")
+                return
+            kwargs['user_id'] = user_id
+            kwargs['password'] = password
+            kwargs['totp_secret'] = totp_secret
 
         self.config.save_broker_credentials(broker, api_key, api_secret, **kwargs)
         QMessageBox.information(self, "Success", f"Credentials saved for {self.broker_combo.currentText()}")

@@ -625,6 +625,7 @@ class MainWindow(QMainWindow):
 
             self.chart_widget = ChartWidget(self)
             self.chart_widget.order_placed.connect(self._on_chart_order)
+            self.chart_widget.order_modified_signal.connect(self._on_chart_order_modified)
 
             self.tabs.addTab(self.chart_widget, "Chart")
         except ImportError as e:
@@ -683,6 +684,45 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Chart order error: {e}")
             QMessageBox.warning(self, "Error", f"Order failed: {str(e)}")
+
+    def _on_chart_order_modified(self, modification_data: dict):
+        """Handle order modification from chart dragging"""
+        logger.info(f"Chart order modification: {modification_data}")
+
+        order_type = modification_data.get('order_type', '')
+        new_price = modification_data.get('new_price', 0)
+        order_id = modification_data.get('order_id')
+        symbol = modification_data.get('symbol', '')
+
+        # For paper trading, just log the modification
+        if self.config.get('trading.paper_mode', False):
+            self.status_bar.showMessage(
+                f"Paper {order_type} modified to ₹{new_price:.2f} for {symbol}", 5000
+            )
+            return
+
+        # For real trading, modify the order if we have broker and order_id
+        if not self.brokers:
+            self.status_bar.showMessage(f"{order_type} line moved to ₹{new_price:.2f} (no broker connected)", 5000)
+            return
+
+        if order_id:
+            # Try to modify the actual order
+            broker = list(self.brokers.values())[0]
+            try:
+                if hasattr(broker, 'modify_order'):
+                    result = broker.modify_order(order_id, price=new_price)
+                    if result.get('success'):
+                        self.status_bar.showMessage(f"Order {order_id} modified to ₹{new_price:.2f}", 5000)
+                        self._load_orders()
+                    else:
+                        QMessageBox.warning(self, "Modification Failed", result.get('message', 'Unknown error'))
+            except Exception as e:
+                logger.error(f"Order modification error: {e}")
+                QMessageBox.warning(self, "Error", f"Failed to modify order: {str(e)}")
+        else:
+            # No order_id - this is just a visual line (SL/Target marker)
+            self.status_bar.showMessage(f"{order_type} level set to ₹{new_price:.2f}", 5000)
 
     def _create_orders_tab(self):
         """Create orders management tab"""

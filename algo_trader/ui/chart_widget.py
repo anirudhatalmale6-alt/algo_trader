@@ -134,10 +134,69 @@ class OrderDialog(QDialog):
         }
 
 
+class ModifyOrderDialog(QDialog):
+    """Dialog for modifying order price after dragging"""
+
+    def __init__(self, order_type: str, old_price: float, new_price: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Modify {order_type}")
+        self.setMinimumWidth(300)
+
+        layout = QVBoxLayout(self)
+
+        # Info
+        info_label = QLabel(f"Drag {order_type} line to new price")
+        info_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(info_label)
+
+        # Prices
+        form = QFormLayout()
+
+        old_label = QLabel(f"₹{old_price:.2f}")
+        old_label.setStyleSheet("color: gray;")
+        form.addRow("Old Price:", old_label)
+
+        self.new_price_input = QDoubleSpinBox()
+        self.new_price_input.setRange(0.01, 999999)
+        self.new_price_input.setDecimals(2)
+        self.new_price_input.setValue(new_price)
+        self.new_price_input.setPrefix("₹ ")
+        self.new_price_input.setStyleSheet("font-weight: bold; font-size: 14px;")
+        form.addRow("New Price:", self.new_price_input)
+
+        layout.addLayout(form)
+
+        # Options
+        self.auto_modify = QCheckBox("Auto-modify order (no confirmation)")
+        layout.addWidget(self.auto_modify)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+
+        self.modify_btn = QPushButton("✓ Modify Order")
+        self.modify_btn.setStyleSheet("background-color: #26a69a; color: white; font-weight: bold; padding: 8px;")
+        self.modify_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(self.modify_btn)
+
+        self.cancel_btn = QPushButton("✕ Cancel")
+        self.cancel_btn.setStyleSheet("background-color: #ef5350; color: white; padding: 8px;")
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.cancel_btn)
+
+        layout.addLayout(btn_layout)
+
+    def get_new_price(self) -> float:
+        return self.new_price_input.value()
+
+    def is_auto_modify(self) -> bool:
+        return self.auto_modify.isChecked()
+
+
 class InteractiveChart(FigureCanvas):
-    """Interactive candlestick chart with order placement"""
+    """Interactive candlestick chart with order placement and draggable lines"""
 
     order_requested = pyqtSignal(str, float, str)  # symbol, price, side
+    order_modified = pyqtSignal(dict)  # Emit when order line is dragged
 
     def __init__(self, parent=None):
         self.fig = Figure(figsize=(12, 8), facecolor='#1e1e1e')
@@ -157,7 +216,7 @@ class InteractiveChart(FigureCanvas):
         self.ohlc_data = None
         self.symbol = ""
         self.indicators = {}
-        self.order_lines = []
+        self.order_lines = []  # List of dicts: {price, type, color, line_obj, text_obj, draggable}
         self.position_lines = []
 
         # Drawing mode
@@ -165,6 +224,13 @@ class InteractiveChart(FigureCanvas):
         self.drawing_start = None
         self.temp_line = None
         self.drawings = []
+
+        # Dragging state
+        self.dragging_line = None  # Currently dragged order line
+        self.drag_start_y = None
+
+        # Auto-modify setting
+        self.auto_modify_enabled = False
 
         # Connect mouse events
         self.mpl_connect('button_press_event', self._on_click)
@@ -317,39 +383,120 @@ class InteractiveChart(FigureCanvas):
 
         return upper, middle, lower
 
-    def add_order_line(self, price: float, order_type: str, color: str = None):
-        """Add horizontal line for an order"""
+    def add_order_line(self, price: float, order_type: str, color: str = None, draggable: bool = True, order_id: str = None):
+        """Add horizontal line for an order - draggable by default"""
         if color is None:
-            color = '#26a69a' if 'BUY' in order_type.upper() else '#ef5350'
+            color = '#26a69a' if 'BUY' in order_type.upper() or 'TARGET' in order_type.upper() else '#ef5350'
 
-        self.order_lines.append({
+        # Create line and text objects
+        line_obj = self.ax.axhline(y=price, color=color, linestyle='--', linewidth=2, alpha=0.8, picker=5)
+        text_obj = self.ax.text(self.ax.get_xlim()[1] * 0.98, price,
+                               f" ⋮ {order_type}: ₹{price:.2f}",
+                               color=color, va='center', fontsize=9, fontweight='bold',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='#2e2e2e', edgecolor=color, alpha=0.9))
+
+        order_data = {
             'price': price,
             'type': order_type,
-            'color': color
-        })
-        self._draw_order_lines()
+            'color': color,
+            'line_obj': line_obj,
+            'text_obj': text_obj,
+            'draggable': draggable,
+            'order_id': order_id
+        }
+        self.order_lines.append(order_data)
+        self.draw()
+        return order_data
 
     def _draw_order_lines(self):
         """Draw all order and position lines"""
+        # Clear existing line objects first
         for order in self.order_lines:
-            self.ax.axhline(y=order['price'], color=order['color'],
-                          linestyle='--', linewidth=1, alpha=0.7)
-            self.ax.text(self.ax.get_xlim()[1], order['price'],
-                        f" {order['type']}: ₹{order['price']:.2f}",
-                        color=order['color'], va='center', fontsize=8)
+            if 'line_obj' in order and order['line_obj']:
+                try:
+                    order['line_obj'].remove()
+                except:
+                    pass
+            if 'text_obj' in order and order['text_obj']:
+                try:
+                    order['text_obj'].remove()
+                except:
+                    pass
 
+        # Redraw all order lines
+        for order in self.order_lines:
+            line_obj = self.ax.axhline(y=order['price'], color=order['color'],
+                                      linestyle='--', linewidth=2, alpha=0.8, picker=5)
+            text_obj = self.ax.text(self.ax.get_xlim()[1] * 0.98, order['price'],
+                                   f" ⋮ {order['type']}: ₹{order['price']:.2f}",
+                                   color=order['color'], va='center', fontsize=9, fontweight='bold',
+                                   bbox=dict(boxstyle='round,pad=0.3', facecolor='#2e2e2e',
+                                            edgecolor=order['color'], alpha=0.9))
+            order['line_obj'] = line_obj
+            order['text_obj'] = text_obj
+
+        # Draw position lines
         for pos in self.position_lines:
             self.ax.axhline(y=pos['price'], color=pos['color'],
-                          linestyle='-', linewidth=2, alpha=0.9)
-            self.ax.text(self.ax.get_xlim()[1], pos['price'],
-                        f" {pos['type']}: ₹{pos['price']:.2f}",
-                        color=pos['color'], va='center', fontsize=9, fontweight='bold')
+                          linestyle='-', linewidth=3, alpha=0.9)
+            self.ax.text(self.ax.get_xlim()[1] * 0.98, pos['price'],
+                        f" 📍 {pos['type']}: ₹{pos['price']:.2f}",
+                        color=pos['color'], va='center', fontsize=10, fontweight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='#1e1e1e',
+                                 edgecolor=pos['color'], alpha=0.95))
+
+    def update_order_line_price(self, order_data: dict, new_price: float):
+        """Update the price of an order line"""
+        old_price = order_data['price']
+        order_data['price'] = new_price
+
+        # Update line position
+        if order_data.get('line_obj'):
+            order_data['line_obj'].set_ydata([new_price, new_price])
+
+        # Update text
+        if order_data.get('text_obj'):
+            order_data['text_obj'].set_position((self.ax.get_xlim()[1] * 0.98, new_price))
+            order_data['text_obj'].set_text(f" ⋮ {order_data['type']}: ₹{new_price:.2f}")
+
+        self.draw()
+        return old_price
 
     def clear_order_lines(self):
         """Clear all order lines"""
+        for order in self.order_lines:
+            if 'line_obj' in order and order['line_obj']:
+                try:
+                    order['line_obj'].remove()
+                except:
+                    pass
+            if 'text_obj' in order and order['text_obj']:
+                try:
+                    order['text_obj'].remove()
+                except:
+                    pass
         self.order_lines = []
         if self.ohlc_data:
             self.plot_candlestick(self.ohlc_data, self.symbol)
+
+    def _find_nearest_order_line(self, y_pos: float, tolerance: float = None) -> Optional[dict]:
+        """Find the nearest order line to a y position"""
+        if tolerance is None:
+            # Calculate tolerance based on y-axis range
+            y_range = self.ax.get_ylim()[1] - self.ax.get_ylim()[0]
+            tolerance = y_range * 0.02  # 2% of visible range
+
+        nearest = None
+        min_dist = tolerance
+
+        for order in self.order_lines:
+            if order.get('draggable', True):
+                dist = abs(order['price'] - y_pos)
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest = order
+
+        return nearest
 
     def set_drawing_mode(self, mode: str):
         """Set drawing mode for chart annotations"""
@@ -365,15 +512,40 @@ class InteractiveChart(FigureCanvas):
             self._show_context_menu(event)
             return
 
+        if event.button == 1:  # Left click
+            # Check if clicking near an order line to start dragging
+            nearest_line = self._find_nearest_order_line(event.ydata)
+            if nearest_line and nearest_line.get('draggable', True):
+                self.dragging_line = nearest_line
+                self.drag_start_y = event.ydata
+                self.setCursor(Qt.CursorShape.SizeVerCursor)
+                return
+
         if self.drawing_mode:
             self.drawing_start = (event.xdata, event.ydata)
 
     def _on_motion(self, event):
         """Handle mouse motion"""
-        if event.inaxes != self.ax or not self.drawing_start:
+        if event.inaxes != self.ax:
             return
 
+        # Handle dragging order line
+        if self.dragging_line and event.ydata:
+            new_price = round(event.ydata, 2)
+            self.update_order_line_price(self.dragging_line, new_price)
+            return
+
+        # Check if hovering near an order line
+        nearest = self._find_nearest_order_line(event.ydata) if event.ydata else None
+        if nearest and nearest.get('draggable', True):
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
         # Preview drawing
+        if not self.drawing_start:
+            return
+
         if self.temp_line:
             self.temp_line.remove()
             self.temp_line = None
@@ -390,6 +562,36 @@ class InteractiveChart(FigureCanvas):
 
     def _on_release(self, event):
         """Handle mouse release"""
+        # Handle end of drag
+        if self.dragging_line:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+            if event.ydata:
+                old_price = self.drag_start_y
+                new_price = round(event.ydata, 2)
+
+                if abs(new_price - old_price) > 0.01:  # Meaningful drag
+                    # Show modification dialog
+                    if self.auto_modify_enabled:
+                        # Auto-modify without dialog
+                        self._emit_order_modification(self.dragging_line, old_price, new_price)
+                    else:
+                        # Show dialog
+                        dialog = ModifyOrderDialog(self.dragging_line['type'], old_price, new_price, self.parent())
+                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                            final_price = dialog.get_new_price()
+                            self.update_order_line_price(self.dragging_line, final_price)
+                            self._emit_order_modification(self.dragging_line, old_price, final_price)
+                            if dialog.is_auto_modify():
+                                self.auto_modify_enabled = True
+                        else:
+                            # Restore original position
+                            self.update_order_line_price(self.dragging_line, old_price)
+
+            self.dragging_line = None
+            self.drag_start_y = None
+            return
+
         if event.inaxes != self.ax or not self.drawing_start:
             return
 
@@ -410,6 +612,18 @@ class InteractiveChart(FigureCanvas):
 
         self.drawing_start = None
         self.draw()
+
+    def _emit_order_modification(self, order_data: dict, old_price: float, new_price: float):
+        """Emit signal when order is modified by dragging"""
+        modification_data = {
+            'order_type': order_data['type'],
+            'old_price': old_price,
+            'new_price': new_price,
+            'order_id': order_data.get('order_id'),
+            'symbol': self.symbol
+        }
+        self.order_modified.emit(modification_data)
+        logger.info(f"Order modified: {order_data['type']} from ₹{old_price:.2f} to ₹{new_price:.2f}")
 
     def _show_context_menu(self, event):
         """Show context menu for order placement"""
@@ -467,6 +681,7 @@ class ChartWidget(QWidget):
     """Main chart widget with controls"""
 
     order_placed = pyqtSignal(dict)  # Emit when order is placed
+    order_modified_signal = pyqtSignal(dict)  # Emit when order is modified by dragging
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -550,6 +765,7 @@ class ChartWidget(QWidget):
 
         self.chart = InteractiveChart(self)
         self.chart.order_requested.connect(self._on_order_requested)
+        self.chart.order_modified.connect(self._on_order_modified)
 
         self.toolbar = NavigationToolbar(self.chart, self)
         chart_layout.addWidget(self.toolbar)
@@ -789,3 +1005,23 @@ class ChartWidget(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             self.order_placed.emit(order_data)
             QMessageBox.information(self, "Order Placed", f"{side} order submitted!")
+
+    def _on_order_modified(self, modification_data: dict):
+        """Handle order modification from chart dragging"""
+        logger.info(f"Order modified via drag: {modification_data}")
+
+        # Emit signal for main window to handle
+        self.order_modified_signal.emit(modification_data)
+
+        # Show status message
+        order_type = modification_data.get('order_type', 'Order')
+        old_price = modification_data.get('old_price', 0)
+        new_price = modification_data.get('new_price', 0)
+
+        QMessageBox.information(
+            self, "Order Modified",
+            f"{order_type} modified!\n\n"
+            f"Old Price: ₹{old_price:.2f}\n"
+            f"New Price: ₹{new_price:.2f}\n\n"
+            f"{'✓ Order will be modified on broker' if self.broker else '(Paper Trading Mode)'}"
+        )

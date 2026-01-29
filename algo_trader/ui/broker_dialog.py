@@ -66,17 +66,21 @@ class BrokerConfigDialog(QDialog):
         creds_layout.addRow("Redirect URI:", self.redirect_uri)
 
         # Password field (for Angel One)
+        self.password_label = QLabel("Password:")
         self.password = QLineEdit()
         self.password.setPlaceholderText("Password (for Angel One)")
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        creds_layout.addRow("Password:", self.password)
+        creds_layout.addRow(self.password_label, self.password)
+        self.password_label.setVisible(False)
         self.password.setVisible(False)
 
         # TOTP Secret field (for Angel One)
+        self.totp_label = QLabel("TOTP Secret:")
         self.totp_secret = QLineEdit()
         self.totp_secret.setPlaceholderText("TOTP Secret (for Angel One 2FA)")
         self.totp_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        creds_layout.addRow("TOTP Secret:", self.totp_secret)
+        creds_layout.addRow(self.totp_label, self.totp_secret)
+        self.totp_label.setVisible(False)
         self.totp_secret.setVisible(False)
 
         layout.addWidget(creds_group)
@@ -133,7 +137,9 @@ class BrokerConfigDialog(QDialog):
         # Reset all optional fields
         self.user_id.setEnabled(False)
         self.user_id.setPlaceholderText("Not required")
+        self.password_label.setVisible(False)
         self.password.setVisible(False)
+        self.totp_label.setVisible(False)
         self.totp_secret.setVisible(False)
 
         if broker == "Alice Blue":
@@ -145,7 +151,9 @@ class BrokerConfigDialog(QDialog):
         elif broker == "Angel One":
             self.user_id.setEnabled(True)
             self.user_id.setPlaceholderText("Client ID (required)")
+            self.password_label.setVisible(True)
             self.password.setVisible(True)
+            self.totp_label.setVisible(True)
             self.totp_secret.setVisible(True)
             if AngelOneBroker is None:
                 QMessageBox.warning(self, "Missing Package",

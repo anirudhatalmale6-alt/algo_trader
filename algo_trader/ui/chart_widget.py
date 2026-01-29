@@ -210,8 +210,11 @@ class InteractiveChart(FigureCanvas):
         )
         self.setMinimumSize(400, 300)
 
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#1e1e1e')
+        # Main price axis (will be recreated when indicators are set)
+        self.ax = None
+        self.ax_rsi = None
+        self.ax_macd = None
+        self._setup_axes()
 
         # Style settings
         self.bull_color = '#26a69a'  # Green
@@ -251,6 +254,42 @@ class InteractiveChart(FigureCanvas):
 
         self._setup_style()
 
+    def _setup_axes(self):
+        """Setup chart axes based on indicators"""
+        self.fig.clear()
+
+        # Check which sub-indicators are enabled
+        show_rsi = self.indicators.get('rsi', False) if self.indicators else False
+        show_macd = self.indicators.get('macd', False) if self.indicators else False
+
+        # Calculate grid ratios
+        if show_rsi and show_macd:
+            # Main chart, RSI, MACD
+            gs = self.fig.add_gridspec(3, 1, height_ratios=[3, 1, 1], hspace=0.05)
+            self.ax = self.fig.add_subplot(gs[0])
+            self.ax_rsi = self.fig.add_subplot(gs[1], sharex=self.ax)
+            self.ax_macd = self.fig.add_subplot(gs[2], sharex=self.ax)
+        elif show_rsi:
+            gs = self.fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.05)
+            self.ax = self.fig.add_subplot(gs[0])
+            self.ax_rsi = self.fig.add_subplot(gs[1], sharex=self.ax)
+            self.ax_macd = None
+        elif show_macd:
+            gs = self.fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.05)
+            self.ax = self.fig.add_subplot(gs[0])
+            self.ax_macd = self.fig.add_subplot(gs[1], sharex=self.ax)
+            self.ax_rsi = None
+        else:
+            self.ax = self.fig.add_subplot(111)
+            self.ax_rsi = None
+            self.ax_macd = None
+
+        self.ax.set_facecolor('#1e1e1e')
+        if self.ax_rsi:
+            self.ax_rsi.set_facecolor('#1e1e1e')
+        if self.ax_macd:
+            self.ax_macd.set_facecolor('#1e1e1e')
+
     def resizeEvent(self, event):
         """Handle resize event to adjust chart"""
         super().resizeEvent(event)
@@ -259,12 +298,25 @@ class InteractiveChart(FigureCanvas):
 
     def _setup_style(self):
         """Setup chart style"""
+        if self.ax is None:
+            return
         self.ax.tick_params(colors=self.text_color)
         self.ax.spines['bottom'].set_color(self.grid_color)
         self.ax.spines['top'].set_color(self.grid_color)
         self.ax.spines['left'].set_color(self.grid_color)
         self.ax.spines['right'].set_color(self.grid_color)
         self.ax.grid(True, color=self.grid_color, linestyle='--', alpha=0.3)
+
+        # Style sub-axes
+        for sub_ax in [self.ax_rsi, self.ax_macd]:
+            if sub_ax:
+                sub_ax.tick_params(colors=self.text_color)
+                sub_ax.spines['bottom'].set_color(self.grid_color)
+                sub_ax.spines['top'].set_color(self.grid_color)
+                sub_ax.spines['left'].set_color(self.grid_color)
+                sub_ax.spines['right'].set_color(self.grid_color)
+                sub_ax.grid(True, color=self.grid_color, linestyle='--', alpha=0.3)
+
         self.fig.tight_layout()
 
     def plot_candlestick(self, data: List[Dict], symbol: str):
@@ -274,7 +326,9 @@ class InteractiveChart(FigureCanvas):
 
         self.ohlc_data = data
         self.symbol = symbol
-        self.ax.clear()
+
+        # Recreate axes based on current indicators
+        self._setup_axes()
         self._setup_style()
 
         # Prepare data
@@ -370,6 +424,59 @@ class InteractiveChart(FigureCanvas):
                                          adaptive_period=self.indicators.get('vwap_adaptive_period', 20),
                                          volatility_bias=self.indicators.get('vwap_volatility_bias', 10.0))
 
+        # Supertrend indicator
+        if 'supertrend' in self.indicators and self.indicators['supertrend']:
+            if highs and lows:
+                supertrend, direction = self._calculate_supertrend(highs, lows, closes, 10, 3.0)
+                # Draw supertrend with color based on direction
+                for i in range(1, len(x)):
+                    if not np.isnan(supertrend[i]) and not np.isnan(supertrend[i-1]):
+                        color = '#26a69a' if direction[i] == 1 else '#ef5350'
+                        self.ax.plot([x[i-1], x[i]], [supertrend[i-1], supertrend[i]],
+                                    color=color, linewidth=2, alpha=0.9)
+
+        # RSI indicator (in sub-panel)
+        if 'rsi' in self.indicators and self.indicators['rsi'] and self.ax_rsi:
+            rsi = self._calculate_rsi(closes, 14)
+            self.ax_rsi.clear()
+            self.ax_rsi.set_facecolor('#1e1e1e')
+            self.ax_rsi.plot(x, rsi, color='#ab47bc', linewidth=1.5, label='RSI 14')
+
+            # Overbought/Oversold levels
+            self.ax_rsi.axhline(y=70, color='#ef5350', linestyle='--', linewidth=0.8, alpha=0.7)
+            self.ax_rsi.axhline(y=30, color='#26a69a', linestyle='--', linewidth=0.8, alpha=0.7)
+            self.ax_rsi.axhline(y=50, color=self.grid_color, linestyle='-', linewidth=0.5, alpha=0.5)
+
+            self.ax_rsi.set_ylim(0, 100)
+            self.ax_rsi.set_ylabel('RSI', color=self.text_color, fontsize=9)
+            self.ax_rsi.tick_params(colors=self.text_color)
+            self.ax_rsi.grid(True, color=self.grid_color, linestyle='--', alpha=0.3)
+
+            # Fill overbought/oversold zones
+            self.ax_rsi.fill_between(x, 70, 100, alpha=0.1, color='#ef5350')
+            self.ax_rsi.fill_between(x, 0, 30, alpha=0.1, color='#26a69a')
+
+        # MACD indicator (in sub-panel)
+        if 'macd' in self.indicators and self.indicators['macd'] and self.ax_macd:
+            macd_line, signal_line, histogram = self._calculate_macd(closes, 12, 26, 9)
+            self.ax_macd.clear()
+            self.ax_macd.set_facecolor('#1e1e1e')
+
+            # Draw histogram as bar chart
+            hist_colors = ['#26a69a' if h >= 0 else '#ef5350' for h in histogram]
+            self.ax_macd.bar(x, histogram, color=hist_colors, alpha=0.6, width=0.8)
+
+            # Draw MACD and Signal lines
+            self.ax_macd.plot(x, macd_line, color='#42a5f5', linewidth=1.5, label='MACD')
+            self.ax_macd.plot(x, signal_line, color='#ffa726', linewidth=1.5, label='Signal')
+            self.ax_macd.axhline(y=0, color=self.grid_color, linestyle='-', linewidth=0.5)
+
+            self.ax_macd.set_ylabel('MACD', color=self.text_color, fontsize=9)
+            self.ax_macd.tick_params(colors=self.text_color)
+            self.ax_macd.grid(True, color=self.grid_color, linestyle='--', alpha=0.3)
+            self.ax_macd.legend(loc='upper left', facecolor='#2e2e2e', edgecolor='#444444',
+                               labelcolor=self.text_color, fontsize=8)
+
         if self.indicators:
             self.ax.legend(loc='upper left', facecolor='#2e2e2e', edgecolor='#444444',
                           labelcolor=self.text_color)
@@ -409,6 +516,122 @@ class InteractiveChart(FigureCanvas):
                 lower.append(middle[i] - std_dev * std)
 
         return upper, middle, lower
+
+    def _calculate_rsi(self, closes: List[float], period: int = 14) -> List[float]:
+        """Calculate Relative Strength Index"""
+        rsi = [np.nan] * period
+
+        # Calculate price changes
+        deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+
+        # Separate gains and losses
+        gains = [d if d > 0 else 0 for d in deltas]
+        losses = [-d if d < 0 else 0 for d in deltas]
+
+        # First average
+        avg_gain = np.mean(gains[:period])
+        avg_loss = np.mean(losses[:period])
+
+        if avg_loss == 0:
+            rsi.append(100)
+        else:
+            rs = avg_gain / avg_loss
+            rsi.append(100 - (100 / (1 + rs)))
+
+        # Subsequent values using smoothing
+        for i in range(period, len(deltas)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+
+            if avg_loss == 0:
+                rsi.append(100)
+            else:
+                rs = avg_gain / avg_loss
+                rsi.append(100 - (100 / (1 + rs)))
+
+        return rsi
+
+    def _calculate_macd(self, closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9):
+        """Calculate MACD (Moving Average Convergence Divergence)"""
+        ema_fast = self._calculate_ema(closes, fast)
+        ema_slow = self._calculate_ema(closes, slow)
+
+        # MACD line
+        macd_line = [np.nan] * len(closes)
+        for i in range(len(closes)):
+            if not np.isnan(ema_fast[i]) and not np.isnan(ema_slow[i]):
+                macd_line[i] = ema_fast[i] - ema_slow[i]
+
+        # Signal line (EMA of MACD)
+        valid_macd = [m for m in macd_line if not np.isnan(m)]
+        if len(valid_macd) < signal:
+            signal_line = [np.nan] * len(closes)
+        else:
+            signal_ema = self._calculate_ema(valid_macd, signal)
+            signal_line = [np.nan] * (len(closes) - len(signal_ema)) + signal_ema
+
+        # Histogram
+        histogram = [np.nan] * len(closes)
+        for i in range(len(closes)):
+            if not np.isnan(macd_line[i]) and not np.isnan(signal_line[i]):
+                histogram[i] = macd_line[i] - signal_line[i]
+
+        return macd_line, signal_line, histogram
+
+    def _calculate_supertrend(self, highs: List[float], lows: List[float], closes: List[float],
+                               period: int = 10, multiplier: float = 3.0):
+        """Calculate Supertrend indicator"""
+        atr = self._calculate_atr(highs, lows, closes, period)
+
+        supertrend = [np.nan] * len(closes)
+        direction = [0] * len(closes)  # 1 = up, -1 = down
+
+        # Calculate basic bands
+        upper_band = [np.nan] * len(closes)
+        lower_band = [np.nan] * len(closes)
+
+        for i in range(len(closes)):
+            if not np.isnan(atr[i]):
+                hl2 = (highs[i] + lows[i]) / 2
+                upper_band[i] = hl2 + multiplier * atr[i]
+                lower_band[i] = hl2 - multiplier * atr[i]
+
+        # Calculate Supertrend
+        for i in range(1, len(closes)):
+            if np.isnan(upper_band[i]) or np.isnan(lower_band[i]):
+                continue
+
+            # Adjust bands based on previous values
+            if not np.isnan(lower_band[i-1]):
+                if lower_band[i] < lower_band[i-1] and closes[i-1] > lower_band[i-1]:
+                    lower_band[i] = lower_band[i-1]
+
+            if not np.isnan(upper_band[i-1]):
+                if upper_band[i] > upper_band[i-1] and closes[i-1] < upper_band[i-1]:
+                    upper_band[i] = upper_band[i-1]
+
+            # Determine direction
+            if i == period:
+                direction[i] = 1 if closes[i] > upper_band[i] else -1
+            else:
+                if direction[i-1] == 1:
+                    if closes[i] < lower_band[i]:
+                        direction[i] = -1
+                    else:
+                        direction[i] = 1
+                else:
+                    if closes[i] > upper_band[i]:
+                        direction[i] = 1
+                    else:
+                        direction[i] = -1
+
+            # Set supertrend value
+            if direction[i] == 1:
+                supertrend[i] = lower_band[i]
+            else:
+                supertrend[i] = upper_band[i]
+
+        return supertrend, direction
 
     def _find_swing_points(self, highs: List[float], lows: List[float], period: int = 50):
         """Find swing high and low pivot points"""
@@ -1138,6 +1361,21 @@ class ChartWidget(QWidget):
         self.anchored_vwap_check.stateChanged.connect(self._update_indicators)
         indicators_layout.addWidget(self.anchored_vwap_check)
 
+        self.supertrend_check = QCheckBox("Supertrend")
+        self.supertrend_check.setToolTip("Supertrend indicator (Period: 10, Multiplier: 3)")
+        self.supertrend_check.stateChanged.connect(self._update_indicators)
+        indicators_layout.addWidget(self.supertrend_check)
+
+        self.rsi_check = QCheckBox("RSI (14)")
+        self.rsi_check.setToolTip("Relative Strength Index\n70 = Overbought, 30 = Oversold")
+        self.rsi_check.stateChanged.connect(self._update_indicators)
+        indicators_layout.addWidget(self.rsi_check)
+
+        self.macd_check = QCheckBox("MACD")
+        self.macd_check.setToolTip("MACD (12, 26, 9)\nMoving Average Convergence Divergence")
+        self.macd_check.stateChanged.connect(self._update_indicators)
+        indicators_layout.addWidget(self.macd_check)
+
         right_layout.addWidget(indicators_group)
 
         # Quick order
@@ -1311,6 +1549,9 @@ class ChartWidget(QWidget):
             'ema20': self.ema20_check.isChecked(),
             'bb': self.bb_check.isChecked(),
             'anchored_vwap': self.anchored_vwap_check.isChecked(),
+            'supertrend': self.supertrend_check.isChecked(),
+            'rsi': self.rsi_check.isChecked(),
+            'macd': self.macd_check.isChecked(),
             # Anchored VWAP settings (default values from Pine Script)
             'vwap_swing_period': 50,
             'vwap_adaptive_period': 20,

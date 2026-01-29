@@ -331,8 +331,8 @@ class InteractiveChart(FigureCanvas):
         self.ax.set_ylabel('Price (₹)', color=self.text_color)
         self.ax.set_title(f'{symbol} - Candlestick Chart', color=self.text_color, fontsize=14)
 
-        # Draw indicators
-        self._draw_indicators(closes)
+        # Draw indicators (pass all OHLCV data for advanced indicators)
+        self._draw_indicators(closes, highs, lows, volumes)
 
         # Draw order/position lines
         self._draw_order_lines()
@@ -340,7 +340,8 @@ class InteractiveChart(FigureCanvas):
         self.fig.tight_layout()
         self.draw()
 
-    def _draw_indicators(self, closes: List[float]):
+    def _draw_indicators(self, closes: List[float], highs: List[float] = None,
+                         lows: List[float] = None, volumes: List[float] = None):
         """Draw technical indicators"""
         x = list(range(len(closes)))
 
@@ -360,6 +361,14 @@ class InteractiveChart(FigureCanvas):
             upper, middle, lower = self._calculate_bollinger(closes, 20)
             self.ax.fill_between(x, lower, upper, color='#607d8b', alpha=0.2)
             self.ax.plot(x, middle, color='#607d8b', linewidth=1, linestyle='--')
+
+        # Anchored VWAP indicator
+        if 'anchored_vwap' in self.indicators and self.indicators['anchored_vwap']:
+            if highs and lows and volumes:
+                self._draw_anchored_vwap(highs, lows, closes, volumes,
+                                         swing_period=self.indicators.get('vwap_swing_period', 50),
+                                         adaptive_period=self.indicators.get('vwap_adaptive_period', 20),
+                                         volatility_bias=self.indicators.get('vwap_volatility_bias', 10.0))
 
         if self.indicators:
             self.ax.legend(loc='upper left', facecolor='#2e2e2e', edgecolor='#444444',
@@ -400,6 +409,138 @@ class InteractiveChart(FigureCanvas):
                 lower.append(middle[i] - std_dev * std)
 
         return upper, middle, lower
+
+    def _find_swing_points(self, highs: List[float], lows: List[float], period: int = 50):
+        """Find swing high and low pivot points"""
+        swing_highs = []  # List of (index, price)
+        swing_lows = []   # List of (index, price)
+
+        for i in range(period, len(highs) - period):
+            # Check for swing high
+            is_swing_high = True
+            for j in range(i - period, i + period + 1):
+                if j != i and highs[j] >= highs[i]:
+                    is_swing_high = False
+                    break
+            if is_swing_high:
+                swing_highs.append((i, highs[i]))
+
+            # Check for swing low
+            is_swing_low = True
+            for j in range(i - period, i + period + 1):
+                if j != i and lows[j] <= lows[i]:
+                    is_swing_low = False
+                    break
+            if is_swing_low:
+                swing_lows.append((i, lows[i]))
+
+        return swing_highs, swing_lows
+
+    def _calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14):
+        """Calculate Average True Range"""
+        atr = [np.nan] * period
+        tr_list = []
+
+        for i in range(1, len(closes)):
+            tr = max(
+                highs[i] - lows[i],
+                abs(highs[i] - closes[i-1]),
+                abs(lows[i] - closes[i-1])
+            )
+            tr_list.append(tr)
+
+        # First ATR is simple average
+        if len(tr_list) >= period:
+            atr_val = np.mean(tr_list[:period])
+            atr.append(atr_val)
+
+            # Subsequent ATR values use smoothing
+            for i in range(period, len(tr_list)):
+                atr_val = (atr_val * (period - 1) + tr_list[i]) / period
+                atr.append(atr_val)
+
+        return atr
+
+    def _calculate_anchored_vwap(self, anchor_idx: int, closes: List[float], volumes: List[float],
+                                  highs: List[float], lows: List[float],
+                                  adaptive_period: int = 20, volatility_bias: float = 10.0,
+                                  use_adapt: bool = False):
+        """Calculate Anchored VWAP from a swing point with adaptive tracking"""
+        vwap_line = [np.nan] * len(closes)
+
+        if anchor_idx >= len(closes):
+            return vwap_line
+
+        # Calculate ATR for adaptation
+        atr = self._calculate_atr(highs, lows, closes)
+        base_apt = adaptive_period
+
+        cum_pv = 0.0  # Cumulative price * volume
+        cum_vol = 0.0  # Cumulative volume
+
+        for i in range(anchor_idx, len(closes)):
+            # Typical price
+            typical_price = (highs[i] + lows[i] + closes[i]) / 3
+
+            # Adaptive period based on ATR
+            if use_adapt and i < len(atr) and not np.isnan(atr[i]) and atr[i] > 0:
+                apt_raw = base_apt / (atr[i] / closes[i] * volatility_bias) if closes[i] > 0 else base_apt
+                apt_clamped = max(5.0, min(300.0, apt_raw))
+                apt_series = round(apt_clamped)
+            else:
+                apt_series = adaptive_period
+
+            # Calculate alpha for EWMA
+            decay = np.exp(-np.log(2.0) / max(1, apt_series))
+            alpha = 1.0 - decay
+
+            vol = volumes[i] if volumes[i] > 0 else 1
+
+            # EWMA-style VWAP calculation
+            pxv = typical_price * vol
+            cum_pv = (1.0 - alpha) * cum_pv + alpha * pxv
+            cum_vol = (1.0 - alpha) * cum_vol + alpha * vol
+
+            if cum_vol > 0:
+                vwap_line[i] = cum_pv / cum_vol
+
+        return vwap_line
+
+    def _draw_anchored_vwap(self, highs: List[float], lows: List[float], closes: List[float],
+                            volumes: List[float], swing_period: int = 50,
+                            adaptive_period: int = 20, volatility_bias: float = 10.0):
+        """Draw Dynamic Swing Anchored VWAP indicator"""
+        x = list(range(len(closes)))
+
+        # Find swing points
+        swing_highs, swing_lows = self._find_swing_points(highs, lows, min(swing_period // 2, len(closes) // 4))
+
+        # Draw VWAP lines from recent swing points (limit to last few for clarity)
+        max_lines = 4  # Show last 4 swing VWAPs
+
+        # Draw from swing highs (bearish - red)
+        for idx, price in swing_highs[-max_lines:]:
+            vwap = self._calculate_anchored_vwap(
+                idx, closes, volumes, highs, lows,
+                adaptive_period, volatility_bias, use_adapt=True
+            )
+            self.ax.plot(x, vwap, color='#ef5350', linewidth=1.5, alpha=0.8, linestyle='-')
+            # Mark swing high point
+            self.ax.scatter([idx], [price], color='#ef5350', s=50, marker='v', zorder=5)
+            self.ax.annotate(f'SH', (idx, price), textcoords="offset points",
+                           xytext=(0, 10), ha='center', fontsize=8, color='#ef5350')
+
+        # Draw from swing lows (bullish - green)
+        for idx, price in swing_lows[-max_lines:]:
+            vwap = self._calculate_anchored_vwap(
+                idx, closes, volumes, highs, lows,
+                adaptive_period, volatility_bias, use_adapt=True
+            )
+            self.ax.plot(x, vwap, color='#26a69a', linewidth=1.5, alpha=0.8, linestyle='-')
+            # Mark swing low point
+            self.ax.scatter([idx], [price], color='#26a69a', s=50, marker='^', zorder=5)
+            self.ax.annotate(f'SL', (idx, price), textcoords="offset points",
+                           xytext=(0, -15), ha='center', fontsize=8, color='#26a69a')
 
     def add_order_line(self, price: float, order_type: str, color: str = None, draggable: bool = True,
                        order_id: str = None, entry_price: float = None, quantity: int = 1):
@@ -992,6 +1133,11 @@ class ChartWidget(QWidget):
         self.bb_check.stateChanged.connect(self._update_indicators)
         indicators_layout.addWidget(self.bb_check)
 
+        self.anchored_vwap_check = QCheckBox("Anchored VWAP")
+        self.anchored_vwap_check.setToolTip("Dynamic Swing Anchored VWAP (Zeiierman)\nShows VWAP from swing highs/lows")
+        self.anchored_vwap_check.stateChanged.connect(self._update_indicators)
+        indicators_layout.addWidget(self.anchored_vwap_check)
+
         right_layout.addWidget(indicators_group)
 
         # Quick order
@@ -1163,7 +1309,12 @@ class ChartWidget(QWidget):
             'sma20': self.sma20_check.isChecked(),
             'sma50': self.sma50_check.isChecked(),
             'ema20': self.ema20_check.isChecked(),
-            'bb': self.bb_check.isChecked()
+            'bb': self.bb_check.isChecked(),
+            'anchored_vwap': self.anchored_vwap_check.isChecked(),
+            # Anchored VWAP settings (default values from Pine Script)
+            'vwap_swing_period': 50,
+            'vwap_adaptive_period': 20,
+            'vwap_volatility_bias': 10.0
         }
         self.chart.set_indicators(indicators)
 

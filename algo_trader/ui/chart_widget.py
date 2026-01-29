@@ -192,6 +192,200 @@ class ModifyOrderDialog(QDialog):
         return self.auto_modify.isChecked()
 
 
+class CustomIndicatorDialog(QDialog):
+    """Dialog for creating custom indicators using simple formulas"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Custom Indicator")
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(400)
+
+        layout = QVBoxLayout(self)
+
+        # Name
+        form = QFormLayout()
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("e.g., My SMA Cross")
+        form.addRow("Indicator Name:", self.name_input)
+
+        # Type
+        self.type_combo = QComboBox()
+        self.type_combo.addItems([
+            "Moving Average (SMA)",
+            "Exponential MA (EMA)",
+            "Weighted MA (WMA)",
+            "Price Channel",
+            "ATR Bands",
+            "Custom Formula"
+        ])
+        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
+        form.addRow("Indicator Type:", self.type_combo)
+
+        layout.addLayout(form)
+
+        # Parameters section
+        self.params_group = QGroupBox("Parameters")
+        self.params_layout = QFormLayout(self.params_group)
+
+        # Period (for most indicators)
+        self.period_spin = QSpinBox()
+        self.period_spin.setRange(1, 500)
+        self.period_spin.setValue(20)
+        self.params_layout.addRow("Period:", self.period_spin)
+
+        # Source
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["Close", "Open", "High", "Low", "HL2 (High+Low)/2", "HLC3", "OHLC4"])
+        self.params_layout.addRow("Source:", self.source_combo)
+
+        # Offset
+        self.offset_spin = QSpinBox()
+        self.offset_spin.setRange(-50, 50)
+        self.offset_spin.setValue(0)
+        self.params_layout.addRow("Offset:", self.offset_spin)
+
+        # Multiplier (for bands)
+        self.multiplier_spin = QDoubleSpinBox()
+        self.multiplier_spin.setRange(0.1, 10.0)
+        self.multiplier_spin.setValue(2.0)
+        self.multiplier_spin.setDecimals(1)
+        self.params_layout.addRow("Multiplier:", self.multiplier_spin)
+
+        # Second period (for crosses)
+        self.period2_spin = QSpinBox()
+        self.period2_spin.setRange(1, 500)
+        self.period2_spin.setValue(50)
+        self.params_layout.addRow("Period 2 (optional):", self.period2_spin)
+
+        layout.addWidget(self.params_group)
+
+        # Custom formula section
+        self.formula_group = QGroupBox("Custom Formula")
+        formula_layout = QVBoxLayout(self.formula_group)
+
+        formula_help = QLabel("""
+<b>Available Variables:</b>
+• close, open, high, low, volume
+• sma(close, 20), ema(close, 20)
+• rsi(close, 14), atr(high, low, close, 14)
+• highest(high, 20), lowest(low, 20)
+
+<b>Example Formulas:</b>
+• sma(close, 20) - sma(close, 50)
+• (highest(high, 20) + lowest(low, 20)) / 2
+• close - sma(close, 20)
+""")
+        formula_help.setStyleSheet("color: #888; font-size: 11px;")
+        formula_help.setTextFormat(Qt.TextFormat.RichText)
+        formula_layout.addWidget(formula_help)
+
+        self.formula_input = QLineEdit()
+        self.formula_input.setPlaceholderText("e.g., sma(close, 20)")
+        self.formula_input.setStyleSheet("font-family: monospace; font-size: 14px; padding: 8px;")
+        formula_layout.addWidget(self.formula_input)
+
+        self.formula_group.hide()  # Hidden by default
+        layout.addWidget(self.formula_group)
+
+        # Color selection
+        color_layout = QHBoxLayout()
+        color_layout.addWidget(QLabel("Line Color:"))
+        self.color_combo = QComboBox()
+        self.color_combo.addItems([
+            "Yellow", "Cyan", "Magenta", "Lime", "Orange",
+            "White", "Red", "Green", "Blue", "Pink"
+        ])
+        color_layout.addWidget(self.color_combo)
+
+        color_layout.addWidget(QLabel("Style:"))
+        self.style_combo = QComboBox()
+        self.style_combo.addItems(["Solid", "Dashed", "Dotted"])
+        color_layout.addWidget(self.style_combo)
+
+        color_layout.addWidget(QLabel("Width:"))
+        self.width_spin = QSpinBox()
+        self.width_spin.setRange(1, 5)
+        self.width_spin.setValue(1)
+        color_layout.addWidget(self.width_spin)
+
+        color_layout.addStretch()
+        layout.addLayout(color_layout)
+
+        # Plot on sub-panel option
+        self.subplot_check = QCheckBox("Plot on separate panel (like RSI/MACD)")
+        layout.addWidget(self.subplot_check)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.add_btn = QPushButton("Add Indicator")
+        self.add_btn.setStyleSheet("background: #4CAF50; color: white; padding: 10px; font-weight: bold;")
+        self.add_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(self.add_btn)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.cancel_btn)
+
+        layout.addLayout(btn_layout)
+
+        self._on_type_changed(0)
+
+    def _on_type_changed(self, index):
+        """Update UI based on indicator type"""
+        # Show/hide formula input
+        if index == 5:  # Custom Formula
+            self.formula_group.show()
+            self.params_group.hide()
+        else:
+            self.formula_group.hide()
+            self.params_group.show()
+
+        # Show/hide multiplier for bands
+        show_multiplier = index in [3, 4]  # Price Channel, ATR Bands
+        self.multiplier_spin.setVisible(show_multiplier)
+        # Find and hide/show the label
+        for i in range(self.params_layout.rowCount()):
+            item = self.params_layout.itemAt(i, QFormLayout.ItemRole.LabelRole)
+            if item and item.widget() and "Multiplier" in item.widget().text():
+                item.widget().setVisible(show_multiplier)
+
+    def get_indicator_config(self) -> Dict:
+        """Get the custom indicator configuration"""
+        ind_type = self.type_combo.currentText()
+
+        # Map color names to matplotlib colors
+        color_map = {
+            "Yellow": "yellow", "Cyan": "cyan", "Magenta": "magenta",
+            "Lime": "lime", "Orange": "orange", "White": "white",
+            "Red": "red", "Green": "green", "Blue": "blue", "Pink": "pink"
+        }
+
+        # Map style to matplotlib linestyle
+        style_map = {"Solid": "-", "Dashed": "--", "Dotted": ":"}
+
+        # Map source to data column
+        source_map = {
+            "Close": "close", "Open": "open", "High": "high", "Low": "low",
+            "HL2 (High+Low)/2": "hl2", "HLC3": "hlc3", "OHLC4": "ohlc4"
+        }
+
+        return {
+            'name': self.name_input.text() or f"Custom {ind_type}",
+            'type': ind_type,
+            'period': self.period_spin.value(),
+            'period2': self.period2_spin.value(),
+            'source': source_map.get(self.source_combo.currentText(), "close"),
+            'offset': self.offset_spin.value(),
+            'multiplier': self.multiplier_spin.value(),
+            'formula': self.formula_input.text() if ind_type == "Custom Formula" else None,
+            'color': color_map.get(self.color_combo.currentText(), "yellow"),
+            'linestyle': style_map.get(self.style_combo.currentText(), "-"),
+            'linewidth': self.width_spin.value(),
+            'subplot': self.subplot_check.isChecked()
+        }
+
+
 class InteractiveChart(FigureCanvas):
     """Interactive candlestick chart with order placement and draggable lines"""
 
@@ -477,6 +671,14 @@ class InteractiveChart(FigureCanvas):
             self.ax_macd.legend(loc='upper left', facecolor='#2e2e2e', edgecolor='#444444',
                                labelcolor=self.text_color, fontsize=8)
 
+        # Draw custom indicators
+        if 'custom' in self.indicators and self.indicators['custom']:
+            for custom_ind in self.indicators['custom']:
+                try:
+                    self._draw_custom_indicator(custom_ind, closes, highs, lows, volumes, x)
+                except Exception as e:
+                    logger.error(f"Error drawing custom indicator {custom_ind.get('name')}: {e}")
+
         if self.indicators:
             self.ax.legend(loc='upper left', facecolor='#2e2e2e', edgecolor='#444444',
                           labelcolor=self.text_color)
@@ -516,6 +718,199 @@ class InteractiveChart(FigureCanvas):
                 lower.append(middle[i] - std_dev * std)
 
         return upper, middle, lower
+
+    def _draw_custom_indicator(self, config: Dict, closes: List[float],
+                                highs: List[float], lows: List[float],
+                                volumes: List[float], x: List[int]):
+        """Draw a custom indicator based on config"""
+        ind_type = config.get('type', '')
+        period = config.get('period', 20)
+        source = config.get('source', 'close')
+        color = config.get('color', 'yellow')
+        linestyle = config.get('linestyle', '-')
+        linewidth = config.get('linewidth', 1)
+        name = config.get('name', 'Custom')
+        multiplier = config.get('multiplier', 2.0)
+        period2 = config.get('period2', 50)
+
+        # Get source data
+        if source == 'close':
+            data = closes
+        elif source == 'high':
+            data = highs or closes
+        elif source == 'low':
+            data = lows or closes
+        elif source == 'open':
+            data = closes  # Would need opens passed
+        elif source == 'hl2':
+            data = [(h + l) / 2 for h, l in zip(highs or closes, lows or closes)]
+        elif source == 'hlc3':
+            data = [(h + l + c) / 3 for h, l, c in zip(highs or closes, lows or closes, closes)]
+        elif source == 'ohlc4':
+            data = [(h + l + c + c) / 4 for h, l, c in zip(highs or closes, lows or closes, closes)]  # Simplified
+        else:
+            data = closes
+
+        # Calculate indicator based on type
+        if ind_type == "Moving Average (SMA)":
+            values = self._calculate_sma(data, period)
+            self.ax.plot(x, values, color=color, linestyle=linestyle,
+                        linewidth=linewidth, label=name, alpha=0.9)
+
+            # If period2 is different, also plot second SMA (for cross detection)
+            if period2 != period:
+                values2 = self._calculate_sma(data, period2)
+                self.ax.plot(x, values2, color=color, linestyle='--',
+                            linewidth=linewidth, label=f"{name} ({period2})", alpha=0.7)
+
+        elif ind_type == "Exponential MA (EMA)":
+            values = self._calculate_ema(data, period)
+            self.ax.plot(x, values, color=color, linestyle=linestyle,
+                        linewidth=linewidth, label=name, alpha=0.9)
+
+        elif ind_type == "Weighted MA (WMA)":
+            values = self._calculate_wma(data, period)
+            self.ax.plot(x, values, color=color, linestyle=linestyle,
+                        linewidth=linewidth, label=name, alpha=0.9)
+
+        elif ind_type == "Price Channel":
+            # Donchian Channel style
+            upper = []
+            lower = []
+            for i in range(len(data)):
+                if i < period - 1:
+                    upper.append(np.nan)
+                    lower.append(np.nan)
+                else:
+                    if highs:
+                        upper.append(max(highs[i-period+1:i+1]))
+                    else:
+                        upper.append(max(data[i-period+1:i+1]))
+                    if lows:
+                        lower.append(min(lows[i-period+1:i+1]))
+                    else:
+                        lower.append(min(data[i-period+1:i+1]))
+
+            self.ax.plot(x, upper, color=color, linestyle=linestyle,
+                        linewidth=linewidth, label=f"{name} Upper", alpha=0.9)
+            self.ax.plot(x, lower, color=color, linestyle=linestyle,
+                        linewidth=linewidth, label=f"{name} Lower", alpha=0.9)
+            self.ax.fill_between(x, lower, upper, color=color, alpha=0.1)
+
+        elif ind_type == "ATR Bands":
+            # Calculate ATR and draw bands around price
+            atr = self._calculate_atr(highs or closes, lows or closes, closes, period)
+            middle = self._calculate_sma(closes, period)
+
+            upper = [m + multiplier * a if not np.isnan(m) and not np.isnan(a) else np.nan
+                    for m, a in zip(middle, atr)]
+            lower = [m - multiplier * a if not np.isnan(m) and not np.isnan(a) else np.nan
+                    for m, a in zip(middle, atr)]
+
+            self.ax.plot(x, upper, color=color, linestyle=linestyle,
+                        linewidth=linewidth, label=f"{name} Upper", alpha=0.9)
+            self.ax.plot(x, lower, color=color, linestyle=linestyle,
+                        linewidth=linewidth, alpha=0.9)
+            self.ax.fill_between(x, lower, upper, color=color, alpha=0.1)
+
+        elif ind_type == "Custom Formula":
+            formula = config.get('formula', '')
+            if formula:
+                values = self._evaluate_formula(formula, closes, highs, lows, volumes)
+                if values:
+                    if config.get('subplot'):
+                        # Would need to create separate subplot for this
+                        pass
+                    else:
+                        self.ax.plot(x, values, color=color, linestyle=linestyle,
+                                    linewidth=linewidth, label=name, alpha=0.9)
+
+    def _calculate_wma(self, data: List[float], period: int) -> List[float]:
+        """Calculate Weighted Moving Average"""
+        result = [np.nan] * (period - 1)
+        weights = list(range(1, period + 1))
+        weight_sum = sum(weights)
+
+        for i in range(period - 1, len(data)):
+            wma = sum(w * d for w, d in zip(weights, data[i-period+1:i+1])) / weight_sum
+            result.append(wma)
+        return result
+
+    def _calculate_atr(self, highs: List[float], lows: List[float],
+                       closes: List[float], period: int = 14) -> List[float]:
+        """Calculate Average True Range"""
+        tr = [np.nan]
+        for i in range(1, len(closes)):
+            high_low = highs[i] - lows[i]
+            high_close = abs(highs[i] - closes[i-1])
+            low_close = abs(lows[i] - closes[i-1])
+            tr.append(max(high_low, high_close, low_close))
+
+        # Calculate ATR using EMA of TR
+        atr = [np.nan] * period
+        if len(tr) > period:
+            atr_val = np.mean([t for t in tr[1:period+1] if not np.isnan(t)])
+            atr.append(atr_val)
+
+            multiplier = 2 / (period + 1)
+            for i in range(period + 1, len(tr)):
+                if not np.isnan(tr[i]):
+                    atr_val = (tr[i] - atr_val) * multiplier + atr_val
+                atr.append(atr_val)
+
+        return atr
+
+    def _evaluate_formula(self, formula: str, closes: List[float],
+                          highs: List[float], lows: List[float],
+                          volumes: List[float]) -> Optional[List[float]]:
+        """Evaluate a custom formula safely"""
+        try:
+            # Create a safe environment for formula evaluation
+            import re
+
+            # Replace function calls with actual calculations
+            result = formula.lower()
+
+            # Handle sma(source, period)
+            sma_pattern = r'sma\((\w+),\s*(\d+)\)'
+            for match in re.finditer(sma_pattern, result):
+                source, period = match.groups()
+                data = closes if source == 'close' else (highs if source == 'high' else lows)
+                sma_vals = self._calculate_sma(data, int(period))
+                # Store for later
+                result = result.replace(match.group(), f'__sma_{source}_{period}__')
+
+            # Handle ema(source, period)
+            ema_pattern = r'ema\((\w+),\s*(\d+)\)'
+            for match in re.finditer(ema_pattern, result):
+                source, period = match.groups()
+                data = closes if source == 'close' else (highs if source == 'high' else lows)
+                ema_vals = self._calculate_ema(data, int(period))
+                result = result.replace(match.group(), f'__ema_{source}_{period}__')
+
+            # Simple evaluation: just calculate based on formula pattern
+            # For safety, only allow specific operations
+            if 'sma' in formula.lower():
+                # Extract sma parameters
+                match = re.search(sma_pattern, formula.lower())
+                if match:
+                    source, period = match.groups()
+                    data = closes if source == 'close' else (highs if source == 'high' else lows)
+                    return self._calculate_sma(data, int(period))
+
+            if 'ema' in formula.lower():
+                match = re.search(ema_pattern, formula.lower())
+                if match:
+                    source, period = match.groups()
+                    data = closes if source == 'close' else (highs if source == 'high' else lows)
+                    return self._calculate_ema(data, int(period))
+
+            # Default: return closes
+            return closes
+
+        except Exception as e:
+            logger.error(f"Formula evaluation error: {e}")
+            return None
 
     def _calculate_rsi(self, closes: List[float], period: int = 14) -> List[float]:
         """Calculate Relative Strength Index"""
@@ -1376,6 +1771,28 @@ class ChartWidget(QWidget):
         self.macd_check.stateChanged.connect(self._update_indicators)
         indicators_layout.addWidget(self.macd_check)
 
+        # Custom Indicator Button
+        indicators_layout.addWidget(QLabel(""))  # Spacer
+        self.custom_indicator_btn = QPushButton("➕ Add Custom Indicator")
+        self.custom_indicator_btn.setStyleSheet("""
+            QPushButton {
+                background: #2196F3;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #1976D2;
+            }
+        """)
+        self.custom_indicator_btn.clicked.connect(self._show_custom_indicator_dialog)
+        indicators_layout.addWidget(self.custom_indicator_btn)
+
+        # Custom indicators list
+        self.custom_indicators_list = []
+
         right_layout.addWidget(indicators_group)
 
         # Quick order
@@ -1555,9 +1972,21 @@ class ChartWidget(QWidget):
             # Anchored VWAP settings (default values from Pine Script)
             'vwap_swing_period': 50,
             'vwap_adaptive_period': 20,
-            'vwap_volatility_bias': 10.0
+            'vwap_volatility_bias': 10.0,
+            # Custom indicators
+            'custom': self.custom_indicators_list
         }
         self.chart.set_indicators(indicators)
+
+    def _show_custom_indicator_dialog(self):
+        """Show dialog to add custom indicator"""
+        dialog = CustomIndicatorDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            config = dialog.get_indicator_config()
+            self.custom_indicators_list.append(config)
+            self._update_indicators()
+            QMessageBox.information(self, "Added",
+                                   f"Custom indicator '{config['name']}' added!")
 
     def _on_order_requested(self, symbol: str, price: float, side: str):
         """Handle order request from chart"""

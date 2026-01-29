@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QLabel, QComboBox, QLineEdit, QTextEdit, QSplitter,
     QMessageBox, QStatusBar, QToolBar, QGroupBox, QFormLayout,
     QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QScrollArea, QApplication
+    QScrollArea, QApplication, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal
 from PyQt6.QtGui import QAction, QFont
@@ -139,6 +139,41 @@ class MainWindow(QMainWindow):
         self.broker_combo = QComboBox()
         self.broker_combo.setMinimumWidth(150)
         toolbar.addWidget(self.broker_combo)
+
+        # Add spacer to push clock to right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+
+        toolbar.addSeparator()
+
+        # Clock display (HH:MM:SS format)
+        self.clock_label = QLabel("00:00:00")
+        self.clock_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px;
+                font-weight: bold;
+                font-family: 'Courier New', monospace;
+                color: #2196F3;
+                padding: 5px 15px;
+                background: #1E1E1E;
+                border-radius: 5px;
+                border: 1px solid #333;
+            }
+        """)
+        toolbar.addWidget(self.clock_label)
+
+        # Setup clock timer
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self._update_clock)
+        self.clock_timer.start(1000)  # Update every second
+        self._update_clock()  # Initial update
+
+    def _update_clock(self):
+        """Update the clock display"""
+        from datetime import datetime
+        current_time = datetime.now().strftime("%H:%M:%S")
+        self.clock_label.setText(current_time)
 
     def _create_dashboard_tab(self):
         """Create enhanced dashboard tab with live P&L"""
@@ -2320,6 +2355,48 @@ class MainWindow(QMainWindow):
 
         scroll_layout.addWidget(telegram_group)
 
+        # === Telegram Bot Controller (Remote Control) ===
+        bot_control_group = QGroupBox("Telegram Bot Controller (Remote Control)")
+        bot_control_layout = QFormLayout(bot_control_group)
+
+        self.bot_controller_enabled = QCheckBox("Enable Bot Controller")
+        self.bot_controller_enabled.setChecked(self.config.get('telegram.bot_controller_enabled', False))
+        self.bot_controller_enabled.stateChanged.connect(self._on_bot_controller_toggle)
+        bot_control_layout.addRow(self.bot_controller_enabled)
+
+        # Bot controller status
+        self.bot_controller_status = QLabel("Stopped")
+        self.bot_controller_status.setStyleSheet("color: red; font-weight: bold;")
+        bot_control_layout.addRow("Status:", self.bot_controller_status)
+
+        # Bot controller buttons
+        bot_ctrl_btn_layout = QHBoxLayout()
+        self.start_bot_ctrl_btn = QPushButton("Start Controller")
+        self.start_bot_ctrl_btn.clicked.connect(self._start_bot_controller)
+        self.stop_bot_ctrl_btn = QPushButton("Stop Controller")
+        self.stop_bot_ctrl_btn.clicked.connect(self._stop_bot_controller)
+        self.stop_bot_ctrl_btn.setEnabled(False)
+        bot_ctrl_btn_layout.addWidget(self.start_bot_ctrl_btn)
+        bot_ctrl_btn_layout.addWidget(self.stop_bot_ctrl_btn)
+        bot_control_layout.addRow(bot_ctrl_btn_layout)
+
+        # Commands help
+        commands_label = QLabel("""
+<b>Available Commands:</b>
+/status - Get current algo status
+/positions - List open positions
+/orders - View pending orders
+/pnl - Get today's P&L
+/pause - Pause algo trading
+/resume - Resume algo trading
+/squareoff - Square off all positions
+/help - Show all commands""")
+        commands_label.setStyleSheet("color: #888; font-size: 11px; background: #1a1a1a; padding: 10px; border-radius: 5px;")
+        commands_label.setTextFormat(Qt.TextFormat.RichText)
+        bot_control_layout.addRow(commands_label)
+
+        scroll_layout.addWidget(bot_control_group)
+
         # Broker settings
         broker_group = QGroupBox("Broker Connections")
         broker_layout = QVBoxLayout(broker_group)
@@ -3504,6 +3581,247 @@ class MainWindow(QMainWindow):
                 self.telegram.send_target_hit_alert(**kwargs)
         except Exception as e:
             logger.error(f"Telegram alert error: {e}")
+
+    # Telegram Bot Controller methods
+    def _init_bot_controller(self):
+        """Initialize Telegram Bot Controller for remote control"""
+        from algo_trader.integrations.telegram_alerts import TelegramBotController
+        bot_token = self.config.get('telegram.bot_token', '')
+        chat_id = self.config.get('telegram.chat_id', '')
+
+        if not bot_token or not chat_id:
+            return None
+
+        self.bot_controller = TelegramBotController(bot_token, chat_id)
+
+        # Register callbacks
+        self.bot_controller.register_status_callback(self._get_bot_status)
+        self.bot_controller.register_positions_callback(self._get_bot_positions)
+        self.bot_controller.register_orders_callback(self._get_bot_orders)
+        self.bot_controller.register_pnl_callback(self._get_bot_pnl)
+        self.bot_controller.register_squareoff_callback(self._bot_squareoff)
+        self.bot_controller.register_pause_callback(self._bot_pause)
+        self.bot_controller.register_resume_callback(self._bot_resume)
+
+        return self.bot_controller
+
+    def _on_bot_controller_toggle(self, state):
+        """Handle bot controller enable/disable"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.config.set('telegram.bot_controller_enabled', enabled)
+
+        if enabled:
+            self._start_bot_controller()
+        else:
+            self._stop_bot_controller()
+
+    def _start_bot_controller(self):
+        """Start the Telegram bot controller"""
+        bot_token = self.config.get('telegram.bot_token', '')
+        chat_id = self.config.get('telegram.chat_id', '')
+
+        if not bot_token or not chat_id:
+            QMessageBox.warning(self, "Error", "Please configure Telegram Bot Token and Chat ID first")
+            self.bot_controller_enabled.setChecked(False)
+            return
+
+        if not hasattr(self, 'bot_controller') or self.bot_controller is None:
+            self._init_bot_controller()
+
+        if self.bot_controller and self.bot_controller.start_listening():
+            self.bot_controller_status.setText("Running")
+            self.bot_controller_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
+            self.start_bot_ctrl_btn.setEnabled(False)
+            self.stop_bot_ctrl_btn.setEnabled(True)
+            self.status_bar.showMessage("Telegram Bot Controller started")
+            logger.info("Telegram Bot Controller started")
+        else:
+            QMessageBox.warning(self, "Error", "Failed to start Bot Controller")
+
+    def _stop_bot_controller(self):
+        """Stop the Telegram bot controller"""
+        if hasattr(self, 'bot_controller') and self.bot_controller:
+            self.bot_controller.stop_listening()
+
+        self.bot_controller_status.setText("Stopped")
+        self.bot_controller_status.setStyleSheet("color: red; font-weight: bold;")
+        self.start_bot_ctrl_btn.setEnabled(True)
+        self.stop_bot_ctrl_btn.setEnabled(False)
+        self.status_bar.showMessage("Telegram Bot Controller stopped")
+        logger.info("Telegram Bot Controller stopped")
+
+    def _get_bot_status(self) -> str:
+        """Get algo status for Telegram bot"""
+        try:
+            # Get connected broker
+            broker_name = "Not Connected"
+            broker_status = "❌"
+            if self.active_broker:
+                broker_name = type(self.active_broker).__name__.replace("Broker", "")
+                broker_status = "✅"
+
+            # Get trading status
+            algo_status = "⏸️ PAUSED" if (hasattr(self, 'bot_controller') and
+                                           self.bot_controller.is_paused()) else "▶️ RUNNING"
+
+            # Get P&L
+            total_pnl = 0
+            if hasattr(self, 'dash_total_pnl'):
+                pnl_text = self.dash_total_pnl.text().replace("₹", "").replace(",", "")
+                try:
+                    total_pnl = float(pnl_text)
+                except:
+                    pass
+
+            pnl_emoji = "🟢" if total_pnl >= 0 else "🔴"
+
+            return f"""
+📊 <b>Algo Status</b>
+
+{algo_status}
+{broker_status} Broker: {broker_name}
+{pnl_emoji} Today's P&L: ₹{total_pnl:+,.2f}
+
+🕐 {datetime.now().strftime('%H:%M:%S')}
+"""
+        except Exception as e:
+            logger.error(f"Error getting bot status: {e}")
+            return f"❌ Error getting status: {e}"
+
+    def _get_bot_positions(self) -> str:
+        """Get positions for Telegram bot"""
+        try:
+            if not self.active_broker:
+                return "❌ No broker connected"
+
+            positions = self.active_broker.get_positions()
+            if not positions:
+                return "📊 No open positions"
+
+            msg = "📊 <b>Open Positions</b>\n\n"
+            for pos in positions[:10]:  # Limit to 10
+                symbol = pos.get('symbol', 'N/A')
+                qty = pos.get('quantity', 0)
+                pnl = pos.get('pnl', 0)
+                pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+                msg += f"• {symbol}: {qty} | {pnl_emoji} ₹{pnl:+,.2f}\n"
+
+            return msg
+        except Exception as e:
+            logger.error(f"Error getting positions: {e}")
+            return f"❌ Error: {e}"
+
+    def _get_bot_orders(self) -> str:
+        """Get pending orders for Telegram bot"""
+        try:
+            if not self.active_broker:
+                return "❌ No broker connected"
+
+            orders = self.active_broker.get_orders()
+            pending = [o for o in orders if o.get('status') in ['PENDING', 'OPEN', 'TRIGGER_PENDING']]
+
+            if not pending:
+                return "📋 No pending orders"
+
+            msg = "📋 <b>Pending Orders</b>\n\n"
+            for order in pending[:10]:
+                symbol = order.get('symbol', 'N/A')
+                side = order.get('side', 'N/A')
+                qty = order.get('quantity', 0)
+                price = order.get('price', 0)
+                msg += f"• {side} {symbol}: {qty} @ ₹{price:.2f}\n"
+
+            return msg
+        except Exception as e:
+            logger.error(f"Error getting orders: {e}")
+            return f"❌ Error: {e}"
+
+    def _get_bot_pnl(self) -> str:
+        """Get P&L summary for Telegram bot"""
+        try:
+            realized = 0
+            unrealized = 0
+            total = 0
+
+            if hasattr(self, 'dash_realized_pnl'):
+                try:
+                    realized = float(self.dash_realized_pnl.text().replace("₹", "").replace(",", ""))
+                except:
+                    pass
+
+            if hasattr(self, 'dash_unrealized_pnl'):
+                try:
+                    unrealized = float(self.dash_unrealized_pnl.text().replace("₹", "").replace(",", ""))
+                except:
+                    pass
+
+            total = realized + unrealized
+            pnl_emoji = "🟢" if total >= 0 else "🔴"
+
+            return f"""
+💰 <b>P&L Summary</b>
+
+✅ Realized: ₹{realized:+,.2f}
+📊 Unrealized: ₹{unrealized:+,.2f}
+{pnl_emoji} <b>Total: ₹{total:+,.2f}</b>
+
+🕐 {datetime.now().strftime('%H:%M:%S')}
+"""
+        except Exception as e:
+            return f"❌ Error: {e}"
+
+    def _bot_squareoff(self) -> str:
+        """Square off all positions via Telegram command"""
+        try:
+            if not self.active_broker:
+                return "No broker connected"
+
+            positions = self.active_broker.get_positions()
+            if not positions:
+                return "No positions to square off"
+
+            squared = 0
+            for pos in positions:
+                qty = pos.get('quantity', 0)
+                if qty == 0:
+                    continue
+
+                symbol = pos.get('symbol')
+                exchange = pos.get('exchange', 'NSE')
+                side = 'SELL' if qty > 0 else 'BUY'
+
+                try:
+                    self.active_broker.place_order(
+                        symbol=symbol,
+                        exchange=exchange,
+                        transaction_type=side,
+                        quantity=abs(qty),
+                        order_type='MARKET',
+                        product_type='INTRADAY'
+                    )
+                    squared += 1
+                except Exception as e:
+                    logger.error(f"Failed to square off {symbol}: {e}")
+
+            return f"Squared off {squared} position(s)"
+        except Exception as e:
+            return f"Error: {e}"
+
+    def _bot_pause(self):
+        """Pause algo trading via Telegram command"""
+        # Set flag to pause new trades
+        if hasattr(self, 'chartink_scanner') and self.chartink_scanner:
+            for scan_name in self.chartink_scanner.scans:
+                self.chartink_scanner.pause_scan(scan_name)
+        logger.info("Algo paused via Telegram")
+
+    def _bot_resume(self):
+        """Resume algo trading via Telegram command"""
+        # Resume trading
+        if hasattr(self, 'chartink_scanner') and self.chartink_scanner:
+            for scan_name in self.chartink_scanner.scans:
+                self.chartink_scanner.resume_scan(scan_name)
+        logger.info("Algo resumed via Telegram")
 
     # Chartink methods
     def _init_chartink(self):

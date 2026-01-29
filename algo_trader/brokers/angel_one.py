@@ -3,10 +3,16 @@ Angel One (SmartAPI) Broker Integration
 """
 import requests
 import hashlib
-import pyotp
 from typing import Dict, List, Optional
 from datetime import datetime
 from loguru import logger
+
+try:
+    import pyotp
+    PYOTP_AVAILABLE = True
+except ImportError:
+    PYOTP_AVAILABLE = False
+    pyotp = None
 
 from algo_trader.brokers.base import BaseBroker, BrokerOrder
 

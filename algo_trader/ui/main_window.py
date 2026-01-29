@@ -2193,8 +2193,14 @@ class MainWindow(QMainWindow):
         from algo_trader.ui.broker_dialog import BrokerConfigDialog
         dialog = BrokerConfigDialog(self.config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            # If broker was authenticated, add it to active brokers
+            if dialog.broker_instance and dialog.broker_instance.is_authenticated:
+                broker_name = dialog.broker_combo.currentText().lower().replace(" ", "_")
+                self.brokers[broker_name] = dialog.broker_instance
+                logger.info(f"Broker {broker_name} connected successfully")
             self._load_configured_brokers()
             self._update_broker_settings_table()
+            self._refresh_dashboard()
 
     def _on_strategy_selected(self, row, col):
         """Handle strategy selection"""

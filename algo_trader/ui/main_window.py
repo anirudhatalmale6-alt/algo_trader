@@ -1960,10 +1960,55 @@ class MainWindow(QMainWindow):
 
         for i, broker in enumerate(brokers):
             self.broker_settings_table.setItem(i, 0, QTableWidgetItem(broker.title()))
-            status = "Connected" if broker in self.brokers else "Disconnected"
-            self.broker_settings_table.setItem(i, 1, QTableWidgetItem(status))
+            is_connected = broker in self.brokers
+            status = "Connected" if is_connected else "Disconnected"
+            status_item = QTableWidgetItem(status)
+            status_item.setForeground(Qt.GlobalColor.green if is_connected else Qt.GlobalColor.red)
+            self.broker_settings_table.setItem(i, 1, status_item)
             creds = self.config.get_broker_credentials(broker)
             self.broker_settings_table.setItem(i, 2, QTableWidgetItem(creds.get('user_id', 'N/A')))
+
+            # Add Connect/Reconnect button
+            if not is_connected:
+                connect_btn = QPushButton("Connect")
+                connect_btn.clicked.connect(lambda checked, b=broker: self._reconnect_broker(b))
+                self.broker_settings_table.setCellWidget(i, 3, connect_btn)
+            else:
+                disconnect_btn = QPushButton("Disconnect")
+                disconnect_btn.clicked.connect(lambda checked, b=broker: self._disconnect_broker(b))
+                self.broker_settings_table.setCellWidget(i, 3, disconnect_btn)
+
+    def _reconnect_broker(self, broker_name: str):
+        """Reconnect to a broker using saved credentials"""
+        try:
+            creds = self.config.get_broker_credentials(broker_name)
+            if not creds:
+                QMessageBox.warning(self, "Error", f"No credentials found for {broker_name}")
+                return
+
+            api_key = creds.get('api_key', '')
+            api_secret = creds.get('api_secret', '')
+            user_id = creds.get('user_id', '')
+
+            # Need to re-authenticate - show broker dialog
+            QMessageBox.information(
+                self, "Re-authentication Required",
+                f"Broker sessions expire daily. Please re-authenticate {broker_name.title()}.\n\n"
+                "Click 'Connect Broker' and follow the authentication steps."
+            )
+            self._show_broker_dialog()
+
+        except Exception as e:
+            logger.error(f"Error reconnecting broker: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to reconnect: {str(e)}")
+
+    def _disconnect_broker(self, broker_name: str):
+        """Disconnect a broker"""
+        if broker_name in self.brokers:
+            del self.brokers[broker_name]
+            self._update_broker_settings_table()
+            self._refresh_dashboard()
+            logger.info(f"Broker {broker_name} disconnected")
 
     def _setup_timers(self):
         """Setup refresh timers"""

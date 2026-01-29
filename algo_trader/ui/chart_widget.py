@@ -408,7 +408,6 @@ class InteractiveChart(FigureCanvas):
         self.ax = None
         self.ax_rsi = None
         self.ax_macd = None
-        self._setup_axes()
 
         # Style settings
         self.bull_color = '#26a69a'  # Green
@@ -419,7 +418,10 @@ class InteractiveChart(FigureCanvas):
         # Data
         self.ohlc_data = None
         self.symbol = ""
-        self.indicators = {}
+        self.indicators = {}  # Initialize BEFORE _setup_axes()
+
+        # Setup axes after indicators is initialized
+        self._setup_axes()
         self.order_lines = []  # List of dicts: {price, type, color, line_obj, text_obj, draggable}
         self.position_lines = []
 

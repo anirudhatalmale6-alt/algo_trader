@@ -2029,14 +2029,26 @@ class MainWindow(QMainWindow):
         try:
             from datetime import datetime
 
+            logger.debug(f"Refreshing dashboard, brokers dict: {list(self.brokers.keys()) if self.brokers else 'empty'}")
+
             # Update market status
             if hasattr(self, 'brokers') and self.brokers:
+                logger.debug(f"Brokers found: {list(self.brokers.keys())}")
                 broker = list(self.brokers.values())[0]
-                is_open = broker.is_market_open() if hasattr(broker, 'is_market_open') else False
-                self.dash_market_status.setText("Open" if is_open else "Closed")
-                self.dash_market_status.setStyleSheet(f"color: {'green' if is_open else 'red'}; font-weight: bold;")
+                logger.debug(f"Using broker: {broker.broker_name if hasattr(broker, 'broker_name') else 'unknown'}")
+
+                # Update broker status FIRST before any API calls
                 self.dash_broker_status.setText("Connected")
                 self.dash_broker_status.setStyleSheet("color: green;")
+
+                try:
+                    is_open = broker.is_market_open() if hasattr(broker, 'is_market_open') else False
+                    self.dash_market_status.setText("Open" if is_open else "Closed")
+                    self.dash_market_status.setStyleSheet(f"color: {'green' if is_open else 'red'}; font-weight: bold;")
+                except Exception as e:
+                    logger.debug(f"Error checking market status: {e}")
+                    self.dash_market_status.setText("Unknown")
+                    self.dash_market_status.setStyleSheet("color: gray; font-weight: bold;")
 
                 # Get funds
                 try:

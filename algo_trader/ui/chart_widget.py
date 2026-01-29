@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QFormLayout,
     QMessageBox, QMenu, QToolBar, QSplitter, QTableWidget,
     QTableWidgetItem, QHeaderView, QDialog, QDialogButtonBox,
-    QLineEdit, QCheckBox
+    QLineEdit, QCheckBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction
@@ -203,6 +203,13 @@ class InteractiveChart(FigureCanvas):
         super().__init__(self.fig)
         self.setParent(parent)
 
+        # Enable auto-resize
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding
+        )
+        self.setMinimumSize(400, 300)
+
         self.ax = self.fig.add_subplot(111)
         self.ax.set_facecolor('#1e1e1e')
 
@@ -238,6 +245,12 @@ class InteractiveChart(FigureCanvas):
         self.mpl_connect('button_release_event', self._on_release)
 
         self._setup_style()
+
+    def resizeEvent(self, event):
+        """Handle resize event to adjust chart"""
+        super().resizeEvent(event)
+        self.fig.tight_layout()
+        self.draw()
 
     def _setup_style(self):
         """Setup chart style"""
@@ -383,15 +396,27 @@ class InteractiveChart(FigureCanvas):
 
         return upper, middle, lower
 
-    def add_order_line(self, price: float, order_type: str, color: str = None, draggable: bool = True, order_id: str = None):
-        """Add horizontal line for an order - draggable by default"""
+    def add_order_line(self, price: float, order_type: str, color: str = None, draggable: bool = True,
+                       order_id: str = None, entry_price: float = None, quantity: int = 1):
+        """Add horizontal line for an order - draggable by default, shows P&L if entry_price provided"""
         if color is None:
             color = '#26a69a' if 'BUY' in order_type.upper() or 'TARGET' in order_type.upper() else '#ef5350'
 
+        # Calculate P&L if entry price is provided
+        pnl_text = ""
+        if entry_price and entry_price > 0:
+            pnl = (price - entry_price) * quantity
+            pnl_pct = ((price - entry_price) / entry_price) * 100
+            pnl_color = '#26a69a' if pnl >= 0 else '#ef5350'
+            pnl_sign = '+' if pnl >= 0 else ''
+            pnl_text = f" | P&L: {pnl_sign}₹{pnl:.2f} ({pnl_sign}{pnl_pct:.1f}%)"
+
         # Create line and text objects
         line_obj = self.ax.axhline(y=price, color=color, linestyle='--', linewidth=2, alpha=0.8, picker=5)
+
+        label_text = f" ⋮ {order_type}: ₹{price:.2f}{pnl_text}"
         text_obj = self.ax.text(self.ax.get_xlim()[1] * 0.98, price,
-                               f" ⋮ {order_type}: ₹{price:.2f}",
+                               label_text,
                                color=color, va='center', fontsize=9, fontweight='bold',
                                bbox=dict(boxstyle='round,pad=0.3', facecolor='#2e2e2e', edgecolor=color, alpha=0.9))
 
@@ -402,14 +427,21 @@ class InteractiveChart(FigureCanvas):
             'line_obj': line_obj,
             'text_obj': text_obj,
             'draggable': draggable,
-            'order_id': order_id
+            'order_id': order_id,
+            'entry_price': entry_price,
+            'quantity': quantity
         }
         self.order_lines.append(order_data)
         self.draw()
         return order_data
 
     def _draw_order_lines(self):
-        """Draw all order and position lines"""
+        """Draw all order and position lines with P&L display"""
+        # Get current LTP from chart data
+        current_ltp = 0
+        if self.ohlc_data:
+            current_ltp = float(self.ohlc_data[-1].get('close', 0))
+
         # Clear existing line objects first
         for order in self.order_lines:
             if 'line_obj' in order and order['line_obj']:
@@ -425,39 +457,90 @@ class InteractiveChart(FigureCanvas):
 
         # Redraw all order lines
         for order in self.order_lines:
-            line_obj = self.ax.axhline(y=order['price'], color=order['color'],
+            price = order['price']
+            entry_price = order.get('entry_price')
+            quantity = order.get('quantity', 1)
+
+            # Calculate P&L text
+            pnl_text = ""
+            if entry_price and entry_price > 0:
+                pnl = (price - entry_price) * quantity
+                pnl_pct = ((price - entry_price) / entry_price) * 100
+                pnl_sign = '+' if pnl >= 0 else ''
+                pnl_text = f" | {pnl_sign}₹{pnl:.0f} ({pnl_sign}{pnl_pct:.1f}%)"
+            elif current_ltp > 0 and order['type'] in ['SL', 'Target', 'Entry']:
+                # Show distance from current price
+                diff = price - current_ltp
+                diff_pct = (diff / current_ltp) * 100
+                diff_sign = '+' if diff >= 0 else ''
+                pnl_text = f" | {diff_sign}{diff_pct:.1f}% from LTP"
+
+            line_obj = self.ax.axhline(y=price, color=order['color'],
                                       linestyle='--', linewidth=2, alpha=0.8, picker=5)
-            text_obj = self.ax.text(self.ax.get_xlim()[1] * 0.98, order['price'],
-                                   f" ⋮ {order['type']}: ₹{order['price']:.2f}",
+
+            label_text = f" ⋮ {order['type']}: ₹{price:.2f}{pnl_text}"
+            text_obj = self.ax.text(self.ax.get_xlim()[1] * 0.98, price,
+                                   label_text,
                                    color=order['color'], va='center', fontsize=9, fontweight='bold',
                                    bbox=dict(boxstyle='round,pad=0.3', facecolor='#2e2e2e',
                                             edgecolor=order['color'], alpha=0.9))
             order['line_obj'] = line_obj
             order['text_obj'] = text_obj
 
-        # Draw position lines
+        # Draw position lines with P&L
         for pos in self.position_lines:
-            self.ax.axhline(y=pos['price'], color=pos['color'],
+            price = pos['price']
+            pnl_text = ""
+
+            if current_ltp > 0:
+                pnl = (current_ltp - price) * pos.get('quantity', 1)
+                pnl_pct = ((current_ltp - price) / price) * 100
+                pnl_sign = '+' if pnl >= 0 else ''
+                pnl_color = '#26a69a' if pnl >= 0 else '#ef5350'
+                pnl_text = f" | P&L: {pnl_sign}₹{pnl:.0f} ({pnl_sign}{pnl_pct:.1f}%)"
+
+            self.ax.axhline(y=price, color=pos['color'],
                           linestyle='-', linewidth=3, alpha=0.9)
-            self.ax.text(self.ax.get_xlim()[1] * 0.98, pos['price'],
-                        f" 📍 {pos['type']}: ₹{pos['price']:.2f}",
+            self.ax.text(self.ax.get_xlim()[1] * 0.98, price,
+                        f" 📍 {pos['type']}: ₹{price:.2f}{pnl_text}",
                         color=pos['color'], va='center', fontsize=10, fontweight='bold',
                         bbox=dict(boxstyle='round,pad=0.3', facecolor='#1e1e1e',
                                  edgecolor=pos['color'], alpha=0.95))
 
     def update_order_line_price(self, order_data: dict, new_price: float):
-        """Update the price of an order line"""
+        """Update the price of an order line with P&L display"""
         old_price = order_data['price']
         order_data['price'] = new_price
+
+        # Get current LTP
+        current_ltp = 0
+        if self.ohlc_data:
+            current_ltp = float(self.ohlc_data[-1].get('close', 0))
+
+        # Calculate P&L text
+        entry_price = order_data.get('entry_price')
+        quantity = order_data.get('quantity', 1)
+        pnl_text = ""
+
+        if entry_price and entry_price > 0:
+            pnl = (new_price - entry_price) * quantity
+            pnl_pct = ((new_price - entry_price) / entry_price) * 100
+            pnl_sign = '+' if pnl >= 0 else ''
+            pnl_text = f" | {pnl_sign}₹{pnl:.0f} ({pnl_sign}{pnl_pct:.1f}%)"
+        elif current_ltp > 0:
+            diff = new_price - current_ltp
+            diff_pct = (diff / current_ltp) * 100
+            diff_sign = '+' if diff >= 0 else ''
+            pnl_text = f" | {diff_sign}{diff_pct:.1f}% from LTP"
 
         # Update line position
         if order_data.get('line_obj'):
             order_data['line_obj'].set_ydata([new_price, new_price])
 
-        # Update text
+        # Update text with P&L
         if order_data.get('text_obj'):
             order_data['text_obj'].set_position((self.ax.get_xlim()[1] * 0.98, new_price))
-            order_data['text_obj'].set_text(f" ⋮ {order_data['type']}: ₹{new_price:.2f}")
+            order_data['text_obj'].set_text(f" ⋮ {order_data['type']}: ₹{new_price:.2f}{pnl_text}")
 
         self.draw()
         return old_price

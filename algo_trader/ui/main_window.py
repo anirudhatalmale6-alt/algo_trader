@@ -1423,7 +1423,7 @@ class MainWindow(QMainWindow):
         name_layout.addWidget(self.sb_strategy_name)
         strategy_io_layout.addLayout(name_layout)
 
-        # Save/Load buttons
+        # Save/Load buttons - Row 1
         io_btn_layout = QHBoxLayout()
         self.sb_save_strategy_btn = QPushButton("💾 Save")
         self.sb_save_strategy_btn.clicked.connect(self._save_custom_strategy)
@@ -1433,11 +1433,27 @@ class MainWindow(QMainWindow):
         self.sb_load_strategy_btn.clicked.connect(self._load_custom_strategy)
         io_btn_layout.addWidget(self.sb_load_strategy_btn)
 
+        self.sb_edit_strategy_btn = QPushButton("✏️ Edit")
+        self.sb_edit_strategy_btn.clicked.connect(self._edit_saved_strategy)
+        io_btn_layout.addWidget(self.sb_edit_strategy_btn)
+        strategy_io_layout.addLayout(io_btn_layout)
+
+        # Deploy/Delete buttons - Row 2
+        io_btn_layout2 = QHBoxLayout()
         self.sb_deploy_strategy_btn = QPushButton("🚀 Deploy")
         self.sb_deploy_strategy_btn.setStyleSheet("background-color: #FF9800; color: white;")
         self.sb_deploy_strategy_btn.clicked.connect(self._deploy_saved_strategy)
-        io_btn_layout.addWidget(self.sb_deploy_strategy_btn)
-        strategy_io_layout.addLayout(io_btn_layout)
+        io_btn_layout2.addWidget(self.sb_deploy_strategy_btn)
+
+        self.sb_delete_strategy_btn = QPushButton("🗑️ Delete")
+        self.sb_delete_strategy_btn.setStyleSheet("background-color: #F44336; color: white;")
+        self.sb_delete_strategy_btn.clicked.connect(self._delete_saved_strategy)
+        io_btn_layout2.addWidget(self.sb_delete_strategy_btn)
+
+        self.sb_open_folder_btn = QPushButton("📁 Folder")
+        self.sb_open_folder_btn.clicked.connect(self._open_strategies_folder)
+        io_btn_layout2.addWidget(self.sb_open_folder_btn)
+        strategy_io_layout.addLayout(io_btn_layout2)
 
         # Saved strategies list
         self.sb_saved_strategies_combo = QComboBox()
@@ -1987,6 +2003,81 @@ For accurate Greeks, use live option data."""
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self._execute_strategy_builder()
+
+    def _edit_saved_strategy(self):
+        """Edit a saved strategy - load it for modification"""
+        selected = self.sb_saved_strategies_combo.currentText()
+        if selected == "-- Select Saved Strategy --" or not selected:
+            QMessageBox.warning(self, "Select Strategy", "Please select a strategy to edit")
+            return
+
+        # Load the strategy for editing
+        self._load_custom_strategy()
+
+        # Set the name so user can save it back
+        self.sb_strategy_name.setText(selected)
+
+        QMessageBox.information(self, "Edit Mode",
+            f"Strategy '{selected}' loaded for editing.\n\n"
+            "Make your changes:\n"
+            "- Modify legs (add/remove)\n"
+            "- Change strike prices\n"
+            "- Adjust quantities\n\n"
+            "Click 'Save' to save changes with same name,\n"
+            "or change the name to save as new strategy.")
+
+        self.status_bar.showMessage(f"Editing strategy: {selected}", 5000)
+
+    def _delete_saved_strategy(self):
+        """Delete a saved strategy"""
+        import os
+
+        selected = self.sb_saved_strategies_combo.currentText()
+        if selected == "-- Select Saved Strategy --" or not selected:
+            QMessageBox.warning(self, "Select Strategy", "Please select a strategy to delete")
+            return
+
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Are you sure you want to delete strategy '{selected}'?\n\nThis cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            filepath = os.path.join(self.strategies_folder, f"{selected}.json")
+            try:
+                os.remove(filepath)
+                self._refresh_saved_strategies_list()
+                QMessageBox.information(self, "Deleted", f"Strategy '{selected}' deleted successfully.")
+                self.status_bar.showMessage(f"Strategy '{selected}' deleted", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete strategy: {e}")
+
+    def _open_strategies_folder(self):
+        """Open the strategies folder in file explorer"""
+        import os
+        import subprocess
+        import sys
+
+        if not hasattr(self, 'strategies_folder'):
+            self._init_strategies_folder()
+
+        folder_path = self.strategies_folder
+
+        try:
+            if sys.platform == 'win32':
+                os.startfile(folder_path)
+            elif sys.platform == 'darwin':  # macOS
+                subprocess.run(['open', folder_path])
+            else:  # Linux
+                subprocess.run(['xdg-open', folder_path])
+
+            self.status_bar.showMessage(f"Opened folder: {folder_path}", 3000)
+        except Exception as e:
+            # If can't open, show the path
+            QMessageBox.information(self, "Strategies Folder",
+                f"Strategies are saved at:\n\n{folder_path}\n\n"
+                "You can open this folder manually to view/edit JSON files.")
 
     def _lock_entry_price(self):
         """Lock the current spot price as entry price"""

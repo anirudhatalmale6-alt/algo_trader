@@ -34,6 +34,9 @@ class MainWindow(QMainWindow):
 
     # Signal to handle Chartink alerts from background thread
     chartink_alert_signal = pyqtSignal(object)
+    # Signal for MTF analysis updates from background thread
+    mtf_update_signal = pyqtSignal(str, object)  # symbol, results
+    mtf_log_signal = pyqtSignal(str)  # log message
 
     def __init__(self):
         super().__init__()
@@ -927,7 +930,15 @@ class MainWindow(QMainWindow):
         log_layout.addWidget(self.mtf_log)
         layout.addWidget(log_group)
 
+        # Connect MTF signals for thread-safe UI updates
+        self.mtf_update_signal.connect(self._update_mtf_ui)
+        self.mtf_log_signal.connect(self._append_mtf_log)
+
         self.tabs.addTab(mtf_widget, "MTF Analysis")
+
+    def _append_mtf_log(self, message: str):
+        """Append message to MTF log (called on main thread via signal)"""
+        self.mtf_log.append(message)
 
     def _analyze_mtf(self):
         """Perform Multi-Timeframe Analysis"""
@@ -983,25 +994,20 @@ class MainWindow(QMainWindow):
                     results[tf_name] = None
                     self._mtf_log(f"✗ {tf_name}: Error - {str(e)[:50]}")
 
-            # Update UI on main thread
-            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
-            QMetaObject.invokeMethod(self, "_update_mtf_ui",
-                                    Qt.ConnectionType.QueuedConnection,
-                                    Q_ARG(str, symbol),
-                                    Q_ARG(object, results))
+            # Update UI on main thread using signal
+            self.mtf_update_signal.emit(symbol, results)
 
         except Exception as e:
             self._mtf_log(f"Error: {str(e)}")
             logger.error(f"MTF analysis error: {e}")
 
-        # Re-enable button
-        from PyQt6.QtCore import QMetaObject, Qt
-        QMetaObject.invokeMethod(self.mtf_analyze_btn, "setEnabled",
-                                Qt.ConnectionType.QueuedConnection,
-                                Q_ARG(bool, True))
-        QMetaObject.invokeMethod(self.mtf_analyze_btn, "setText",
-                                Qt.ConnectionType.QueuedConnection,
-                                Q_ARG(str, "🔍 Analyze"))
+        # Re-enable button on main thread
+        def reset_button():
+            self.mtf_analyze_btn.setEnabled(True)
+            self.mtf_analyze_btn.setText("🔍 Analyze")
+
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, reset_button)
 
     def _calculate_indicators(self, data, timeframe: str) -> dict:
         """Calculate technical indicators for a timeframe"""
@@ -1166,13 +1172,10 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"MTF Analysis complete for {symbol}", 5000)
 
     def _mtf_log(self, message: str):
-        """Add message to MTF analysis log"""
+        """Add message to MTF analysis log (thread-safe via signal)"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
-        from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
-        QMetaObject.invokeMethod(self.mtf_log, "append",
-                                Qt.ConnectionType.QueuedConnection,
-                                Q_ARG(str, f"[{timestamp}] {message}"))
+        self.mtf_log_signal.emit(f"[{timestamp}] {message}")
 
     def _open_mtf_tradingview(self):
         """Open TradingView for the current MTF symbol"""

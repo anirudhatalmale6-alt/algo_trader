@@ -1273,13 +1273,7 @@ class MainWindow(QMainWindow):
         self.sb_expiry.setMinimumHeight(30)
         symbol_layout.addRow("Expiry:", self.sb_expiry)
 
-        # Row 1: Symbol & Pre-built Strategies side by side
-        row1_layout = QHBoxLayout()
-        row1_layout.addWidget(symbol_group)
-        row1_layout.addWidget(prebuilt_group)
-        config_layout.addLayout(row1_layout)
-
-        # Pre-built Strategies
+        # Pre-built Strategies (define before row1_layout)
         prebuilt_group = QGroupBox("⚡ Pre-built Strategies")
         prebuilt_layout = QVBoxLayout(prebuilt_group)
 
@@ -1317,7 +1311,11 @@ class MainWindow(QMainWindow):
         strategies_row2.addWidget(self.sb_bear_spread_btn)
         prebuilt_layout.addLayout(strategies_row2)
 
-        # prebuilt_group already added in row1_layout
+        # Row 1: Symbol & Pre-built Strategies side by side
+        row1_layout = QHBoxLayout()
+        row1_layout.addWidget(symbol_group)
+        row1_layout.addWidget(prebuilt_group)
+        config_layout.addLayout(row1_layout)
 
         # Strategy Legs
         legs_group = QGroupBox("📝 Strategy Legs (Max 4)")

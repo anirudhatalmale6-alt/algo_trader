@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self._create_chartink_tab()
         self._create_chart_tab()
         self._create_mtf_tab()  # Multi-Timeframe Analysis
+        self._create_strategy_builder_tab()  # Option Strategy Builder
         self._create_orders_tab()
         self._create_positions_tab()
         self._create_risk_tab()
@@ -1220,6 +1221,572 @@ class MainWindow(QMainWindow):
             self._open_tradingview_chart(symbol)
         else:
             QMessageBox.warning(self, "Error", "Please enter a symbol first")
+
+    def _create_strategy_builder_tab(self):
+        """Create Option Strategy Builder tab with Payoff Chart"""
+        try:
+            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+            from matplotlib.figure import Figure
+            import numpy as np
+        except ImportError:
+            # Matplotlib not available - show placeholder
+            placeholder = QWidget()
+            layout = QVBoxLayout(placeholder)
+            layout.addWidget(QLabel("Strategy Builder requires matplotlib.\n\nInstall with: pip install matplotlib"))
+            self.tabs.addTab(placeholder, "Strategy Builder")
+            return
+
+        builder_widget = QWidget()
+        main_layout = QHBoxLayout(builder_widget)
+
+        # Left Panel - Strategy Configuration
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_panel.setMaximumWidth(450)
+
+        # Symbol & Expiry Selection
+        symbol_group = QGroupBox("📊 Symbol & Expiry")
+        symbol_layout = QFormLayout(symbol_group)
+
+        self.sb_symbol = QComboBox()
+        self.sb_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
+        self.sb_symbol.setEditable(True)
+        self.sb_symbol.currentTextChanged.connect(self._on_sb_symbol_changed)
+        symbol_layout.addRow("Symbol:", self.sb_symbol)
+
+        self.sb_spot_price = QDoubleSpinBox()
+        self.sb_spot_price.setRange(0, 999999)
+        self.sb_spot_price.setDecimals(2)
+        self.sb_spot_price.setValue(25000)
+        self.sb_spot_price.setPrefix("₹ ")
+        self.sb_spot_price.valueChanged.connect(self._update_payoff_chart)
+        symbol_layout.addRow("Spot Price:", self.sb_spot_price)
+
+        self.sb_expiry = QComboBox()
+        self.sb_expiry.addItems(["Current Week", "Next Week", "Current Month", "Next Month"])
+        symbol_layout.addRow("Expiry:", self.sb_expiry)
+
+        left_layout.addWidget(symbol_group)
+
+        # Pre-built Strategies
+        prebuilt_group = QGroupBox("⚡ Pre-built Strategies")
+        prebuilt_layout = QVBoxLayout(prebuilt_group)
+
+        strategies_row1 = QHBoxLayout()
+        self.sb_iron_fly_btn = QPushButton("Iron Fly")
+        self.sb_iron_fly_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("iron_fly"))
+        strategies_row1.addWidget(self.sb_iron_fly_btn)
+
+        self.sb_iron_condor_btn = QPushButton("Iron Condor")
+        self.sb_iron_condor_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("iron_condor"))
+        strategies_row1.addWidget(self.sb_iron_condor_btn)
+
+        self.sb_straddle_btn = QPushButton("Straddle")
+        self.sb_straddle_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("straddle"))
+        strategies_row1.addWidget(self.sb_straddle_btn)
+        prebuilt_layout.addLayout(strategies_row1)
+
+        strategies_row2 = QHBoxLayout()
+        self.sb_strangle_btn = QPushButton("Strangle")
+        self.sb_strangle_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("strangle"))
+        strategies_row2.addWidget(self.sb_strangle_btn)
+
+        self.sb_bull_spread_btn = QPushButton("Bull Call")
+        self.sb_bull_spread_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("bull_call_spread"))
+        strategies_row2.addWidget(self.sb_bull_spread_btn)
+
+        self.sb_bear_spread_btn = QPushButton("Bear Put")
+        self.sb_bear_spread_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("bear_put_spread"))
+        strategies_row2.addWidget(self.sb_bear_spread_btn)
+        prebuilt_layout.addLayout(strategies_row2)
+
+        left_layout.addWidget(prebuilt_group)
+
+        # Strategy Legs
+        legs_group = QGroupBox("📝 Strategy Legs (Max 4)")
+        legs_layout = QVBoxLayout(legs_group)
+
+        # Legs Table
+        self.sb_legs_table = QTableWidget()
+        self.sb_legs_table.setColumnCount(6)
+        self.sb_legs_table.setHorizontalHeaderLabels(["B/S", "Type", "Strike", "Qty", "Premium", "Remove"])
+        self.sb_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.sb_legs_table.setMaximumHeight(180)
+        legs_layout.addWidget(self.sb_legs_table)
+
+        # Add Leg Controls
+        add_leg_layout = QHBoxLayout()
+
+        self.sb_leg_action = QComboBox()
+        self.sb_leg_action.addItems(["BUY", "SELL"])
+        add_leg_layout.addWidget(self.sb_leg_action)
+
+        self.sb_leg_type = QComboBox()
+        self.sb_leg_type.addItems(["CE", "PE"])
+        add_leg_layout.addWidget(self.sb_leg_type)
+
+        self.sb_leg_strike = QDoubleSpinBox()
+        self.sb_leg_strike.setRange(0, 999999)
+        self.sb_leg_strike.setDecimals(0)
+        self.sb_leg_strike.setSingleStep(50)
+        self.sb_leg_strike.setValue(25000)
+        self.sb_leg_strike.setPrefix("₹")
+        add_leg_layout.addWidget(self.sb_leg_strike)
+
+        self.sb_leg_qty = QSpinBox()
+        self.sb_leg_qty.setRange(1, 100)
+        self.sb_leg_qty.setValue(1)
+        self.sb_leg_qty.setSuffix(" lots")
+        add_leg_layout.addWidget(self.sb_leg_qty)
+
+        self.sb_leg_premium = QDoubleSpinBox()
+        self.sb_leg_premium.setRange(0, 99999)
+        self.sb_leg_premium.setDecimals(2)
+        self.sb_leg_premium.setValue(100)
+        self.sb_leg_premium.setPrefix("₹")
+        add_leg_layout.addWidget(self.sb_leg_premium)
+
+        legs_layout.addLayout(add_leg_layout)
+
+        add_leg_btn_layout = QHBoxLayout()
+        self.sb_add_leg_btn = QPushButton("➕ Add Leg")
+        self.sb_add_leg_btn.clicked.connect(self._add_strategy_leg)
+        add_leg_btn_layout.addWidget(self.sb_add_leg_btn)
+
+        self.sb_clear_legs_btn = QPushButton("🗑️ Clear All")
+        self.sb_clear_legs_btn.clicked.connect(self._clear_strategy_legs)
+        add_leg_btn_layout.addWidget(self.sb_clear_legs_btn)
+        legs_layout.addLayout(add_leg_btn_layout)
+
+        left_layout.addWidget(legs_group)
+
+        # Strategy Summary
+        summary_group = QGroupBox("📈 Strategy Summary")
+        summary_layout = QFormLayout(summary_group)
+
+        self.sb_max_profit = QLabel("₹0.00")
+        self.sb_max_profit.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 14px;")
+        summary_layout.addRow("Max Profit:", self.sb_max_profit)
+
+        self.sb_max_loss = QLabel("₹0.00")
+        self.sb_max_loss.setStyleSheet("color: #F44336; font-weight: bold; font-size: 14px;")
+        summary_layout.addRow("Max Loss:", self.sb_max_loss)
+
+        self.sb_breakeven = QLabel("--")
+        self.sb_breakeven.setStyleSheet("color: #2196F3; font-weight: bold;")
+        summary_layout.addRow("Breakeven:", self.sb_breakeven)
+
+        self.sb_net_premium = QLabel("₹0.00")
+        summary_layout.addRow("Net Premium:", self.sb_net_premium)
+
+        self.sb_risk_reward = QLabel("--")
+        summary_layout.addRow("Risk:Reward:", self.sb_risk_reward)
+
+        left_layout.addWidget(summary_group)
+
+        # Execute Button
+        execute_layout = QHBoxLayout()
+        self.sb_execute_btn = QPushButton("🚀 Execute Strategy")
+        self.sb_execute_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;")
+        self.sb_execute_btn.clicked.connect(self._execute_strategy_builder)
+        execute_layout.addWidget(self.sb_execute_btn)
+        left_layout.addLayout(execute_layout)
+
+        left_layout.addStretch()
+        main_layout.addWidget(left_panel)
+
+        # Right Panel - Payoff Chart
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+
+        chart_group = QGroupBox("📊 Payoff Diagram")
+        chart_layout = QVBoxLayout(chart_group)
+
+        # Create matplotlib figure for payoff chart
+        self.sb_figure = Figure(figsize=(8, 6), facecolor='#1e1e1e')
+        self.sb_canvas = FigureCanvas(self.sb_figure)
+        self.sb_ax = self.sb_figure.add_subplot(111)
+        self._setup_payoff_chart()
+        chart_layout.addWidget(self.sb_canvas)
+
+        right_layout.addWidget(chart_group)
+
+        # Chart controls
+        chart_controls = QHBoxLayout()
+        self.sb_refresh_chart_btn = QPushButton("🔄 Refresh Chart")
+        self.sb_refresh_chart_btn.clicked.connect(self._update_payoff_chart)
+        chart_controls.addWidget(self.sb_refresh_chart_btn)
+
+        self.sb_show_greeks_btn = QPushButton("📐 Show Greeks")
+        self.sb_show_greeks_btn.clicked.connect(self._show_strategy_greeks)
+        chart_controls.addWidget(self.sb_show_greeks_btn)
+        right_layout.addLayout(chart_controls)
+
+        main_layout.addWidget(right_panel)
+
+        # Initialize strategy legs data
+        self.strategy_legs = []
+
+        self.tabs.addTab(builder_widget, "Strategy Builder")
+
+    def _setup_payoff_chart(self):
+        """Setup the payoff chart styling"""
+        self.sb_ax.set_facecolor('#2d2d2d')
+        self.sb_ax.tick_params(colors='white')
+        self.sb_ax.spines['bottom'].set_color('white')
+        self.sb_ax.spines['top'].set_color('white')
+        self.sb_ax.spines['left'].set_color('white')
+        self.sb_ax.spines['right'].set_color('white')
+        self.sb_ax.set_xlabel('Spot Price at Expiry', color='white')
+        self.sb_ax.set_ylabel('Profit / Loss (₹)', color='white')
+        self.sb_ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+        self.sb_ax.set_title('Strategy Payoff', color='white')
+        self.sb_figure.tight_layout()
+
+    def _on_sb_symbol_changed(self, symbol):
+        """Handle symbol change in strategy builder"""
+        # Update spot price based on symbol (approximate)
+        spot_prices = {
+            "NIFTY": 25000,
+            "BANKNIFTY": 52000,
+            "FINNIFTY": 23000,
+            "MIDCPNIFTY": 12000
+        }
+        if symbol.upper() in spot_prices:
+            self.sb_spot_price.setValue(spot_prices[symbol.upper()])
+            self.sb_leg_strike.setValue(spot_prices[symbol.upper()])
+
+    def _add_strategy_leg(self):
+        """Add a leg to the strategy"""
+        if len(self.strategy_legs) >= 4:
+            QMessageBox.warning(self, "Limit", "Maximum 4 legs allowed")
+            return
+
+        leg = {
+            'action': self.sb_leg_action.currentText(),
+            'type': self.sb_leg_type.currentText(),
+            'strike': self.sb_leg_strike.value(),
+            'qty': self.sb_leg_qty.value(),
+            'premium': self.sb_leg_premium.value()
+        }
+        self.strategy_legs.append(leg)
+        self._refresh_legs_table()
+        self._update_payoff_chart()
+        self._calculate_strategy_metrics()
+
+    def _remove_strategy_leg(self, index):
+        """Remove a leg from the strategy"""
+        if 0 <= index < len(self.strategy_legs):
+            self.strategy_legs.pop(index)
+            self._refresh_legs_table()
+            self._update_payoff_chart()
+            self._calculate_strategy_metrics()
+
+    def _clear_strategy_legs(self):
+        """Clear all strategy legs"""
+        self.strategy_legs = []
+        self._refresh_legs_table()
+        self._update_payoff_chart()
+        self._calculate_strategy_metrics()
+
+    def _refresh_legs_table(self):
+        """Refresh the legs table"""
+        self.sb_legs_table.setRowCount(len(self.strategy_legs))
+        for i, leg in enumerate(self.strategy_legs):
+            self.sb_legs_table.setItem(i, 0, QTableWidgetItem(leg['action']))
+            self.sb_legs_table.setItem(i, 1, QTableWidgetItem(leg['type']))
+            self.sb_legs_table.setItem(i, 2, QTableWidgetItem(f"₹{leg['strike']:.0f}"))
+            self.sb_legs_table.setItem(i, 3, QTableWidgetItem(str(leg['qty'])))
+            self.sb_legs_table.setItem(i, 4, QTableWidgetItem(f"₹{leg['premium']:.2f}"))
+
+            remove_btn = QPushButton("❌")
+            remove_btn.clicked.connect(lambda checked, idx=i: self._remove_strategy_leg(idx))
+            self.sb_legs_table.setCellWidget(i, 5, remove_btn)
+
+    def _calculate_leg_payoff(self, leg, spot_prices):
+        """Calculate payoff for a single leg at given spot prices"""
+        import numpy as np
+        strike = leg['strike']
+        premium = leg['premium']
+        qty = leg['qty']
+        lot_size = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 25
+
+        if leg['type'] == 'CE':
+            # Call option payoff
+            intrinsic = np.maximum(spot_prices - strike, 0)
+        else:
+            # Put option payoff
+            intrinsic = np.maximum(strike - spot_prices, 0)
+
+        if leg['action'] == 'BUY':
+            payoff = (intrinsic - premium) * qty * lot_size
+        else:
+            payoff = (premium - intrinsic) * qty * lot_size
+
+        return payoff
+
+    def _update_payoff_chart(self):
+        """Update the payoff chart based on current strategy"""
+        import numpy as np
+
+        self.sb_ax.clear()
+        self._setup_payoff_chart()
+
+        if not self.strategy_legs:
+            self.sb_canvas.draw()
+            return
+
+        spot = self.sb_spot_price.value()
+        # Create price range (±20% from spot)
+        price_range = np.linspace(spot * 0.8, spot * 1.2, 500)
+
+        # Calculate combined payoff
+        total_payoff = np.zeros_like(price_range)
+        for leg in self.strategy_legs:
+            leg_payoff = self._calculate_leg_payoff(leg, price_range)
+            total_payoff += leg_payoff
+
+        # Plot payoff
+        # Color areas
+        profit_mask = total_payoff >= 0
+        loss_mask = total_payoff < 0
+
+        self.sb_ax.fill_between(price_range, total_payoff, 0, where=profit_mask,
+                                color='#4CAF50', alpha=0.3, label='Profit')
+        self.sb_ax.fill_between(price_range, total_payoff, 0, where=loss_mask,
+                                color='#F44336', alpha=0.3, label='Loss')
+        self.sb_ax.plot(price_range, total_payoff, color='#2196F3', linewidth=2)
+
+        # Mark spot price
+        self.sb_ax.axvline(x=spot, color='yellow', linestyle='--', alpha=0.7, label=f'Spot: ₹{spot:.0f}')
+
+        # Mark breakeven points
+        breakeven_points = []
+        for i in range(1, len(total_payoff)):
+            if (total_payoff[i-1] < 0 and total_payoff[i] >= 0) or (total_payoff[i-1] >= 0 and total_payoff[i] < 0):
+                breakeven_points.append(price_range[i])
+
+        for be in breakeven_points:
+            self.sb_ax.axvline(x=be, color='cyan', linestyle=':', alpha=0.7)
+            self.sb_ax.annotate(f'BE: ₹{be:.0f}', xy=(be, 0), xytext=(be, max(total_payoff)*0.1),
+                               color='cyan', fontsize=8)
+
+        self.sb_ax.legend(loc='upper right', facecolor='#2d2d2d', labelcolor='white')
+        self.sb_ax.grid(True, alpha=0.2)
+        self.sb_figure.tight_layout()
+        self.sb_canvas.draw()
+
+    def _calculate_strategy_metrics(self):
+        """Calculate max profit, max loss, breakeven, etc."""
+        import numpy as np
+
+        if not self.strategy_legs:
+            self.sb_max_profit.setText("₹0.00")
+            self.sb_max_loss.setText("₹0.00")
+            self.sb_breakeven.setText("--")
+            self.sb_net_premium.setText("₹0.00")
+            self.sb_risk_reward.setText("--")
+            return
+
+        spot = self.sb_spot_price.value()
+        price_range = np.linspace(spot * 0.5, spot * 1.5, 1000)
+
+        total_payoff = np.zeros_like(price_range)
+        net_premium = 0
+
+        for leg in self.strategy_legs:
+            leg_payoff = self._calculate_leg_payoff(leg, price_range)
+            total_payoff += leg_payoff
+
+            lot_size = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 25
+            if leg['action'] == 'BUY':
+                net_premium -= leg['premium'] * leg['qty'] * lot_size
+            else:
+                net_premium += leg['premium'] * leg['qty'] * lot_size
+
+        max_profit = np.max(total_payoff)
+        max_loss = np.min(total_payoff)
+
+        # Find breakeven points
+        breakeven_points = []
+        for i in range(1, len(total_payoff)):
+            if (total_payoff[i-1] < 0 and total_payoff[i] >= 0) or (total_payoff[i-1] >= 0 and total_payoff[i] < 0):
+                breakeven_points.append(price_range[i])
+
+        # Update labels
+        if max_profit == float('inf') or max_profit > 10000000:
+            self.sb_max_profit.setText("Unlimited")
+        else:
+            self.sb_max_profit.setText(f"₹{max_profit:,.2f}")
+
+        if max_loss == float('-inf') or max_loss < -10000000:
+            self.sb_max_loss.setText("Unlimited")
+        else:
+            self.sb_max_loss.setText(f"₹{max_loss:,.2f}")
+
+        if breakeven_points:
+            be_str = ", ".join([f"₹{be:.0f}" for be in breakeven_points[:3]])
+            self.sb_breakeven.setText(be_str)
+        else:
+            self.sb_breakeven.setText("--")
+
+        self.sb_net_premium.setText(f"₹{net_premium:,.2f}")
+
+        if max_loss != 0 and max_profit > 0 and abs(max_loss) < 10000000:
+            rr = abs(max_profit / max_loss)
+            self.sb_risk_reward.setText(f"1:{rr:.2f}")
+        else:
+            self.sb_risk_reward.setText("--")
+
+    def _apply_prebuilt_strategy(self, strategy_name):
+        """Apply a pre-built strategy"""
+        spot = self.sb_spot_price.value()
+        gap = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 100
+        atm = round(spot / gap) * gap
+
+        self.strategy_legs = []
+
+        if strategy_name == "iron_fly":
+            # Sell ATM CE + Sell ATM PE + Buy OTM CE + Buy OTM PE
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'CE', 'strike': atm, 'qty': 1, 'premium': 200},
+                {'action': 'SELL', 'type': 'PE', 'strike': atm, 'qty': 1, 'premium': 200},
+                {'action': 'BUY', 'type': 'CE', 'strike': atm + gap * 4, 'qty': 1, 'premium': 50},
+                {'action': 'BUY', 'type': 'PE', 'strike': atm - gap * 4, 'qty': 1, 'premium': 50}
+            ]
+
+        elif strategy_name == "iron_condor":
+            # Sell OTM CE + Sell OTM PE + Buy further OTM CE + Buy further OTM PE
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'CE', 'strike': atm + gap * 2, 'qty': 1, 'premium': 100},
+                {'action': 'SELL', 'type': 'PE', 'strike': atm - gap * 2, 'qty': 1, 'premium': 100},
+                {'action': 'BUY', 'type': 'CE', 'strike': atm + gap * 4, 'qty': 1, 'premium': 30},
+                {'action': 'BUY', 'type': 'PE', 'strike': atm - gap * 4, 'qty': 1, 'premium': 30}
+            ]
+
+        elif strategy_name == "straddle":
+            # Sell ATM CE + Sell ATM PE
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'CE', 'strike': atm, 'qty': 1, 'premium': 200},
+                {'action': 'SELL', 'type': 'PE', 'strike': atm, 'qty': 1, 'premium': 200}
+            ]
+
+        elif strategy_name == "strangle":
+            # Sell OTM CE + Sell OTM PE
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'CE', 'strike': atm + gap * 3, 'qty': 1, 'premium': 80},
+                {'action': 'SELL', 'type': 'PE', 'strike': atm - gap * 3, 'qty': 1, 'premium': 80}
+            ]
+
+        elif strategy_name == "bull_call_spread":
+            # Buy ATM CE + Sell OTM CE
+            self.strategy_legs = [
+                {'action': 'BUY', 'type': 'CE', 'strike': atm, 'qty': 1, 'premium': 200},
+                {'action': 'SELL', 'type': 'CE', 'strike': atm + gap * 3, 'qty': 1, 'premium': 80}
+            ]
+
+        elif strategy_name == "bear_put_spread":
+            # Buy ATM PE + Sell OTM PE
+            self.strategy_legs = [
+                {'action': 'BUY', 'type': 'PE', 'strike': atm, 'qty': 1, 'premium': 200},
+                {'action': 'SELL', 'type': 'PE', 'strike': atm - gap * 3, 'qty': 1, 'premium': 80}
+            ]
+
+        self._refresh_legs_table()
+        self._update_payoff_chart()
+        self._calculate_strategy_metrics()
+        self.status_bar.showMessage(f"Applied {strategy_name.replace('_', ' ').title()} strategy", 3000)
+
+    def _show_strategy_greeks(self):
+        """Show strategy Greeks (Delta, Gamma, Theta, Vega)"""
+        if not self.strategy_legs:
+            QMessageBox.warning(self, "No Strategy", "Please add legs to the strategy first")
+            return
+
+        # Simplified Greeks calculation
+        total_delta = 0
+        total_theta = 0
+
+        for leg in self.strategy_legs:
+            # Approximate delta (0.5 for ATM, adjusted for ITM/OTM)
+            spot = self.sb_spot_price.value()
+            moneyness = (spot - leg['strike']) / spot
+
+            if leg['type'] == 'CE':
+                delta = 0.5 + moneyness * 2  # Simplified
+                delta = max(0, min(1, delta))
+            else:
+                delta = -0.5 + moneyness * 2
+                delta = max(-1, min(0, delta))
+
+            if leg['action'] == 'SELL':
+                delta = -delta
+
+            total_delta += delta * leg['qty']
+
+            # Approximate theta (negative for buyers)
+            theta = -leg['premium'] * 0.1  # ~10% decay per day approximation
+            if leg['action'] == 'SELL':
+                theta = -theta
+            total_theta += theta * leg['qty']
+
+        lot_size = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 25
+
+        msg = f"""Strategy Greeks (Approximate):
+
+📊 Total Delta: {total_delta * lot_size:.2f}
+   (Position moves ₹{abs(total_delta * lot_size):.2f} per ₹1 move in spot)
+
+⏰ Total Theta: ₹{total_theta * lot_size:.2f}/day
+   (Daily time decay {'gain' if total_theta > 0 else 'loss'})
+
+Note: These are simplified approximations.
+For accurate Greeks, use live option data."""
+
+        QMessageBox.information(self, "Strategy Greeks", msg)
+
+    def _execute_strategy_builder(self):
+        """Execute the strategy"""
+        if not self.strategy_legs:
+            QMessageBox.warning(self, "No Strategy", "Please add legs to the strategy first")
+            return
+
+        # Confirm execution
+        legs_summary = "\n".join([
+            f"{leg['action']} {leg['qty']} lot {leg['type']} @ ₹{leg['strike']:.0f}"
+            for leg in self.strategy_legs
+        ])
+
+        reply = QMessageBox.question(
+            self, "Confirm Strategy Execution",
+            f"Execute the following strategy?\n\n{legs_summary}\n\nSymbol: {self.sb_symbol.currentText()}\nExpiry: {self.sb_expiry.currentText()}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Execute each leg
+            paper_mode = self.config.get('trading.paper_mode', False)
+
+            for leg in self.strategy_legs:
+                logger.info(f"Executing leg: {leg['action']} {leg['type']} @ {leg['strike']}")
+
+                if paper_mode and hasattr(self, 'paper_simulator') and self.paper_simulator:
+                    # Paper trade
+                    option_symbol = f"{self.sb_symbol.currentText()}{int(leg['strike'])}{leg['type']}"
+                    self.paper_simulator.place_order(
+                        symbol=option_symbol,
+                        action=leg['action'],
+                        quantity=leg['qty'],
+                        order_type='MARKET',
+                        price=leg['premium']
+                    )
+                else:
+                    # Live trade - would need broker integration
+                    pass
+
+            QMessageBox.information(self, "Strategy Executed",
+                                   f"Strategy with {len(self.strategy_legs)} legs executed successfully!")
+            self.status_bar.showMessage("Strategy executed", 5000)
 
     def _create_orders_tab(self):
         """Create orders management tab"""

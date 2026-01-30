@@ -1259,7 +1259,7 @@ class MainWindow(QMainWindow):
         self.sb_spot_price.setDecimals(2)
         self.sb_spot_price.setValue(25000)
         self.sb_spot_price.setPrefix("₹ ")
-        self.sb_spot_price.valueChanged.connect(self._update_payoff_chart)
+        self.sb_spot_price.valueChanged.connect(self._on_spot_price_changed)
         symbol_layout.addRow("Spot Price:", self.sb_spot_price)
 
         self.sb_expiry = QComboBox()
@@ -1384,6 +1384,68 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(summary_group)
 
+        # Live P&L Box (shows difference when spot moves)
+        pnl_group = QGroupBox("📊 Live P&L")
+        pnl_layout = QFormLayout(pnl_group)
+
+        self.sb_entry_spot = QDoubleSpinBox()
+        self.sb_entry_spot.setRange(0, 999999)
+        self.sb_entry_spot.setDecimals(2)
+        self.sb_entry_spot.setValue(0)
+        self.sb_entry_spot.setPrefix("₹ ")
+        self.sb_entry_spot.valueChanged.connect(self._update_live_pnl)
+        pnl_layout.addRow("Entry Spot:", self.sb_entry_spot)
+
+        self.sb_current_pnl = QLabel("₹0.00")
+        self.sb_current_pnl.setStyleSheet("font-weight: bold; font-size: 16px;")
+        pnl_layout.addRow("Current P&L:", self.sb_current_pnl)
+
+        self.sb_pnl_change = QLabel("₹0.00 (0.00%)")
+        self.sb_pnl_change.setStyleSheet("font-size: 12px;")
+        pnl_layout.addRow("Change:", self.sb_pnl_change)
+
+        # Lock Entry button
+        self.sb_lock_entry_btn = QPushButton("🔒 Lock Entry Price")
+        self.sb_lock_entry_btn.clicked.connect(self._lock_entry_price)
+        pnl_layout.addRow(self.sb_lock_entry_btn)
+
+        left_layout.addWidget(pnl_group)
+
+        # Save/Load Strategy Buttons
+        strategy_io_group = QGroupBox("💾 Save/Load Strategy")
+        strategy_io_layout = QVBoxLayout(strategy_io_group)
+
+        # Strategy name input
+        name_layout = QHBoxLayout()
+        name_layout.addWidget(QLabel("Name:"))
+        self.sb_strategy_name = QLineEdit()
+        self.sb_strategy_name.setPlaceholderText("My Custom Strategy")
+        name_layout.addWidget(self.sb_strategy_name)
+        strategy_io_layout.addLayout(name_layout)
+
+        # Save/Load buttons
+        io_btn_layout = QHBoxLayout()
+        self.sb_save_strategy_btn = QPushButton("💾 Save")
+        self.sb_save_strategy_btn.clicked.connect(self._save_custom_strategy)
+        io_btn_layout.addWidget(self.sb_save_strategy_btn)
+
+        self.sb_load_strategy_btn = QPushButton("📂 Load")
+        self.sb_load_strategy_btn.clicked.connect(self._load_custom_strategy)
+        io_btn_layout.addWidget(self.sb_load_strategy_btn)
+
+        self.sb_deploy_strategy_btn = QPushButton("🚀 Deploy")
+        self.sb_deploy_strategy_btn.setStyleSheet("background-color: #FF9800; color: white;")
+        self.sb_deploy_strategy_btn.clicked.connect(self._deploy_saved_strategy)
+        io_btn_layout.addWidget(self.sb_deploy_strategy_btn)
+        strategy_io_layout.addLayout(io_btn_layout)
+
+        # Saved strategies list
+        self.sb_saved_strategies_combo = QComboBox()
+        self.sb_saved_strategies_combo.setPlaceholderText("-- Select Saved Strategy --")
+        strategy_io_layout.addWidget(self.sb_saved_strategies_combo)
+
+        left_layout.addWidget(strategy_io_group)
+
         # Execute Button
         execute_layout = QHBoxLayout()
         self.sb_execute_btn = QPushButton("🚀 Execute Strategy")
@@ -1426,6 +1488,11 @@ class MainWindow(QMainWindow):
 
         # Initialize strategy legs data
         self.strategy_legs = []
+        self.sb_entry_spot_locked = False
+
+        # Create strategies folder and load saved strategies
+        self._init_strategies_folder()
+        self._refresh_saved_strategies_list()
 
         self.tabs.addTab(builder_widget, "Strategy Builder")
 
@@ -1455,6 +1522,14 @@ class MainWindow(QMainWindow):
         if symbol.upper() in spot_prices:
             self.sb_spot_price.setValue(spot_prices[symbol.upper()])
             self.sb_leg_strike.setValue(spot_prices[symbol.upper()])
+
+    def _on_spot_price_changed(self):
+        """Handle spot price change - update chart and live P&L"""
+        self._update_payoff_chart()
+        self._calculate_strategy_metrics()
+        # Update live P&L if entry is locked
+        if hasattr(self, 'sb_entry_spot') and self.sb_entry_spot.value() > 0:
+            self._update_live_pnl()
 
     def _add_strategy_leg(self):
         """Add a leg to the strategy"""
@@ -1787,6 +1862,270 @@ For accurate Greeks, use live option data."""
             QMessageBox.information(self, "Strategy Executed",
                                    f"Strategy with {len(self.strategy_legs)} legs executed successfully!")
             self.status_bar.showMessage("Strategy executed", 5000)
+
+    def _init_strategies_folder(self):
+        """Initialize the strategies folder"""
+        import os
+        self.strategies_folder = os.path.join(os.path.expanduser("~"), "algo_trader_strategies")
+        if not os.path.exists(self.strategies_folder):
+            os.makedirs(self.strategies_folder)
+            logger.info(f"Created strategies folder: {self.strategies_folder}")
+
+    def _refresh_saved_strategies_list(self):
+        """Refresh the saved strategies dropdown"""
+        import os
+        import json
+        self.sb_saved_strategies_combo.clear()
+        self.sb_saved_strategies_combo.addItem("-- Select Saved Strategy --")
+
+        if not hasattr(self, 'strategies_folder'):
+            return
+
+        try:
+            for filename in os.listdir(self.strategies_folder):
+                if filename.endswith('.json'):
+                    strategy_name = filename[:-5]  # Remove .json
+                    self.sb_saved_strategies_combo.addItem(strategy_name)
+        except Exception as e:
+            logger.error(f"Error loading strategies list: {e}")
+
+    def _save_custom_strategy(self):
+        """Save current strategy to file"""
+        import os
+        import json
+
+        if not self.strategy_legs:
+            QMessageBox.warning(self, "No Strategy", "Please add legs to the strategy first")
+            return
+
+        strategy_name = self.sb_strategy_name.text().strip()
+        if not strategy_name:
+            strategy_name = f"Strategy_{len(os.listdir(self.strategies_folder)) + 1}"
+            self.sb_strategy_name.setText(strategy_name)
+
+        strategy_data = {
+            'name': strategy_name,
+            'symbol': self.sb_symbol.currentText(),
+            'spot_price': self.sb_spot_price.value(),
+            'expiry': self.sb_expiry.currentText(),
+            'legs': self.strategy_legs,
+            'created_at': datetime.now().isoformat()
+        }
+
+        filepath = os.path.join(self.strategies_folder, f"{strategy_name}.json")
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(strategy_data, f, indent=2)
+
+            self._refresh_saved_strategies_list()
+            QMessageBox.information(self, "Saved", f"Strategy saved to:\n{filepath}")
+            self.status_bar.showMessage(f"Strategy '{strategy_name}' saved", 3000)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save strategy: {e}")
+
+    def _load_custom_strategy(self):
+        """Load a saved strategy"""
+        import os
+        import json
+
+        selected = self.sb_saved_strategies_combo.currentText()
+        if selected == "-- Select Saved Strategy --" or not selected:
+            QMessageBox.warning(self, "Select Strategy", "Please select a strategy from the dropdown")
+            return
+
+        filepath = os.path.join(self.strategies_folder, f"{selected}.json")
+        try:
+            with open(filepath, 'r') as f:
+                strategy_data = json.load(f)
+
+            # Apply loaded strategy
+            self.sb_strategy_name.setText(strategy_data.get('name', ''))
+
+            # Set symbol
+            symbol = strategy_data.get('symbol', 'NIFTY')
+            idx = self.sb_symbol.findText(symbol)
+            if idx >= 0:
+                self.sb_symbol.setCurrentIndex(idx)
+            else:
+                self.sb_symbol.setCurrentText(symbol)
+
+            self.sb_spot_price.setValue(strategy_data.get('spot_price', 25000))
+
+            # Set expiry
+            expiry = strategy_data.get('expiry', 'Current Week')
+            idx = self.sb_expiry.findText(expiry)
+            if idx >= 0:
+                self.sb_expiry.setCurrentIndex(idx)
+
+            # Load legs
+            self.strategy_legs = strategy_data.get('legs', [])
+            self._refresh_legs_table()
+            self._update_payoff_chart()
+            self._calculate_strategy_metrics()
+
+            self.status_bar.showMessage(f"Strategy '{selected}' loaded", 3000)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load strategy: {e}")
+
+    def _deploy_saved_strategy(self):
+        """Deploy a saved strategy directly"""
+        selected = self.sb_saved_strategies_combo.currentText()
+        if selected == "-- Select Saved Strategy --" or not selected:
+            QMessageBox.warning(self, "Select Strategy", "Please select a strategy to deploy")
+            return
+
+        # First load the strategy
+        self._load_custom_strategy()
+
+        # Then execute it
+        if self.strategy_legs:
+            reply = QMessageBox.question(
+                self, "Deploy Strategy",
+                f"Deploy strategy '{selected}' now?\n\nThis will execute all {len(self.strategy_legs)} legs.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._execute_strategy_builder()
+
+    def _lock_entry_price(self):
+        """Lock the current spot price as entry price"""
+        current_spot = self.sb_spot_price.value()
+        self.sb_entry_spot.setValue(current_spot)
+        self.sb_entry_spot_locked = True
+        self.sb_lock_entry_btn.setText("🔓 Entry Locked")
+        self.sb_lock_entry_btn.setStyleSheet("background-color: #4CAF50; color: white;")
+        self._update_live_pnl()
+        self.status_bar.showMessage(f"Entry price locked at ₹{current_spot:.2f}", 3000)
+
+    def _update_live_pnl(self):
+        """Update live P&L based on spot price movement"""
+        import numpy as np
+
+        if not self.strategy_legs:
+            self.sb_current_pnl.setText("₹0.00")
+            self.sb_pnl_change.setText("₹0.00 (0.00%)")
+            return
+
+        entry_spot = self.sb_entry_spot.value()
+        current_spot = self.sb_spot_price.value()
+
+        if entry_spot <= 0:
+            self.sb_current_pnl.setText("Set entry price")
+            self.sb_pnl_change.setText("--")
+            return
+
+        # Calculate P&L at entry and current spot
+        entry_pnl = 0
+        current_pnl = 0
+
+        for leg in self.strategy_legs:
+            entry_payoff = self._calculate_leg_payoff(leg, np.array([entry_spot]))[0]
+            current_payoff = self._calculate_leg_payoff(leg, np.array([current_spot]))[0]
+            entry_pnl += entry_payoff
+            current_pnl += current_payoff
+
+        pnl_diff = current_pnl - entry_pnl
+
+        # Update current P&L display
+        if current_pnl >= 0:
+            self.sb_current_pnl.setText(f"₹{current_pnl:,.2f}")
+            self.sb_current_pnl.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 16px;")
+        else:
+            self.sb_current_pnl.setText(f"-₹{abs(current_pnl):,.2f}")
+            self.sb_current_pnl.setStyleSheet("color: #F44336; font-weight: bold; font-size: 16px;")
+
+        # Update P&L change display
+        spot_change = current_spot - entry_spot
+        spot_change_pct = (spot_change / entry_spot * 100) if entry_spot > 0 else 0
+
+        if pnl_diff >= 0:
+            self.sb_pnl_change.setText(f"+₹{pnl_diff:,.2f} (Spot: {'+' if spot_change >= 0 else ''}{spot_change:.0f})")
+            self.sb_pnl_change.setStyleSheet("color: #4CAF50; font-size: 12px;")
+        else:
+            self.sb_pnl_change.setText(f"-₹{abs(pnl_diff):,.2f} (Spot: {'+' if spot_change >= 0 else ''}{spot_change:.0f})")
+            self.sb_pnl_change.setStyleSheet("color: #F44336; font-size: 12px;")
+
+        # Update the payoff chart with current position marker
+        self._update_payoff_chart_with_live_pnl(entry_spot, current_spot, entry_pnl, current_pnl)
+
+    def _update_payoff_chart_with_live_pnl(self, entry_spot, current_spot, entry_pnl, current_pnl):
+        """Update payoff chart with live P&L markers"""
+        import numpy as np
+
+        self.sb_ax.clear()
+        self._setup_payoff_chart()
+
+        if not self.strategy_legs:
+            self.sb_canvas.draw()
+            return
+
+        spot = self.sb_spot_price.value()
+        # Create price range (±20% from spot)
+        price_range = np.linspace(spot * 0.8, spot * 1.2, 500)
+
+        # Calculate combined payoff
+        total_payoff = np.zeros_like(price_range)
+        for leg in self.strategy_legs:
+            leg_payoff = self._calculate_leg_payoff(leg, price_range)
+            total_payoff += leg_payoff
+
+        # Plot payoff
+        profit_mask = total_payoff >= 0
+        loss_mask = total_payoff < 0
+
+        self.sb_ax.fill_between(price_range, total_payoff, 0, where=profit_mask,
+                                color='#4CAF50', alpha=0.3, label='Profit')
+        self.sb_ax.fill_between(price_range, total_payoff, 0, where=loss_mask,
+                                color='#F44336', alpha=0.3, label='Loss')
+        self.sb_ax.plot(price_range, total_payoff, color='#2196F3', linewidth=2)
+
+        # Mark entry spot
+        if entry_spot > 0:
+            self.sb_ax.axvline(x=entry_spot, color='orange', linestyle='--', alpha=0.8, linewidth=2)
+            self.sb_ax.scatter([entry_spot], [entry_pnl], color='orange', s=100, zorder=5, marker='o')
+            self.sb_ax.annotate(f'Entry\n₹{entry_spot:.0f}', xy=(entry_spot, entry_pnl),
+                               xytext=(entry_spot - spot*0.03, entry_pnl + max(abs(total_payoff))*0.1),
+                               color='orange', fontsize=9, fontweight='bold')
+
+        # Mark current spot with P&L
+        self.sb_ax.axvline(x=current_spot, color='yellow', linestyle='-', alpha=0.9, linewidth=2)
+        self.sb_ax.scatter([current_spot], [current_pnl], color='yellow', s=150, zorder=5, marker='*')
+
+        # Draw line connecting entry to current position
+        if entry_spot > 0 and entry_spot != current_spot:
+            self.sb_ax.plot([entry_spot, current_spot], [entry_pnl, current_pnl],
+                           color='white', linestyle='-', linewidth=2, alpha=0.7)
+            # P&L difference annotation
+            pnl_diff = current_pnl - entry_pnl
+            mid_x = (entry_spot + current_spot) / 2
+            mid_y = (entry_pnl + current_pnl) / 2
+            color = '#4CAF50' if pnl_diff >= 0 else '#F44336'
+            self.sb_ax.annotate(f'{"+₹" if pnl_diff >= 0 else "-₹"}{abs(pnl_diff):,.0f}',
+                               xy=(mid_x, mid_y), fontsize=11, fontweight='bold',
+                               color=color, ha='center',
+                               bbox=dict(boxstyle='round', facecolor='#1e1e1e', edgecolor=color, alpha=0.9))
+
+        self.sb_ax.annotate(f'Current\n₹{current_spot:.0f}\nP&L: ₹{current_pnl:,.0f}',
+                           xy=(current_spot, current_pnl),
+                           xytext=(current_spot + spot*0.02, current_pnl + max(abs(total_payoff))*0.15),
+                           color='yellow', fontsize=9, fontweight='bold')
+
+        # Mark breakeven points
+        breakeven_points = []
+        for i in range(1, len(total_payoff)):
+            if (total_payoff[i-1] < 0 and total_payoff[i] >= 0) or (total_payoff[i-1] >= 0 and total_payoff[i] < 0):
+                breakeven_points.append(price_range[i])
+
+        for be in breakeven_points:
+            self.sb_ax.axvline(x=be, color='cyan', linestyle=':', alpha=0.7)
+            self.sb_ax.annotate(f'BE: ₹{be:.0f}', xy=(be, 0), xytext=(be, max(total_payoff)*0.05),
+                               color='cyan', fontsize=8)
+
+        self.sb_ax.legend(loc='upper right', facecolor='#2d2d2d', labelcolor='white')
+        self.sb_ax.grid(True, alpha=0.2)
+        self.sb_figure.tight_layout()
+        self.sb_canvas.draw()
 
     def _create_orders_tab(self):
         """Create orders management tab"""

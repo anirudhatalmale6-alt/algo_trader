@@ -43,6 +43,7 @@ class LegConfig:
     strike_selection: str = "ATM"    # From StrikeSelection
     expiry_selection: str = "Current Week"  # From ExpirySelection
     quantity: int = 1                # Number of lots
+    manual_strike: int = 0           # Manual strike price (0 = auto)
 
 
 @dataclass

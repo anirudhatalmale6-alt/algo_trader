@@ -1549,8 +1549,18 @@ class MainWindow(QMainWindow):
         leg1_layout.addRow("Action:", self.auto_leg1_action)
 
         self.auto_leg1_strike = QComboBox()
-        self.auto_leg1_strike.addItems([s.value for s in StrikeSelection])
+        self.auto_leg1_strike.addItems([s.value for s in StrikeSelection] + ["Manual"])
+        self.auto_leg1_strike.currentTextChanged.connect(self._on_auto_leg1_strike_changed)
         leg1_layout.addRow("Strike:", self.auto_leg1_strike)
+
+        # Manual strike price for Leg 1
+        self.auto_leg1_manual_strike = QDoubleSpinBox()
+        self.auto_leg1_manual_strike.setRange(0, 999999)
+        self.auto_leg1_manual_strike.setDecimals(0)
+        self.auto_leg1_manual_strike.setSingleStep(50)
+        self.auto_leg1_manual_strike.setPrefix("₹ ")
+        self.auto_leg1_manual_strike.setVisible(False)
+        leg1_layout.addRow("Strike Price:", self.auto_leg1_manual_strike)
 
         self.auto_leg1_expiry = QComboBox()
         self.auto_leg1_expiry.addItems([e.value for e in ExpirySelection])
@@ -1579,9 +1589,19 @@ class MainWindow(QMainWindow):
         leg2_layout.addRow("Action:", self.auto_leg2_action)
 
         self.auto_leg2_strike = QComboBox()
-        self.auto_leg2_strike.addItems([s.value for s in StrikeSelection])
+        self.auto_leg2_strike.addItems([s.value for s in StrikeSelection] + ["Manual"])
         self.auto_leg2_strike.setCurrentText("OTM +3")
+        self.auto_leg2_strike.currentTextChanged.connect(self._on_auto_leg2_strike_changed)
         leg2_layout.addRow("Strike:", self.auto_leg2_strike)
+
+        # Manual strike price for Leg 2
+        self.auto_leg2_manual_strike = QDoubleSpinBox()
+        self.auto_leg2_manual_strike.setRange(0, 999999)
+        self.auto_leg2_manual_strike.setDecimals(0)
+        self.auto_leg2_manual_strike.setSingleStep(50)
+        self.auto_leg2_manual_strike.setPrefix("₹ ")
+        self.auto_leg2_manual_strike.setVisible(False)
+        leg2_layout.addRow("Strike Price:", self.auto_leg2_manual_strike)
 
         self.auto_leg2_expiry = QComboBox()
         self.auto_leg2_expiry.addItems([e.value for e in ExpirySelection])
@@ -4335,6 +4355,16 @@ class MainWindow(QMainWindow):
         is_manual = index == 5  # "Manual" option
         self.chartink_manual_strike.setVisible(is_manual)
 
+    def _on_auto_leg1_strike_changed(self, text):
+        """Handle Leg 1 strike selection change (show/hide manual input)"""
+        is_manual = text == "Manual"
+        self.auto_leg1_manual_strike.setVisible(is_manual)
+
+    def _on_auto_leg2_strike_changed(self, text):
+        """Handle Leg 2 strike selection change (show/hide manual input)"""
+        is_manual = text == "Manual"
+        self.auto_leg2_manual_strike.setVisible(is_manual)
+
     def _on_chartink_alloc_type_changed(self, index):
         """Handle allocation type change"""
         if index == 0:  # Auto
@@ -5199,24 +5229,30 @@ class MainWindow(QMainWindow):
         from algo_trader.core.auto_options import LegConfig
 
         # Update Leg 1 config
+        leg1_strike = self.auto_leg1_strike.currentText()
+        leg1_manual = int(self.auto_leg1_manual_strike.value()) if leg1_strike == "Manual" else 0
         self.auto_options.config.leg1 = LegConfig(
             enabled=True,
             option_type=self.auto_leg1_type.currentText(),
             action=self.auto_leg1_action.currentText(),
-            strike_selection=self.auto_leg1_strike.currentText(),
+            strike_selection=leg1_strike,
             expiry_selection=self.auto_leg1_expiry.currentText(),
-            quantity=self.auto_leg1_qty.value()
+            quantity=self.auto_leg1_qty.value(),
+            manual_strike=leg1_manual
         )
 
         # Update Leg 2 config (hedge)
         hedge_on = self.auto_opt_hedge_enabled.isChecked()
+        leg2_strike = self.auto_leg2_strike.currentText()
+        leg2_manual = int(self.auto_leg2_manual_strike.value()) if leg2_strike == "Manual" else 0
         self.auto_options.config.leg2 = LegConfig(
             enabled=hedge_on,
             option_type=self.auto_leg2_type.currentText(),
             action=self.auto_leg2_action.currentText(),
-            strike_selection=self.auto_leg2_strike.currentText(),
+            strike_selection=leg2_strike,
             expiry_selection=self.auto_leg2_expiry.currentText(),
-            quantity=self.auto_leg2_qty.value()
+            quantity=self.auto_leg2_qty.value(),
+            manual_strike=leg2_manual
         )
 
         self.auto_options.update_config(
@@ -5238,13 +5274,15 @@ class MainWindow(QMainWindow):
             self.auto_options.disable()
 
         # Build info message
+        leg1_strike_display = f"₹{leg1_manual}" if leg1_strike == "Manual" else leg1_strike
         leg1_info = (f"Leg 1: {self.auto_leg1_action.currentText()} "
                      f"{self.auto_leg1_type.currentText()} "
-                     f"Strike:{self.auto_leg1_strike.currentText()} "
+                     f"Strike:{leg1_strike_display} "
                      f"Expiry:{self.auto_leg1_expiry.currentText()}")
 
         leg2_info = ""
         if hedge_on:
+            leg2_strike_display = f"₹{leg2_manual}" if leg2_strike == "Manual" else leg2_strike
             leg2_info = (f"\nLeg 2: {self.auto_leg2_action.currentText()} "
                          f"{self.auto_leg2_type.currentText()} "
                          f"Strike:{self.auto_leg2_strike.currentText()} "

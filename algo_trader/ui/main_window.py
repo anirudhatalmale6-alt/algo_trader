@@ -437,8 +437,18 @@ class MainWindow(QMainWindow):
         options_layout.setContentsMargins(0, 0, 0, 0)
 
         self.chartink_strike_selection = QComboBox()
-        self.chartink_strike_selection.addItems(["ATM", "ITM-1", "ITM-2", "OTM-1", "OTM-2"])
+        self.chartink_strike_selection.addItems(["ATM", "ITM-1", "ITM-2", "OTM-1", "OTM-2", "Manual"])
+        self.chartink_strike_selection.currentIndexChanged.connect(self._on_chartink_strike_changed)
         options_layout.addRow("Strike:", self.chartink_strike_selection)
+
+        # Manual strike price input (hidden by default)
+        self.chartink_manual_strike = QDoubleSpinBox()
+        self.chartink_manual_strike.setRange(0, 999999)
+        self.chartink_manual_strike.setDecimals(0)
+        self.chartink_manual_strike.setSingleStep(50)
+        self.chartink_manual_strike.setPrefix("₹ ")
+        self.chartink_manual_strike.setVisible(False)
+        options_layout.addRow("Strike Price:", self.chartink_manual_strike)
 
         self.chartink_option_type = QComboBox()
         self.chartink_option_type.addItems(["Auto (BUY=CE, SELL=PE)", "CE Only", "PE Only"])
@@ -4320,6 +4330,11 @@ class MainWindow(QMainWindow):
         else:
             self.chartink_quantity.setSuffix("")
 
+    def _on_chartink_strike_changed(self, index):
+        """Handle strike selection change (show/hide manual input)"""
+        is_manual = index == 5  # "Manual" option
+        self.chartink_manual_strike.setVisible(is_manual)
+
     def _on_chartink_alloc_type_changed(self, index):
         """Handle allocation type change"""
         if index == 0:  # Auto
@@ -4404,11 +4419,15 @@ class MainWindow(QMainWindow):
             strike_map = ["ATM", "ITM-1", "ITM-2", "OTM-1", "OTM-2"]
             option_type_map = ["auto", "CE", "PE"]
             expiry_map = ["current_week", "next_week", "current_month"]
+            strike_idx = self.chartink_strike_selection.currentIndex()
             options_config = {
-                'strike_selection': strike_map[self.chartink_strike_selection.currentIndex()],
+                'strike_selection': strike_map[strike_idx] if strike_idx < 5 else "Manual",
                 'option_type': option_type_map[self.chartink_option_type.currentIndex()],
                 'expiry': expiry_map[self.chartink_expiry.currentIndex()]
             }
+            # Add manual strike price if "Manual" selected
+            if strike_idx == 5:  # Manual
+                options_config['manual_strike'] = int(self.chartink_manual_strike.value())
 
         # Get allocation type and value
         alloc_type_index = self.chartink_alloc_type.currentIndex()
@@ -4814,6 +4833,7 @@ class MainWindow(QMainWindow):
         try:
             symbol = alert.symbol
             strike_selection = options_config.get('strike_selection', 'ATM')
+            manual_strike = options_config.get('manual_strike', 0)
             option_type_setting = options_config.get('option_type', 'auto')
             expiry_setting = options_config.get('expiry', 'current_week')
 
@@ -4826,9 +4846,15 @@ class MainWindow(QMainWindow):
 
             # Log to alerts table
             row = self.chartink_alerts_table.rowCount() - 1  # Last added row
-            action_text = f"OPTIONS: {symbol} {strike_selection} {option_type}"
 
-            logger.info(f"Chartink F&O Signal: {symbol} -> {action} -> {option_type} {strike_selection}")
+            # Format strike display
+            if strike_selection == 'Manual' and manual_strike > 0:
+                strike_display = f"₹{manual_strike}"
+            else:
+                strike_display = strike_selection
+            action_text = f"OPTIONS: {symbol} {strike_display} {option_type}"
+
+            logger.info(f"Chartink F&O Signal: {symbol} -> {action} -> {option_type} {strike_display}")
 
             # Check if Auto Options executor is available
             if hasattr(self, 'auto_options') and self.auto_options:
@@ -4852,14 +4878,26 @@ class MainWindow(QMainWindow):
                 }
 
                 try:
-                    # Execute via Auto Options
-                    result = self.auto_options.execute_signal(
-                        underlying=symbol,
-                        signal=SignalAction.BUY if action == 'BUY' else SignalAction.SELL,
-                        strike_selection=strike_map.get(strike_selection, StrikeSelection.ATM),
-                        expiry_selection=expiry_map.get(expiry_setting, ExpirySelection.CURRENT_WEEK),
-                        quantity=quantity
-                    )
+                    # Determine strike - manual or auto
+                    if strike_selection == 'Manual' and manual_strike > 0:
+                        # Execute with manual strike price
+                        result = self.auto_options.execute_signal(
+                            underlying=symbol,
+                            signal=SignalAction.BUY if action == 'BUY' else SignalAction.SELL,
+                            strike_price=manual_strike,  # Use manual strike
+                            option_type=option_type,
+                            expiry_selection=expiry_map.get(expiry_setting, ExpirySelection.CURRENT_WEEK),
+                            quantity=quantity
+                        )
+                    else:
+                        # Execute via Auto Options with auto strike selection
+                        result = self.auto_options.execute_signal(
+                            underlying=symbol,
+                            signal=SignalAction.BUY if action == 'BUY' else SignalAction.SELL,
+                            strike_selection=strike_map.get(strike_selection, StrikeSelection.ATM),
+                            expiry_selection=expiry_map.get(expiry_setting, ExpirySelection.CURRENT_WEEK),
+                            quantity=quantity
+                        )
 
                     if result and result.get('success'):
                         action_text = f"OPTIONS {option_type}: {result.get('option_symbol', 'N/A')}"

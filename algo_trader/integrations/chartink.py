@@ -451,6 +451,9 @@ class ChartinkScanner:
     def get_scan_condition_from_url(self, url: str) -> Optional[str]:
         """Extract scan condition from Chartink URL"""
         try:
+            # First, get CSRF token from main page
+            main_resp = self._session.get("https://chartink.com/screener/")
+
             response = self._session.get(url)
 
             if response.status_code != 200:
@@ -460,18 +463,42 @@ class ChartinkScanner:
             html = response.text
             import re
 
+            # Multiple patterns to try - Chartink changes HTML structure
             patterns = [
                 r'scan_clause\s*=\s*["\']([^"\']+)["\']',
                 r'data-scan-clause=["\']([^"\']+)["\']',
-                r'"scan_clause":\s*"([^"]+)"'
+                r'"scan_clause":\s*"([^"]+)"',
+                r'id="scan_clause"[^>]*value="([^"]+)"',
+                r'name="scan_clause"[^>]*value="([^"]+)"',
+                r'var\s+scan_clause\s*=\s*["\']([^"\']+)["\']',
+                r'scanClause\s*[:=]\s*["\']([^"\']+)["\']',
+                # Try to find in script tags
+                r'<script[^>]*>[^<]*scan_clause[^<]*["\']([^"\']+)["\'][^<]*</script>',
             ]
 
             for pattern in patterns:
-                match = re.search(pattern, html)
+                match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
                 if match:
-                    return match.group(1)
+                    condition = match.group(1)
+                    # Unescape HTML entities
+                    condition = condition.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                    logger.info(f"Extracted scan condition from URL: {condition[:50]}...")
+                    return condition
 
-            logger.warning(f"Could not extract scan condition from URL")
+            # Try to extract from hidden input
+            input_match = re.search(r'<input[^>]*id=["\']scan_clause["\'][^>]*value=["\']([^"\']+)["\']', html, re.IGNORECASE)
+            if input_match:
+                return input_match.group(1)
+
+            # Log HTML snippet for debugging
+            logger.warning(f"Could not extract scan condition from URL. HTML length: {len(html)}")
+
+            # Save a snippet for debugging
+            if 'scan_clause' in html.lower():
+                idx = html.lower().find('scan_clause')
+                snippet = html[max(0, idx-100):idx+200]
+                logger.debug(f"HTML snippet around 'scan_clause': {snippet}")
+
             return None
 
         except Exception as e:

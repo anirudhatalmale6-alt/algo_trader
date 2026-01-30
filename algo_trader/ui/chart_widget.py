@@ -1639,6 +1639,9 @@ class ChartWidget(QWidget):
 
         self._init_ui()
 
+        # Auto-load chart data on startup (works without broker using Yahoo Finance or sample data)
+        QTimer.singleShot(500, self._load_chart_data)
+
     def _init_ui(self):
         """Initialize UI"""
         layout = QVBoxLayout(self)

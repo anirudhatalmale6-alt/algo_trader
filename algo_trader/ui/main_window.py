@@ -2847,7 +2847,13 @@ class MainWindow(QMainWindow):
                 logger.info(f"is_authenticated: {dialog.broker_instance.is_authenticated}")
                 if dialog.broker_instance.is_authenticated:
                     self.brokers[broker_name] = dialog.broker_instance
+                    self.active_broker = dialog.broker_instance
                     logger.info(f"Broker {broker_name} added to self.brokers")
+
+                    # Set broker for chart widget
+                    if hasattr(self, 'chart_widget') and self.chart_widget:
+                        self.chart_widget.set_broker(dialog.broker_instance)
+
                     QMessageBox.information(self, "Connected", f"{broker_name.title()} broker connected successfully!")
                 else:
                     logger.warning(f"Broker {broker_name} instance exists but not authenticated")
@@ -4163,36 +4169,68 @@ class MainWindow(QMainWindow):
         self.chartink_alerts_table.setItem(row, 3, QTableWidgetItem(f"₹{alert.price:.2f}" if alert.price else "N/A"))
         self.chartink_alerts_table.setItem(row, 4, QTableWidgetItem(str(quantity)))
 
-        # Execute trade if broker is connected
-        current_broker = self.broker_combo.currentText().lower()
-        if current_broker and current_broker in self.brokers:
+        # Execute trade - Paper Trading mode or Broker mode
+        paper_mode = self.config.get('trading.paper_mode', False)
+
+        if paper_mode and hasattr(self, 'paper_simulator') and self.paper_simulator:
+            # Paper Trading Mode
             try:
-                order = Order(
+                result = self.paper_simulator.place_order(
                     symbol=alert.symbol,
-                    transaction_type=TransactionType.BUY if action == "BUY" else TransactionType.SELL,
+                    action=action,
                     quantity=quantity,
-                    order_type=OrderType.MARKET,
-                    exchange=Exchange.NSE
+                    order_type='MARKET',
+                    price=alert.price or 0
                 )
-                result = self.order_manager.place_order(order, current_broker)
 
-                if is_squareoff:
-                    action_text = f"SQUARE-OFF {action}: {result.broker_order_id}"
-                    self.chartink_scanner.record_squareoff(alert.scan_name, alert.symbol)
+                if result.get('success'):
+                    if is_squareoff:
+                        action_text = f"PAPER SQUARE-OFF {action}: {result.get('order_id')}"
+                        self.chartink_scanner.record_squareoff(alert.scan_name, alert.symbol)
+                    else:
+                        action_text = f"PAPER {action}: {result.get('order_id')}"
+                        self.chartink_scanner.record_trade(
+                            alert.scan_name, alert.symbol, action, quantity,
+                            alert.price or 0
+                        )
+                    logger.info(f"Chartink paper trade: {action_text}")
                 else:
-                    action_text = f"{action} order placed: {result.broker_order_id}"
-                    # Record this trade for position tracking
-                    self.chartink_scanner.record_trade(
-                        alert.scan_name, alert.symbol, action, quantity,
-                        alert.price or 0
-                    )
-
-                logger.info(f"Chartink auto-trade: {action_text}")
+                    action_text = f"Paper order failed: {result.get('message')}"
             except Exception as e:
-                action_text = f"Order failed: {e}"
-                logger.error(f"Chartink auto-trade error: {e}")
+                action_text = f"Paper order failed: {e}"
+                logger.error(f"Chartink paper trade error: {e}")
+
         else:
-            action_text = "No broker connected"
+            # Live Broker Mode
+            current_broker = self.broker_combo.currentText().lower()
+            if current_broker and current_broker in self.brokers:
+                try:
+                    order = Order(
+                        symbol=alert.symbol,
+                        transaction_type=TransactionType.BUY if action == "BUY" else TransactionType.SELL,
+                        quantity=quantity,
+                        order_type=OrderType.MARKET,
+                        exchange=Exchange.NSE
+                    )
+                    result = self.order_manager.place_order(order, current_broker)
+
+                    if is_squareoff:
+                        action_text = f"SQUARE-OFF {action}: {result.broker_order_id}"
+                        self.chartink_scanner.record_squareoff(alert.scan_name, alert.symbol)
+                    else:
+                        action_text = f"{action} order placed: {result.broker_order_id}"
+                        # Record this trade for position tracking
+                        self.chartink_scanner.record_trade(
+                            alert.scan_name, alert.symbol, action, quantity,
+                            alert.price or 0
+                        )
+
+                    logger.info(f"Chartink auto-trade: {action_text}")
+                except Exception as e:
+                    action_text = f"Order failed: {e}"
+                    logger.error(f"Chartink auto-trade error: {e}")
+            else:
+                action_text = "No broker connected (enable Paper Trading mode in Settings)"
 
         self.chartink_alerts_table.setItem(row, 5, QTableWidgetItem(action_text))
 

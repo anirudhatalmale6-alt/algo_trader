@@ -735,14 +735,17 @@ class ChartinkScanner:
             logger.info(f"--- Monitoring loop iteration, {len(self.active_scans)} scans ---")
             for scan_name, scan_config in list(self.active_scans.items()):
                 try:
+                    logger.info(f"Checking scanner '{scan_name}': enabled={scan_config.get('enabled', True)}")
                     # Check if scanner is enabled
                     if not scan_config.get('enabled', True):
-                        logger.debug(f"Scanner '{scan_name}' is disabled, skipping")
+                        logger.info(f"Scanner '{scan_name}' is DISABLED, skipping")
                         continue
 
                     # Check if scan is within active time window
-                    if not self._is_scan_active(scan_config):
-                        logger.debug(f"Scanner '{scan_name}' outside active time window ({scan_config.get('start_time')} - {scan_config.get('exit_time')})")
+                    is_active = self._is_scan_active(scan_config)
+                    logger.info(f"Scanner '{scan_name}' is_scan_active={is_active}, test_mode={self.test_mode}, start={scan_config.get('start_time')}, exit={scan_config.get('exit_time')}")
+                    if not is_active:
+                        logger.info(f"Scanner '{scan_name}' outside active time window, skipping")
                         continue
 
                     # Check if it's exit time - square off positions

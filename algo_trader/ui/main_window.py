@@ -592,6 +592,15 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(risk_group)
 
+        # Options row
+        options_layout = QHBoxLayout()
+        self.chartink_trigger_first = QCheckBox("Trigger on First Scan (sab stocks pe signal)")
+        self.chartink_trigger_first.setChecked(True)
+        self.chartink_trigger_first.setToolTip("Enabled: Pehle scan mein sab stocks pe signal. Disabled: Sirf new stocks pe signal.")
+        options_layout.addWidget(self.chartink_trigger_first)
+        options_layout.addStretch()
+        layout.addLayout(options_layout)
+
         # Buttons row
         btn_layout = QHBoxLayout()
         self.add_chartink_scan_btn = QPushButton("Add Scanner")
@@ -608,9 +617,9 @@ class MainWindow(QMainWindow):
         scans_layout = QVBoxLayout(scans_group)
 
         self.chartink_scans_table = QTableWidget()
-        self.chartink_scans_table.setColumnCount(10)
+        self.chartink_scans_table.setColumnCount(11)
         self.chartink_scans_table.setHorizontalHeaderLabels([
-            "Name", "Action", "Per-Stock", "Start", "Exit", "No New",
+            "ON/OFF", "Name", "Action", "Per-Stock", "Start", "Exit", "No New",
             "Capital", "Max Trades", "Trades Done", "Remove"
         ])
         self.chartink_scans_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -3855,7 +3864,9 @@ class MainWindow(QMainWindow):
                     alloc_type=scan.get('alloc_type', 'auto'),
                     alloc_value=scan.get('alloc_value', scan.get('stock_quantity', 0)),
                     max_trades=scan.get('max_trades', 0),
-                    risk_config=scan.get('risk_config', None)
+                    risk_config=scan.get('risk_config', None),
+                    trigger_on_first=scan.get('trigger_on_first', True),
+                    enabled=scan.get('enabled', True)
                 )
             self._refresh_chartink_scans_table()
         except Exception as e:
@@ -3977,6 +3988,9 @@ class MainWindow(QMainWindow):
             'mtm_loss': mtm_loss
         }
 
+        # Get trigger on first option
+        trigger_on_first = self.chartink_trigger_first.isChecked()
+
         # Add to scanner
         self.chartink_scanner.add_scan(
             scan_name=name,
@@ -3991,7 +4005,9 @@ class MainWindow(QMainWindow):
             alloc_type=alloc_type,
             alloc_value=alloc_value,
             max_trades=max_trades,
-            risk_config=risk_config
+            risk_config=risk_config,
+            trigger_on_first=trigger_on_first,
+            enabled=True
         )
 
         # Save to config
@@ -4009,7 +4025,9 @@ class MainWindow(QMainWindow):
             'alloc_type': alloc_type,
             'alloc_value': alloc_value,
             'max_trades': max_trades,
-            'risk_config': risk_config
+            'risk_config': risk_config,
+            'trigger_on_first': trigger_on_first,
+            'enabled': True
         })
         self.config.set('chartink.scans', scans)
 
@@ -4061,8 +4079,17 @@ class MainWindow(QMainWindow):
         self.chartink_scans_table.setRowCount(len(scans))
 
         for i, scan in enumerate(scans):
-            self.chartink_scans_table.setItem(i, 0, QTableWidgetItem(scan['name']))
-            self.chartink_scans_table.setItem(i, 1, QTableWidgetItem(scan['action']))
+            # ON/OFF Toggle button
+            toggle_btn = QPushButton("ON" if scan.get('enabled', True) else "OFF")
+            toggle_btn.setStyleSheet(
+                "background-color: #00aa00; color: white; font-weight: bold;" if scan.get('enabled', True)
+                else "background-color: #aa0000; color: white; font-weight: bold;"
+            )
+            toggle_btn.clicked.connect(lambda checked, name=scan['name']: self._toggle_chartink_scan(name))
+            self.chartink_scans_table.setCellWidget(i, 0, toggle_btn)
+
+            self.chartink_scans_table.setItem(i, 1, QTableWidgetItem(scan['name']))
+            self.chartink_scans_table.setItem(i, 2, QTableWidgetItem(scan['action']))
 
             # Show allocation type and value
             alloc_type = scan.get('alloc_type', 'auto')
@@ -4073,23 +4100,38 @@ class MainWindow(QMainWindow):
                 alloc_text = f"₹{alloc_value:,.0f}/stock"
             else:
                 alloc_text = "Auto"
-            self.chartink_scans_table.setItem(i, 2, QTableWidgetItem(alloc_text))
+            self.chartink_scans_table.setItem(i, 3, QTableWidgetItem(alloc_text))
 
-            self.chartink_scans_table.setItem(i, 3, QTableWidgetItem(scan.get('start_time', '09:15')))
-            self.chartink_scans_table.setItem(i, 4, QTableWidgetItem(scan.get('exit_time', '15:15')))
-            self.chartink_scans_table.setItem(i, 5, QTableWidgetItem(scan.get('no_new_trade_time', '14:30')))
+            self.chartink_scans_table.setItem(i, 4, QTableWidgetItem(scan.get('start_time', '09:15')))
+            self.chartink_scans_table.setItem(i, 5, QTableWidgetItem(scan.get('exit_time', '15:15')))
+            self.chartink_scans_table.setItem(i, 6, QTableWidgetItem(scan.get('no_new_trade_time', '14:30')))
             amt = scan.get('total_capital', 0)
-            self.chartink_scans_table.setItem(i, 6, QTableWidgetItem(f"₹{amt:,.0f}" if amt > 0 else "Unlimited"))
+            self.chartink_scans_table.setItem(i, 7, QTableWidgetItem(f"₹{amt:,.0f}" if amt > 0 else "Unlimited"))
             max_t = scan.get('max_trades', 0)
-            self.chartink_scans_table.setItem(i, 7, QTableWidgetItem(str(max_t) if max_t > 0 else "Unlimited"))
-            self.chartink_scans_table.setItem(i, 8, QTableWidgetItem(str(scan.get('trade_count', 0))))
+            self.chartink_scans_table.setItem(i, 8, QTableWidgetItem(str(max_t) if max_t > 0 else "Unlimited"))
+            self.chartink_scans_table.setItem(i, 9, QTableWidgetItem(str(scan.get('trade_count', 0))))
 
             remove_btn = QPushButton("Remove")
             remove_btn.clicked.connect(lambda checked, name=scan['name']: self._remove_chartink_scan(name))
-            self.chartink_scans_table.setCellWidget(i, 9, remove_btn)
+            self.chartink_scans_table.setCellWidget(i, 10, remove_btn)
 
         # Also refresh positions table
         self._refresh_chartink_positions_table()
+
+    def _toggle_chartink_scan(self, scan_name: str):
+        """Toggle scanner ON/OFF"""
+        new_state = self.chartink_scanner.toggle_scan(scan_name)
+
+        # Update config
+        scans = self.config.get('chartink.scans', [])
+        for scan in scans:
+            if scan.get('name') == scan_name:
+                scan['enabled'] = new_state
+                break
+        self.config.set('chartink.scans', scans)
+
+        # Refresh table
+        self._refresh_chartink_scans_table()
 
     def _refresh_chartink_positions_table(self):
         """Refresh the scanner open positions table"""

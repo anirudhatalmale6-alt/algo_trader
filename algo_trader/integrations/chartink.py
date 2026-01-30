@@ -92,6 +92,8 @@ class ChartinkScanner:
                  total_capital: float = 0, alloc_type: str = "auto",
                  alloc_value: float = 0, max_trades: int = 0,
                  risk_config: Dict = None,
+                 trigger_on_first: bool = True,  # Trigger signals on first scan
+                 enabled: bool = True,  # Scanner ON/OFF toggle
                  # Legacy support
                  total_amount: float = None, stock_quantity: int = None):
         """
@@ -112,6 +114,8 @@ class ChartinkScanner:
             alloc_value: Value for allocation (qty for fixed_qty, amount for fixed_amount)
             max_trades: Max number of trades allowed (0 = unlimited)
             risk_config: Risk management settings (SL, TSL, Target, MTM)
+            trigger_on_first: If True, trigger signals on first scan (default: True)
+            enabled: If True, scanner is active (default: True)
         """
         # Handle legacy parameters
         if total_amount is not None:
@@ -158,14 +162,36 @@ class ChartinkScanner:
             'risk_config': risk_config,
             'mtm_pnl': 0.0,  # Current MTM P&L for scanner
             'mtm_stopped': False,  # If MTM limit was hit
+            # New features
+            'trigger_on_first': trigger_on_first,  # Trigger on first scan
+            'enabled': enabled,  # Scanner ON/OFF toggle
+            'first_scan_done': False,  # Track if first scan is done
         }
-        logger.info(f"Added Chartink scan: {scan_name} (alloc={alloc_type}, SL={risk_config.get('sl_type')}, MTM_Loss={risk_config.get('mtm_loss')})")
+        logger.info(f"Added Chartink scan: {scan_name} (alloc={alloc_type}, enabled={enabled}, trigger_first={trigger_on_first})")
 
     def remove_scan(self, scan_name: str):
         """Remove a scan from monitoring"""
         if scan_name in self.active_scans:
             del self.active_scans[scan_name]
             logger.info(f"Removed Chartink scan: {scan_name}")
+
+    def toggle_scan(self, scan_name: str, enabled: bool = None) -> bool:
+        """Toggle scanner ON/OFF. Returns new state."""
+        if scan_name not in self.active_scans:
+            return False
+        config = self.active_scans[scan_name]
+        if enabled is None:
+            config['enabled'] = not config.get('enabled', True)
+        else:
+            config['enabled'] = enabled
+        logger.info(f"Scanner '{scan_name}' {'enabled' if config['enabled'] else 'disabled'}")
+        return config['enabled']
+
+    def is_scan_enabled(self, scan_name: str) -> bool:
+        """Check if scanner is enabled"""
+        if scan_name not in self.active_scans:
+            return False
+        return self.active_scans[scan_name].get('enabled', True)
 
     def _parse_time(self, time_str: str) -> dtime:
         """Parse HH:MM time string to time object"""
@@ -664,7 +690,19 @@ class ChartinkScanner:
 
         current_symbols = {alert.symbol for alert in current_results}
         last_symbols = scan_config.get('last_results', set())
-        new_symbols = current_symbols - last_symbols
+
+        # Check if this is the first scan and trigger_on_first is enabled
+        is_first_scan = not scan_config.get('first_scan_done', False)
+        trigger_on_first = scan_config.get('trigger_on_first', True)
+
+        if is_first_scan and trigger_on_first:
+            # First scan - trigger for all stocks
+            new_symbols = current_symbols
+            scan_config['first_scan_done'] = True
+            logger.info(f"First scan for '{scan_name}' - triggering for all {len(new_symbols)} stocks")
+        else:
+            # Normal behavior - only new stocks
+            new_symbols = current_symbols - last_symbols
 
         scan_config['last_results'] = current_symbols
         scan_config['last_scan'] = datetime.now()
@@ -679,6 +717,10 @@ class ChartinkScanner:
         while self._running:
             for scan_name, scan_config in list(self.active_scans.items()):
                 try:
+                    # Check if scanner is enabled
+                    if not scan_config.get('enabled', True):
+                        continue
+
                     # Check if scan is within active time window
                     if not self._is_scan_active(scan_config):
                         continue
@@ -787,6 +829,9 @@ class ChartinkScanner:
                 'risk_config': config.get('risk_config', {}),
                 'mtm_pnl': config.get('mtm_pnl', 0.0),
                 'mtm_stopped': config.get('mtm_stopped', False),
+                # New fields
+                'enabled': config.get('enabled', True),
+                'trigger_on_first': config.get('trigger_on_first', True),
             }
             for name, config in self.active_scans.items()
         ]

@@ -1237,13 +1237,16 @@ class MainWindow(QMainWindow):
             return
 
         builder_widget = QWidget()
-        main_layout = QHBoxLayout(builder_widget)
+        main_layout = QVBoxLayout(builder_widget)
 
-        # Left Panel - Strategy Configuration
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_panel.setMinimumWidth(400)
-        left_panel.setMaximumWidth(550)
+        # Create scroll area for the configuration panel
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        # Configuration Panel (full width, scrollable)
+        config_panel = QWidget()
+        config_layout = QVBoxLayout(config_panel)
 
         # Symbol & Expiry Selection
         symbol_group = QGroupBox("📊 Symbol & Expiry")
@@ -1270,7 +1273,11 @@ class MainWindow(QMainWindow):
         self.sb_expiry.setMinimumHeight(30)
         symbol_layout.addRow("Expiry:", self.sb_expiry)
 
-        left_layout.addWidget(symbol_group)
+        # Row 1: Symbol & Pre-built Strategies side by side
+        row1_layout = QHBoxLayout()
+        row1_layout.addWidget(symbol_group)
+        row1_layout.addWidget(prebuilt_group)
+        config_layout.addLayout(row1_layout)
 
         # Pre-built Strategies
         prebuilt_group = QGroupBox("⚡ Pre-built Strategies")
@@ -1310,7 +1317,7 @@ class MainWindow(QMainWindow):
         strategies_row2.addWidget(self.sb_bear_spread_btn)
         prebuilt_layout.addLayout(strategies_row2)
 
-        left_layout.addWidget(prebuilt_group)
+        # prebuilt_group already added in row1_layout
 
         # Strategy Legs
         legs_group = QGroupBox("📝 Strategy Legs (Max 4)")
@@ -1378,31 +1385,44 @@ class MainWindow(QMainWindow):
         add_leg_btn_layout.addWidget(self.sb_clear_legs_btn)
         legs_layout.addLayout(add_leg_btn_layout)
 
-        left_layout.addWidget(legs_group)
+        # Row 2: Strategy Legs (full width)
+        config_layout.addWidget(legs_group)
 
         # Strategy Summary
         summary_group = QGroupBox("📈 Strategy Summary")
+        summary_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
         summary_layout = QFormLayout(summary_group)
 
         self.sb_max_profit = QLabel("₹0.00")
-        self.sb_max_profit.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 14px;")
+        self.sb_max_profit.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 16px;")
+        self.sb_max_profit.setMinimumHeight(25)
         summary_layout.addRow("Max Profit:", self.sb_max_profit)
 
         self.sb_max_loss = QLabel("₹0.00")
-        self.sb_max_loss.setStyleSheet("color: #F44336; font-weight: bold; font-size: 14px;")
+        self.sb_max_loss.setStyleSheet("color: #F44336; font-weight: bold; font-size: 16px;")
+        self.sb_max_loss.setMinimumHeight(25)
         summary_layout.addRow("Max Loss:", self.sb_max_loss)
 
         self.sb_breakeven = QLabel("--")
-        self.sb_breakeven.setStyleSheet("color: #2196F3; font-weight: bold;")
+        self.sb_breakeven.setStyleSheet("color: #2196F3; font-weight: bold; font-size: 14px;")
+        self.sb_breakeven.setMinimumHeight(25)
         summary_layout.addRow("Breakeven:", self.sb_breakeven)
 
         self.sb_net_premium = QLabel("₹0.00")
+        self.sb_net_premium.setStyleSheet("font-size: 14px;")
+        self.sb_net_premium.setMinimumHeight(25)
         summary_layout.addRow("Net Premium:", self.sb_net_premium)
 
         self.sb_risk_reward = QLabel("--")
+        self.sb_risk_reward.setStyleSheet("font-size: 14px;")
+        self.sb_risk_reward.setMinimumHeight(25)
         summary_layout.addRow("Risk:Reward:", self.sb_risk_reward)
 
-        left_layout.addWidget(summary_group)
+        # Row 3: Summary + Live P&L side by side
+        row3_layout = QHBoxLayout()
+        row3_layout.addWidget(summary_group)
+        row3_layout.addWidget(pnl_group)
+        config_layout.addLayout(row3_layout)
 
         # Live P&L Box (shows difference when spot moves)
         pnl_group = QGroupBox("📊 Live P&L")
@@ -1433,7 +1453,7 @@ class MainWindow(QMainWindow):
         self.sb_lock_entry_btn.clicked.connect(self._lock_entry_price)
         pnl_layout.addRow(self.sb_lock_entry_btn)
 
-        left_layout.addWidget(pnl_group)
+        # pnl_group already added in row3_layout
 
         # Save/Load Strategy Buttons
         strategy_io_group = QGroupBox("💾 Save/Load Strategy")
@@ -1492,7 +1512,8 @@ class MainWindow(QMainWindow):
         self.sb_saved_strategies_combo.setPlaceholderText("-- Select Saved Strategy --")
         strategy_io_layout.addWidget(self.sb_saved_strategies_combo)
 
-        left_layout.addWidget(strategy_io_group)
+        # Row 4: Save/Load Strategy (full width)
+        config_layout.addWidget(strategy_io_group)
 
         # Execute Button
         execute_layout = QHBoxLayout()
@@ -1501,39 +1522,41 @@ class MainWindow(QMainWindow):
         self.sb_execute_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; font-size: 14px;")
         self.sb_execute_btn.clicked.connect(self._execute_strategy_builder)
         execute_layout.addWidget(self.sb_execute_btn)
-        left_layout.addLayout(execute_layout)
+        # Row 5: Execute Button
+        config_layout.addLayout(execute_layout)
 
-        left_layout.addStretch()
-        main_layout.addWidget(left_panel)
+        # Set up scroll area
+        scroll_area.setWidget(config_panel)
+        scroll_area.setMaximumHeight(400)
+        main_layout.addWidget(scroll_area)
 
-        # Right Panel - Payoff Chart
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-
+        # Bottom Panel - Payoff Chart (takes remaining space)
         chart_group = QGroupBox("📊 Payoff Diagram")
         chart_layout = QVBoxLayout(chart_group)
 
         # Create matplotlib figure for payoff chart
-        self.sb_figure = Figure(figsize=(8, 6), facecolor='#1e1e1e')
+        self.sb_figure = Figure(figsize=(10, 4), facecolor='#1e1e1e')
         self.sb_canvas = FigureCanvas(self.sb_figure)
         self.sb_ax = self.sb_figure.add_subplot(111)
         self._setup_payoff_chart()
         chart_layout.addWidget(self.sb_canvas)
 
-        right_layout.addWidget(chart_group)
-
-        # Chart controls
+        # Chart controls in same row
         chart_controls = QHBoxLayout()
         self.sb_refresh_chart_btn = QPushButton("🔄 Refresh Chart")
+        self.sb_refresh_chart_btn.setMinimumHeight(35)
         self.sb_refresh_chart_btn.clicked.connect(self._update_payoff_chart)
         chart_controls.addWidget(self.sb_refresh_chart_btn)
 
         self.sb_show_greeks_btn = QPushButton("📐 Show Greeks")
+        self.sb_show_greeks_btn.setMinimumHeight(35)
         self.sb_show_greeks_btn.clicked.connect(self._show_strategy_greeks)
         chart_controls.addWidget(self.sb_show_greeks_btn)
-        right_layout.addLayout(chart_controls)
 
-        main_layout.addWidget(right_panel)
+        chart_controls.addStretch()
+        chart_layout.addLayout(chart_controls)
+
+        main_layout.addWidget(chart_group)
 
         # Initialize strategy legs data
         self.strategy_legs = []

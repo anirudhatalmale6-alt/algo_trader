@@ -1242,7 +1242,8 @@ class MainWindow(QMainWindow):
         # Left Panel - Strategy Configuration
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_panel.setMaximumWidth(450)
+        left_panel.setMinimumWidth(400)
+        left_panel.setMaximumWidth(550)
 
         # Symbol & Expiry Selection
         symbol_group = QGroupBox("📊 Symbol & Expiry")
@@ -1251,6 +1252,7 @@ class MainWindow(QMainWindow):
         self.sb_symbol = QComboBox()
         self.sb_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
         self.sb_symbol.setEditable(True)
+        self.sb_symbol.setMinimumHeight(30)
         self.sb_symbol.currentTextChanged.connect(self._on_sb_symbol_changed)
         symbol_layout.addRow("Symbol:", self.sb_symbol)
 
@@ -1259,11 +1261,13 @@ class MainWindow(QMainWindow):
         self.sb_spot_price.setDecimals(2)
         self.sb_spot_price.setValue(25000)
         self.sb_spot_price.setPrefix("₹ ")
+        self.sb_spot_price.setMinimumHeight(30)
         self.sb_spot_price.valueChanged.connect(self._on_spot_price_changed)
         symbol_layout.addRow("Spot Price:", self.sb_spot_price)
 
         self.sb_expiry = QComboBox()
         self.sb_expiry.addItems(["Current Week", "Next Week", "Current Month", "Next Month"])
+        self.sb_expiry.setMinimumHeight(30)
         symbol_layout.addRow("Expiry:", self.sb_expiry)
 
         left_layout.addWidget(symbol_group)
@@ -1274,28 +1278,34 @@ class MainWindow(QMainWindow):
 
         strategies_row1 = QHBoxLayout()
         self.sb_iron_fly_btn = QPushButton("Iron Fly")
+        self.sb_iron_fly_btn.setMinimumHeight(35)
         self.sb_iron_fly_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("iron_fly"))
         strategies_row1.addWidget(self.sb_iron_fly_btn)
 
         self.sb_iron_condor_btn = QPushButton("Iron Condor")
+        self.sb_iron_condor_btn.setMinimumHeight(35)
         self.sb_iron_condor_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("iron_condor"))
         strategies_row1.addWidget(self.sb_iron_condor_btn)
 
         self.sb_straddle_btn = QPushButton("Straddle")
+        self.sb_straddle_btn.setMinimumHeight(35)
         self.sb_straddle_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("straddle"))
         strategies_row1.addWidget(self.sb_straddle_btn)
         prebuilt_layout.addLayout(strategies_row1)
 
         strategies_row2 = QHBoxLayout()
         self.sb_strangle_btn = QPushButton("Strangle")
+        self.sb_strangle_btn.setMinimumHeight(35)
         self.sb_strangle_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("strangle"))
         strategies_row2.addWidget(self.sb_strangle_btn)
 
         self.sb_bull_spread_btn = QPushButton("Bull Call")
+        self.sb_bull_spread_btn.setMinimumHeight(35)
         self.sb_bull_spread_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("bull_call_spread"))
         strategies_row2.addWidget(self.sb_bull_spread_btn)
 
         self.sb_bear_spread_btn = QPushButton("Bear Put")
+        self.sb_bear_spread_btn.setMinimumHeight(35)
         self.sb_bear_spread_btn.clicked.connect(lambda: self._apply_prebuilt_strategy("bear_put_spread"))
         strategies_row2.addWidget(self.sb_bear_spread_btn)
         prebuilt_layout.addLayout(strategies_row2)
@@ -1311,7 +1321,9 @@ class MainWindow(QMainWindow):
         self.sb_legs_table.setColumnCount(6)
         self.sb_legs_table.setHorizontalHeaderLabels(["B/S", "Type", "Strike", "Qty", "Premium", "Remove"])
         self.sb_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.sb_legs_table.setMinimumHeight(120)
         self.sb_legs_table.setMaximumHeight(180)
+        self.sb_legs_table.verticalHeader().setDefaultSectionSize(30)
         legs_layout.addWidget(self.sb_legs_table)
 
         # Add Leg Controls
@@ -1319,10 +1331,12 @@ class MainWindow(QMainWindow):
 
         self.sb_leg_action = QComboBox()
         self.sb_leg_action.addItems(["BUY", "SELL"])
+        self.sb_leg_action.setMinimumHeight(28)
         add_leg_layout.addWidget(self.sb_leg_action)
 
         self.sb_leg_type = QComboBox()
         self.sb_leg_type.addItems(["CE", "PE"])
+        self.sb_leg_type.setMinimumHeight(28)
         add_leg_layout.addWidget(self.sb_leg_type)
 
         self.sb_leg_strike = QDoubleSpinBox()
@@ -1331,12 +1345,15 @@ class MainWindow(QMainWindow):
         self.sb_leg_strike.setSingleStep(50)
         self.sb_leg_strike.setValue(25000)
         self.sb_leg_strike.setPrefix("₹")
+        self.sb_leg_strike.setMinimumHeight(28)
+        self.sb_leg_strike.setMinimumWidth(80)
         add_leg_layout.addWidget(self.sb_leg_strike)
 
         self.sb_leg_qty = QSpinBox()
         self.sb_leg_qty.setRange(1, 100)
         self.sb_leg_qty.setValue(1)
         self.sb_leg_qty.setSuffix(" lots")
+        self.sb_leg_qty.setMinimumHeight(28)
         add_leg_layout.addWidget(self.sb_leg_qty)
 
         self.sb_leg_premium = QDoubleSpinBox()
@@ -1344,16 +1361,19 @@ class MainWindow(QMainWindow):
         self.sb_leg_premium.setDecimals(2)
         self.sb_leg_premium.setValue(100)
         self.sb_leg_premium.setPrefix("₹")
+        self.sb_leg_premium.setMinimumHeight(28)
         add_leg_layout.addWidget(self.sb_leg_premium)
 
         legs_layout.addLayout(add_leg_layout)
 
         add_leg_btn_layout = QHBoxLayout()
         self.sb_add_leg_btn = QPushButton("➕ Add Leg")
+        self.sb_add_leg_btn.setMinimumHeight(32)
         self.sb_add_leg_btn.clicked.connect(self._add_strategy_leg)
         add_leg_btn_layout.addWidget(self.sb_add_leg_btn)
 
         self.sb_clear_legs_btn = QPushButton("🗑️ Clear All")
+        self.sb_clear_legs_btn.setMinimumHeight(32)
         self.sb_clear_legs_btn.clicked.connect(self._clear_strategy_legs)
         add_leg_btn_layout.addWidget(self.sb_clear_legs_btn)
         legs_layout.addLayout(add_leg_btn_layout)
@@ -1393,19 +1413,23 @@ class MainWindow(QMainWindow):
         self.sb_entry_spot.setDecimals(2)
         self.sb_entry_spot.setValue(0)
         self.sb_entry_spot.setPrefix("₹ ")
+        self.sb_entry_spot.setMinimumHeight(30)
         self.sb_entry_spot.valueChanged.connect(self._update_live_pnl)
         pnl_layout.addRow("Entry Spot:", self.sb_entry_spot)
 
         self.sb_current_pnl = QLabel("₹0.00")
-        self.sb_current_pnl.setStyleSheet("font-weight: bold; font-size: 16px;")
+        self.sb_current_pnl.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.sb_current_pnl.setMinimumHeight(25)
         pnl_layout.addRow("Current P&L:", self.sb_current_pnl)
 
         self.sb_pnl_change = QLabel("₹0.00 (0.00%)")
-        self.sb_pnl_change.setStyleSheet("font-size: 12px;")
+        self.sb_pnl_change.setStyleSheet("font-size: 14px;")
+        self.sb_pnl_change.setMinimumHeight(20)
         pnl_layout.addRow("Change:", self.sb_pnl_change)
 
         # Lock Entry button
         self.sb_lock_entry_btn = QPushButton("🔒 Lock Entry Price")
+        self.sb_lock_entry_btn.setMinimumHeight(32)
         self.sb_lock_entry_btn.clicked.connect(self._lock_entry_price)
         pnl_layout.addRow(self.sb_lock_entry_btn)
 
@@ -1420,20 +1444,24 @@ class MainWindow(QMainWindow):
         name_layout.addWidget(QLabel("Name:"))
         self.sb_strategy_name = QLineEdit()
         self.sb_strategy_name.setPlaceholderText("My Custom Strategy")
+        self.sb_strategy_name.setMinimumHeight(30)
         name_layout.addWidget(self.sb_strategy_name)
         strategy_io_layout.addLayout(name_layout)
 
         # Save/Load buttons - Row 1
         io_btn_layout = QHBoxLayout()
         self.sb_save_strategy_btn = QPushButton("💾 Save")
+        self.sb_save_strategy_btn.setMinimumHeight(32)
         self.sb_save_strategy_btn.clicked.connect(self._save_custom_strategy)
         io_btn_layout.addWidget(self.sb_save_strategy_btn)
 
         self.sb_load_strategy_btn = QPushButton("📂 Load")
+        self.sb_load_strategy_btn.setMinimumHeight(32)
         self.sb_load_strategy_btn.clicked.connect(self._load_custom_strategy)
         io_btn_layout.addWidget(self.sb_load_strategy_btn)
 
         self.sb_edit_strategy_btn = QPushButton("✏️ Edit")
+        self.sb_edit_strategy_btn.setMinimumHeight(32)
         self.sb_edit_strategy_btn.clicked.connect(self._edit_saved_strategy)
         io_btn_layout.addWidget(self.sb_edit_strategy_btn)
         strategy_io_layout.addLayout(io_btn_layout)
@@ -1441,22 +1469,26 @@ class MainWindow(QMainWindow):
         # Deploy/Delete buttons - Row 2
         io_btn_layout2 = QHBoxLayout()
         self.sb_deploy_strategy_btn = QPushButton("🚀 Deploy")
+        self.sb_deploy_strategy_btn.setMinimumHeight(32)
         self.sb_deploy_strategy_btn.setStyleSheet("background-color: #FF9800; color: white;")
         self.sb_deploy_strategy_btn.clicked.connect(self._deploy_saved_strategy)
         io_btn_layout2.addWidget(self.sb_deploy_strategy_btn)
 
         self.sb_delete_strategy_btn = QPushButton("🗑️ Delete")
+        self.sb_delete_strategy_btn.setMinimumHeight(32)
         self.sb_delete_strategy_btn.setStyleSheet("background-color: #F44336; color: white;")
         self.sb_delete_strategy_btn.clicked.connect(self._delete_saved_strategy)
         io_btn_layout2.addWidget(self.sb_delete_strategy_btn)
 
         self.sb_open_folder_btn = QPushButton("📁 Folder")
+        self.sb_open_folder_btn.setMinimumHeight(32)
         self.sb_open_folder_btn.clicked.connect(self._open_strategies_folder)
         io_btn_layout2.addWidget(self.sb_open_folder_btn)
         strategy_io_layout.addLayout(io_btn_layout2)
 
         # Saved strategies list
         self.sb_saved_strategies_combo = QComboBox()
+        self.sb_saved_strategies_combo.setMinimumHeight(30)
         self.sb_saved_strategies_combo.setPlaceholderText("-- Select Saved Strategy --")
         strategy_io_layout.addWidget(self.sb_saved_strategies_combo)
 
@@ -1465,7 +1497,8 @@ class MainWindow(QMainWindow):
         # Execute Button
         execute_layout = QHBoxLayout()
         self.sb_execute_btn = QPushButton("🚀 Execute Strategy")
-        self.sb_execute_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;")
+        self.sb_execute_btn.setMinimumHeight(45)
+        self.sb_execute_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; font-size: 14px;")
         self.sb_execute_btn.clicked.connect(self._execute_strategy_builder)
         execute_layout.addWidget(self.sb_execute_btn)
         left_layout.addLayout(execute_layout)

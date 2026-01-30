@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         self._create_strategies_tab()
         self._create_chartink_tab()
         self._create_chart_tab()
+        self._create_mtf_tab()  # Multi-Timeframe Analysis
         self._create_orders_tab()
         self._create_positions_tab()
         self._create_risk_tab()
@@ -806,6 +807,380 @@ class MainWindow(QMainWindow):
         else:
             # No order_id - this is just a visual line (SL/Target marker)
             self.status_bar.showMessage(f"{order_type} level set to ₹{new_price:.2f}", 5000)
+
+    def _create_mtf_tab(self):
+        """Create Multi-Timeframe Analysis tab"""
+        mtf_widget = QWidget()
+        layout = QVBoxLayout(mtf_widget)
+
+        # === Symbol Input Section ===
+        input_group = QGroupBox("Symbol Selection")
+        input_layout = QHBoxLayout(input_group)
+
+        input_layout.addWidget(QLabel("Symbol:"))
+        self.mtf_symbol_input = QLineEdit()
+        self.mtf_symbol_input.setPlaceholderText("Enter symbol (e.g., RELIANCE, TCS, NIFTY)")
+        self.mtf_symbol_input.returnPressed.connect(self._analyze_mtf)
+        input_layout.addWidget(self.mtf_symbol_input)
+
+        self.mtf_analyze_btn = QPushButton("🔍 Analyze")
+        self.mtf_analyze_btn.clicked.connect(self._analyze_mtf)
+        input_layout.addWidget(self.mtf_analyze_btn)
+
+        self.mtf_open_chart_btn = QPushButton("📈 Open TradingView")
+        self.mtf_open_chart_btn.clicked.connect(self._open_mtf_tradingview)
+        input_layout.addWidget(self.mtf_open_chart_btn)
+
+        layout.addWidget(input_group)
+
+        # === Overall Trend Summary ===
+        summary_group = QGroupBox("📊 Overall Trend Summary")
+        summary_layout = QHBoxLayout(summary_group)
+
+        self.mtf_overall_trend = QLabel("Enter a symbol and click Analyze")
+        self.mtf_overall_trend.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
+        self.mtf_overall_trend.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        summary_layout.addWidget(self.mtf_overall_trend)
+
+        self.mtf_recommendation = QLabel("")
+        self.mtf_recommendation.setStyleSheet("font-size: 14px; padding: 10px;")
+        self.mtf_recommendation.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        summary_layout.addWidget(self.mtf_recommendation)
+
+        layout.addWidget(summary_group)
+
+        # === Timeframe Analysis Grid ===
+        tf_group = QGroupBox("📈 Timeframe Analysis")
+        tf_layout = QVBoxLayout(tf_group)
+
+        # Table for timeframe data
+        self.mtf_table = QTableWidget()
+        self.mtf_table.setColumnCount(8)
+        self.mtf_table.setHorizontalHeaderLabels([
+            "Timeframe", "Trend", "RSI", "MACD", "EMA 20", "EMA 50", "Volume", "Signal"
+        ])
+        self.mtf_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.mtf_table.setMinimumHeight(250)
+
+        # Add default timeframes
+        timeframes = ["5 Min", "15 Min", "1 Hour", "4 Hour", "Daily", "Weekly"]
+        self.mtf_table.setRowCount(len(timeframes))
+        for i, tf in enumerate(timeframes):
+            self.mtf_table.setItem(i, 0, QTableWidgetItem(tf))
+            for j in range(1, 8):
+                self.mtf_table.setItem(i, j, QTableWidgetItem("--"))
+
+        tf_layout.addWidget(self.mtf_table)
+        layout.addWidget(tf_group)
+
+        # === Quick Analysis Panel ===
+        quick_group = QGroupBox("⚡ Quick Indicators")
+        quick_layout = QHBoxLayout(quick_group)
+
+        # Support/Resistance
+        sr_box = QGroupBox("Support/Resistance")
+        sr_layout = QVBoxLayout(sr_box)
+        self.mtf_support = QLabel("Support: --")
+        self.mtf_resistance = QLabel("Resistance: --")
+        self.mtf_support.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        self.mtf_resistance.setStyleSheet("color: #F44336; font-weight: bold;")
+        sr_layout.addWidget(self.mtf_resistance)
+        sr_layout.addWidget(self.mtf_support)
+        quick_layout.addWidget(sr_box)
+
+        # Moving Averages
+        ma_box = QGroupBox("Moving Averages")
+        ma_layout = QVBoxLayout(ma_box)
+        self.mtf_ma_signal = QLabel("MA Signal: --")
+        self.mtf_ma_cross = QLabel("Last Cross: --")
+        ma_layout.addWidget(self.mtf_ma_signal)
+        ma_layout.addWidget(self.mtf_ma_cross)
+        quick_layout.addWidget(ma_box)
+
+        # Volume Analysis
+        vol_box = QGroupBox("Volume Analysis")
+        vol_layout = QVBoxLayout(vol_box)
+        self.mtf_vol_trend = QLabel("Volume Trend: --")
+        self.mtf_vol_avg = QLabel("vs 20-day Avg: --")
+        vol_layout.addWidget(self.mtf_vol_trend)
+        vol_layout.addWidget(self.mtf_vol_avg)
+        quick_layout.addWidget(vol_box)
+
+        # Momentum
+        mom_box = QGroupBox("Momentum")
+        mom_layout = QVBoxLayout(mom_box)
+        self.mtf_momentum = QLabel("Momentum: --")
+        self.mtf_strength = QLabel("Strength: --")
+        mom_layout.addWidget(self.mtf_momentum)
+        mom_layout.addWidget(self.mtf_strength)
+        quick_layout.addWidget(mom_box)
+
+        layout.addWidget(quick_group)
+
+        # === Analysis Log ===
+        log_group = QGroupBox("📝 Analysis Log")
+        log_layout = QVBoxLayout(log_group)
+        self.mtf_log = QTextEdit()
+        self.mtf_log.setReadOnly(True)
+        self.mtf_log.setMaximumHeight(150)
+        self.mtf_log.setPlaceholderText("Analysis results will appear here...")
+        log_layout.addWidget(self.mtf_log)
+        layout.addWidget(log_group)
+
+        self.tabs.addTab(mtf_widget, "MTF Analysis")
+
+    def _analyze_mtf(self):
+        """Perform Multi-Timeframe Analysis"""
+        symbol = self.mtf_symbol_input.text().strip().upper()
+        if not symbol:
+            QMessageBox.warning(self, "Error", "Please enter a symbol")
+            return
+
+        self.mtf_analyze_btn.setEnabled(False)
+        self.mtf_analyze_btn.setText("Analyzing...")
+        self.status_bar.showMessage(f"Analyzing {symbol}...")
+
+        # Run analysis in background
+        import threading
+        thread = threading.Thread(target=self._run_mtf_analysis, args=(symbol,))
+        thread.daemon = True
+        thread.start()
+
+    def _run_mtf_analysis(self, symbol: str):
+        """Run MTF analysis in background thread"""
+        try:
+            import yfinance as yf
+            import numpy as np
+
+            # Add .NS suffix for NSE stocks
+            yf_symbol = f"{symbol}.NS" if not symbol.endswith(('.NS', '.BSE')) else symbol
+
+            self._mtf_log(f"Fetching data for {symbol}...")
+
+            # Fetch data for different timeframes
+            timeframes = {
+                "5 Min": ("5d", "5m"),
+                "15 Min": ("10d", "15m"),
+                "1 Hour": ("30d", "1h"),
+                "4 Hour": ("60d", "1h"),  # Approximate with 1h
+                "Daily": ("180d", "1d"),
+                "Weekly": ("2y", "1wk")
+            }
+
+            results = {}
+            stock = yf.Ticker(yf_symbol)
+
+            for tf_name, (period, interval) in timeframes.items():
+                try:
+                    data = stock.history(period=period, interval=interval)
+                    if len(data) > 0:
+                        results[tf_name] = self._calculate_indicators(data, tf_name)
+                        self._mtf_log(f"✓ {tf_name}: {len(data)} candles analyzed")
+                    else:
+                        results[tf_name] = None
+                        self._mtf_log(f"✗ {tf_name}: No data available")
+                except Exception as e:
+                    results[tf_name] = None
+                    self._mtf_log(f"✗ {tf_name}: Error - {str(e)[:50]}")
+
+            # Update UI on main thread
+            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(self, "_update_mtf_ui",
+                                    Qt.ConnectionType.QueuedConnection,
+                                    Q_ARG(str, symbol),
+                                    Q_ARG(object, results))
+
+        except Exception as e:
+            self._mtf_log(f"Error: {str(e)}")
+            logger.error(f"MTF analysis error: {e}")
+
+        # Re-enable button
+        from PyQt6.QtCore import QMetaObject, Qt
+        QMetaObject.invokeMethod(self.mtf_analyze_btn, "setEnabled",
+                                Qt.ConnectionType.QueuedConnection,
+                                Q_ARG(bool, True))
+        QMetaObject.invokeMethod(self.mtf_analyze_btn, "setText",
+                                Qt.ConnectionType.QueuedConnection,
+                                Q_ARG(str, "🔍 Analyze"))
+
+    def _calculate_indicators(self, data, timeframe: str) -> dict:
+        """Calculate technical indicators for a timeframe"""
+        import numpy as np
+
+        close = data['Close'].values
+        high = data['High'].values
+        low = data['Low'].values
+        volume = data['Volume'].values
+
+        result = {}
+
+        # Current price
+        result['price'] = close[-1]
+
+        # RSI (14 period)
+        delta = np.diff(close)
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
+        avg_gain = np.mean(gain[-14:]) if len(gain) >= 14 else np.mean(gain)
+        avg_loss = np.mean(loss[-14:]) if len(loss) >= 14 else np.mean(loss)
+        rs = avg_gain / avg_loss if avg_loss != 0 else 100
+        result['rsi'] = 100 - (100 / (1 + rs))
+
+        # EMA 20 and 50
+        result['ema20'] = self._ema(close, 20)
+        result['ema50'] = self._ema(close, 50)
+
+        # MACD
+        ema12 = self._ema(close, 12)
+        ema26 = self._ema(close, 26)
+        result['macd'] = ema12 - ema26
+        result['macd_signal'] = "Bullish" if result['macd'] > 0 else "Bearish"
+
+        # Trend based on EMAs
+        if close[-1] > result['ema20'] > result['ema50']:
+            result['trend'] = "🟢 Bullish"
+            result['trend_score'] = 2
+        elif close[-1] < result['ema20'] < result['ema50']:
+            result['trend'] = "🔴 Bearish"
+            result['trend_score'] = -2
+        elif close[-1] > result['ema20']:
+            result['trend'] = "🟡 Weak Bull"
+            result['trend_score'] = 1
+        elif close[-1] < result['ema20']:
+            result['trend'] = "🟠 Weak Bear"
+            result['trend_score'] = -1
+        else:
+            result['trend'] = "⚪ Neutral"
+            result['trend_score'] = 0
+
+        # Volume analysis
+        avg_vol = np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume)
+        result['vol_ratio'] = volume[-1] / avg_vol if avg_vol > 0 else 1
+        result['vol_trend'] = "High" if result['vol_ratio'] > 1.2 else "Low" if result['vol_ratio'] < 0.8 else "Normal"
+
+        # Signal
+        if result['rsi'] < 30 and result['trend_score'] >= 0:
+            result['signal'] = "🟢 BUY"
+        elif result['rsi'] > 70 and result['trend_score'] <= 0:
+            result['signal'] = "🔴 SELL"
+        elif result['trend_score'] > 0:
+            result['signal'] = "🟡 HOLD"
+        elif result['trend_score'] < 0:
+            result['signal'] = "🟠 WAIT"
+        else:
+            result['signal'] = "⚪ NEUTRAL"
+
+        # Support/Resistance (simple - last 20 period high/low)
+        result['resistance'] = np.max(high[-20:]) if len(high) >= 20 else np.max(high)
+        result['support'] = np.min(low[-20:]) if len(low) >= 20 else np.min(low)
+
+        return result
+
+    def _ema(self, data, period: int) -> float:
+        """Calculate Exponential Moving Average"""
+        import numpy as np
+        if len(data) < period:
+            return np.mean(data)
+        multiplier = 2 / (period + 1)
+        ema = data[-period]
+        for price in data[-period+1:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
+    def _update_mtf_ui(self, symbol: str, results: dict):
+        """Update MTF UI with analysis results (called on main thread)"""
+        timeframes = ["5 Min", "15 Min", "1 Hour", "4 Hour", "Daily", "Weekly"]
+
+        total_score = 0
+        valid_count = 0
+
+        for i, tf in enumerate(timeframes):
+            data = results.get(tf)
+            if data:
+                self.mtf_table.setItem(i, 1, QTableWidgetItem(data['trend']))
+                self.mtf_table.setItem(i, 2, QTableWidgetItem(f"{data['rsi']:.1f}"))
+                self.mtf_table.setItem(i, 3, QTableWidgetItem(data['macd_signal']))
+                self.mtf_table.setItem(i, 4, QTableWidgetItem(f"₹{data['ema20']:.2f}"))
+                self.mtf_table.setItem(i, 5, QTableWidgetItem(f"₹{data['ema50']:.2f}"))
+                self.mtf_table.setItem(i, 6, QTableWidgetItem(data['vol_trend']))
+                self.mtf_table.setItem(i, 7, QTableWidgetItem(data['signal']))
+
+                total_score += data['trend_score']
+                valid_count += 1
+            else:
+                for j in range(1, 8):
+                    self.mtf_table.setItem(i, j, QTableWidgetItem("N/A"))
+
+        # Overall trend
+        if valid_count > 0:
+            avg_score = total_score / valid_count
+
+            if avg_score >= 1.5:
+                self.mtf_overall_trend.setText(f"🟢 STRONG BULLISH")
+                self.mtf_overall_trend.setStyleSheet("font-size: 18px; font-weight: bold; color: #4CAF50; padding: 10px;")
+                self.mtf_recommendation.setText("All timeframes align bullish. Consider BUY.")
+            elif avg_score >= 0.5:
+                self.mtf_overall_trend.setText(f"🟡 BULLISH")
+                self.mtf_overall_trend.setStyleSheet("font-size: 18px; font-weight: bold; color: #8BC34A; padding: 10px;")
+                self.mtf_recommendation.setText("Most timeframes bullish. Wait for pullback or confirmation.")
+            elif avg_score <= -1.5:
+                self.mtf_overall_trend.setText(f"🔴 STRONG BEARISH")
+                self.mtf_overall_trend.setStyleSheet("font-size: 18px; font-weight: bold; color: #F44336; padding: 10px;")
+                self.mtf_recommendation.setText("All timeframes align bearish. Avoid buying / Consider SHORT.")
+            elif avg_score <= -0.5:
+                self.mtf_overall_trend.setText(f"🟠 BEARISH")
+                self.mtf_overall_trend.setStyleSheet("font-size: 18px; font-weight: bold; color: #FF9800; padding: 10px;")
+                self.mtf_recommendation.setText("Most timeframes bearish. Be cautious.")
+            else:
+                self.mtf_overall_trend.setText(f"⚪ MIXED / NEUTRAL")
+                self.mtf_overall_trend.setStyleSheet("font-size: 18px; font-weight: bold; color: #9E9E9E; padding: 10px;")
+                self.mtf_recommendation.setText("No clear trend. Wait for alignment.")
+
+        # Update quick indicators from Daily timeframe
+        daily_data = results.get("Daily")
+        if daily_data:
+            self.mtf_support.setText(f"Support: ₹{daily_data['support']:.2f}")
+            self.mtf_resistance.setText(f"Resistance: ₹{daily_data['resistance']:.2f}")
+
+            if daily_data['ema20'] > daily_data['ema50']:
+                self.mtf_ma_signal.setText("MA Signal: Bullish (20 > 50)")
+                self.mtf_ma_signal.setStyleSheet("color: #4CAF50;")
+            else:
+                self.mtf_ma_signal.setText("MA Signal: Bearish (20 < 50)")
+                self.mtf_ma_signal.setStyleSheet("color: #F44336;")
+
+            self.mtf_vol_trend.setText(f"Volume Trend: {daily_data['vol_trend']}")
+            self.mtf_vol_avg.setText(f"vs 20-day Avg: {daily_data['vol_ratio']:.1%}")
+
+            if daily_data['rsi'] > 50:
+                self.mtf_momentum.setText("Momentum: Positive")
+                self.mtf_momentum.setStyleSheet("color: #4CAF50;")
+            else:
+                self.mtf_momentum.setText("Momentum: Negative")
+                self.mtf_momentum.setStyleSheet("color: #F44336;")
+
+            strength = abs(daily_data['trend_score']) / 2 * 100
+            self.mtf_strength.setText(f"Strength: {strength:.0f}%")
+
+        self._mtf_log(f"✅ Analysis complete for {symbol}")
+        self.status_bar.showMessage(f"MTF Analysis complete for {symbol}", 5000)
+
+    def _mtf_log(self, message: str):
+        """Add message to MTF analysis log"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+        QMetaObject.invokeMethod(self.mtf_log, "append",
+                                Qt.ConnectionType.QueuedConnection,
+                                Q_ARG(str, f"[{timestamp}] {message}"))
+
+    def _open_mtf_tradingview(self):
+        """Open TradingView for the current MTF symbol"""
+        symbol = self.mtf_symbol_input.text().strip().upper()
+        if symbol:
+            self._open_tradingview_chart(symbol)
+        else:
+            QMessageBox.warning(self, "Error", "Please enter a symbol first")
 
     def _create_orders_tab(self):
         """Create orders management tab"""

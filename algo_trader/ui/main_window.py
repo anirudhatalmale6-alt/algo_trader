@@ -4176,10 +4176,15 @@ class MainWindow(QMainWindow):
 
     def _start_chartink_monitoring(self):
         """Start Chartink monitoring"""
+        logger.info("=== START MONITORING CLICKED ===")
+        logger.info(f"Active scans: {list(self.chartink_scanner.active_scans.keys())}")
+        logger.info(f"Callbacks registered: {len(self.chartink_scanner.alert_callbacks)}")
+        logger.info(f"Test mode: {self.chartink_scanner.test_mode}")
         self.chartink_scanner.start_monitoring()
         self.start_chartink_btn.setEnabled(False)
         self.stop_chartink_btn.setEnabled(True)
         self.status_bar.showMessage("Chartink monitoring started")
+        logger.info("=== MONITORING STARTED ===")
 
     def _stop_chartink_monitoring(self):
         """Stop Chartink monitoring"""

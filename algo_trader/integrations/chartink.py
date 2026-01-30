@@ -727,9 +727,12 @@ class ChartinkScanner:
 
     def _monitoring_loop(self):
         """Background monitoring loop with time controls"""
-        logger.info("Chartink monitoring started")
+        logger.info("=== CHARTINK MONITORING LOOP STARTED ===")
+        logger.info(f"Active scans to monitor: {list(self.active_scans.keys())}")
+        logger.info(f"Test mode: {self.test_mode}")
 
         while self._running:
+            logger.info(f"--- Monitoring loop iteration, {len(self.active_scans)} scans ---")
             for scan_name, scan_config in list(self.active_scans.items()):
                 try:
                     # Check if scanner is enabled

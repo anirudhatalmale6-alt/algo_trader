@@ -102,6 +102,7 @@ class MainWindow(QMainWindow):
         self._create_chart_tab()
         self._create_mtf_tab()  # Multi-Timeframe Analysis
         self._create_strategy_builder_tab()  # Option Strategy Builder
+        self._create_cpr_strategy_tab()  # CPR Auto-Trade Strategy
         self._create_orders_tab()
         self._create_positions_tab()
         self._create_risk_tab()
@@ -1579,6 +1580,439 @@ class MainWindow(QMainWindow):
         self._refresh_saved_strategies_list()
 
         self.tabs.addTab(builder_widget, "Strategy Builder")
+
+    def _create_cpr_strategy_tab(self):
+        """Create CPR Auto-Trade Strategy tab"""
+        from algo_trader.strategies.cpr_strategy import (
+            CPRAutoTrader, CPRCalculator, CPRSignal, PremiumZone
+        )
+
+        cpr_widget = QWidget()
+        main_layout = QHBoxLayout(cpr_widget)
+
+        # Left Panel - Configuration
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_panel.setMaximumWidth(450)
+
+        # Symbol & Settings
+        settings_group = QGroupBox("CPR Settings")
+        settings_layout = QFormLayout(settings_group)
+
+        self.cpr_symbol = QComboBox()
+        self.cpr_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
+        self.cpr_symbol.setMinimumHeight(30)
+        settings_layout.addRow("Symbol:", self.cpr_symbol)
+
+        self.cpr_timeframe = QComboBox()
+        self.cpr_timeframe.addItems(["Daily", "Weekly"])
+        self.cpr_timeframe.setMinimumHeight(30)
+        settings_layout.addRow("Pivot Timeframe:", self.cpr_timeframe)
+
+        self.cpr_strike_method = QComboBox()
+        self.cpr_strike_method.addItems([
+            "Traditional Pivot S1/R1",
+            "Camarilla Pivot R1/S1",
+            "Camarilla Pivot R2/S2",
+            "Central Pivot"
+        ])
+        self.cpr_strike_method.setMinimumHeight(30)
+        settings_layout.addRow("Strike Method:", self.cpr_strike_method)
+
+        left_layout.addWidget(settings_group)
+
+        # Prior Day Data Input
+        data_group = QGroupBox("Prior Day OHLC Data")
+        data_layout = QFormLayout(data_group)
+
+        self.cpr_prior_high = QDoubleSpinBox()
+        self.cpr_prior_high.setRange(0, 999999)
+        self.cpr_prior_high.setDecimals(2)
+        self.cpr_prior_high.setValue(25100)
+        self.cpr_prior_high.setMinimumHeight(30)
+        data_layout.addRow("Prior High:", self.cpr_prior_high)
+
+        self.cpr_prior_low = QDoubleSpinBox()
+        self.cpr_prior_low.setRange(0, 999999)
+        self.cpr_prior_low.setDecimals(2)
+        self.cpr_prior_low.setValue(24900)
+        self.cpr_prior_low.setMinimumHeight(30)
+        data_layout.addRow("Prior Low:", self.cpr_prior_low)
+
+        self.cpr_prior_close = QDoubleSpinBox()
+        self.cpr_prior_close.setRange(0, 999999)
+        self.cpr_prior_close.setDecimals(2)
+        self.cpr_prior_close.setValue(25000)
+        self.cpr_prior_close.setMinimumHeight(30)
+        data_layout.addRow("Prior Close:", self.cpr_prior_close)
+
+        calc_cpr_btn = QPushButton("Calculate CPR Levels")
+        calc_cpr_btn.setMinimumHeight(35)
+        calc_cpr_btn.clicked.connect(self._calculate_cpr_levels)
+        data_layout.addRow(calc_cpr_btn)
+
+        left_layout.addWidget(data_group)
+
+        # CPR Levels Display
+        levels_group = QGroupBox("CPR Levels (Calculated)")
+        levels_layout = QFormLayout(levels_group)
+
+        self.cpr_tc_label = QLabel("--")
+        self.cpr_tc_label.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 14px;")
+        levels_layout.addRow("Top Pivot (TC):", self.cpr_tc_label)
+
+        self.cpr_cp_label = QLabel("--")
+        self.cpr_cp_label.setStyleSheet("color: #FF9800; font-weight: bold; font-size: 14px;")
+        levels_layout.addRow("Central Pivot:", self.cpr_cp_label)
+
+        self.cpr_bc_label = QLabel("--")
+        self.cpr_bc_label.setStyleSheet("color: #F44336; font-weight: bold; font-size: 14px;")
+        levels_layout.addRow("Bottom Pivot (BC):", self.cpr_bc_label)
+
+        self.cpr_range_label = QLabel("--")
+        levels_layout.addRow("CPR Range:", self.cpr_range_label)
+
+        left_layout.addWidget(levels_group)
+
+        # Current Price & Signal
+        signal_group = QGroupBox("Live Signal")
+        signal_layout = QFormLayout(signal_group)
+
+        self.cpr_current_price = QDoubleSpinBox()
+        self.cpr_current_price.setRange(0, 999999)
+        self.cpr_current_price.setDecimals(2)
+        self.cpr_current_price.setValue(25000)
+        self.cpr_current_price.setMinimumHeight(35)
+        self.cpr_current_price.valueChanged.connect(self._update_cpr_signal)
+        signal_layout.addRow("Current Price:", self.cpr_current_price)
+
+        self.cpr_signal_label = QLabel("No Signal")
+        self.cpr_signal_label.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
+        self.cpr_signal_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        signal_layout.addRow("Signal:", self.cpr_signal_label)
+
+        self.cpr_premium_zone_label = QLabel("--")
+        self.cpr_premium_zone_label.setStyleSheet("font-size: 14px;")
+        signal_layout.addRow("Premium Zone:", self.cpr_premium_zone_label)
+
+        self.cpr_strike_label = QLabel("--")
+        self.cpr_strike_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        signal_layout.addRow("Suggested Strike:", self.cpr_strike_label)
+
+        left_layout.addWidget(signal_group)
+
+        # Auto-Trade Controls
+        auto_group = QGroupBox("Auto-Trade")
+        auto_layout = QVBoxLayout(auto_group)
+
+        self.cpr_auto_trade_check = QCheckBox("Enable Auto-Trade")
+        self.cpr_auto_trade_check.setStyleSheet("font-size: 14px; font-weight: bold;")
+        auto_layout.addWidget(self.cpr_auto_trade_check)
+
+        self.cpr_test_mode_check = QCheckBox("Test Mode (Paper Trading)")
+        self.cpr_test_mode_check.setChecked(True)
+        auto_layout.addWidget(self.cpr_test_mode_check)
+
+        auto_btn_layout = QHBoxLayout()
+
+        self.cpr_start_btn = QPushButton("Start Monitoring")
+        self.cpr_start_btn.setMinimumHeight(40)
+        self.cpr_start_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.cpr_start_btn.clicked.connect(self._start_cpr_monitoring)
+        auto_btn_layout.addWidget(self.cpr_start_btn)
+
+        self.cpr_stop_btn = QPushButton("Stop")
+        self.cpr_stop_btn.setMinimumHeight(40)
+        self.cpr_stop_btn.setStyleSheet("background-color: #F44336; color: white;")
+        self.cpr_stop_btn.clicked.connect(self._stop_cpr_monitoring)
+        self.cpr_stop_btn.setEnabled(False)
+        auto_btn_layout.addWidget(self.cpr_stop_btn)
+
+        auto_layout.addLayout(auto_btn_layout)
+
+        # Manual Execute Button
+        self.cpr_execute_btn = QPushButton("Execute Current Signal")
+        self.cpr_execute_btn.setMinimumHeight(45)
+        self.cpr_execute_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; font-size: 14px;")
+        self.cpr_execute_btn.clicked.connect(self._execute_cpr_signal)
+        auto_layout.addWidget(self.cpr_execute_btn)
+
+        left_layout.addWidget(auto_group)
+        left_layout.addStretch()
+
+        main_layout.addWidget(left_panel)
+
+        # Right Panel - Trade Log & Info
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+
+        # Trade Actions Info
+        info_group = QGroupBox("Signal Actions")
+        info_layout = QVBoxLayout(info_group)
+
+        info_text = QLabel("""
+<b>BULLISH Signal</b> (Price > Top Pivot):<br>
+Action: SELL PE (Put) at calculated strike<br><br>
+
+<b>BEARISH Signal</b> (Price < Bottom Pivot):<br>
+Action: SELL CE (Call) at calculated strike<br><br>
+
+<b>SIDEWAYS Signal</b> (Price between TC & BC):<br>
+Action: IRON CONDOR<br>
+- Sell CE at upper strike<br>
+- Sell PE at lower strike<br>
+- Buy protective wings
+        """)
+        info_text.setWordWrap(True)
+        info_text.setStyleSheet("font-size: 13px; padding: 10px;")
+        info_layout.addWidget(info_text)
+        right_layout.addWidget(info_group)
+
+        # Trade Log
+        log_group = QGroupBox("Trade Log")
+        log_layout = QVBoxLayout(log_group)
+
+        self.cpr_trade_log = QTextEdit()
+        self.cpr_trade_log.setReadOnly(True)
+        self.cpr_trade_log.setStyleSheet("font-family: monospace; font-size: 12px;")
+        log_layout.addWidget(self.cpr_trade_log)
+
+        clear_log_btn = QPushButton("Clear Log")
+        clear_log_btn.clicked.connect(lambda: self.cpr_trade_log.clear())
+        log_layout.addWidget(clear_log_btn)
+
+        right_layout.addWidget(log_group)
+
+        main_layout.addWidget(right_panel)
+
+        # Initialize CPR trader
+        self.cpr_trader = CPRAutoTrader(
+            symbol="NIFTY",
+            auto_trade_enabled=False,
+            test_mode=True
+        )
+        self.cpr_trader.on_signal_change = self._on_cpr_signal_change
+        self.cpr_trader.on_trade_executed = self._on_cpr_trade_executed
+
+        self.tabs.addTab(cpr_widget, "CPR Strategy")
+
+    def _calculate_cpr_levels(self):
+        """Calculate CPR levels from prior day data"""
+        from algo_trader.strategies.cpr_strategy import CPRCalculator
+
+        high = self.cpr_prior_high.value()
+        low = self.cpr_prior_low.value()
+        close = self.cpr_prior_close.value()
+
+        if high <= 0 or low <= 0 or close <= 0:
+            QMessageBox.warning(self, "Invalid Data", "Please enter valid OHLC data")
+            return
+
+        if high < low:
+            QMessageBox.warning(self, "Invalid Data", "High must be greater than Low")
+            return
+
+        # Calculate levels
+        levels = CPRCalculator.calculate_all(high, low, close)
+
+        # Update labels
+        self.cpr_tc_label.setText(f"₹{levels.top_pivot:.2f}")
+        self.cpr_cp_label.setText(f"₹{levels.central_pivot:.2f}")
+        self.cpr_bc_label.setText(f"₹{levels.bottom_pivot:.2f}")
+        self.cpr_range_label.setText(f"₹{levels.cpr_range:.2f}")
+
+        # Set in trader
+        self.cpr_trader.set_prior_day_data(high, low, close)
+        self.cpr_trader.symbol = self.cpr_symbol.currentText()
+
+        # Update signal
+        self._update_cpr_signal()
+
+        self._log_cpr(f"CPR Levels Calculated:\n"
+                     f"  Top Pivot: {levels.top_pivot:.2f}\n"
+                     f"  Central Pivot: {levels.central_pivot:.2f}\n"
+                     f"  Bottom Pivot: {levels.bottom_pivot:.2f}\n"
+                     f"  CPR Range: {levels.cpr_range:.2f}")
+
+    def _update_cpr_signal(self):
+        """Update signal based on current price"""
+        if not self.cpr_trader.cpr_levels:
+            return
+
+        current_price = self.cpr_current_price.value()
+        signal = self.cpr_trader.update_price(current_price)
+
+        if signal:
+            self._display_cpr_signal(signal)
+
+    def _display_cpr_signal(self, signal):
+        """Display the CPR signal in UI"""
+        from algo_trader.strategies.cpr_strategy import CPRSignal
+
+        signal_text = signal.signal.value
+        zone_text = signal.premium_zone.value
+
+        # Update signal label with color
+        if signal.signal == CPRSignal.BULLISH:
+            self.cpr_signal_label.setText("BULLISH (Sell Put)")
+            self.cpr_signal_label.setStyleSheet(
+                "font-size: 18px; font-weight: bold; padding: 10px; "
+                "background-color: #4CAF50; color: white; border-radius: 5px;"
+            )
+            self.cpr_strike_label.setText(f"PE Strike: ₹{signal.strike_value:.0f}")
+
+        elif signal.signal == CPRSignal.BEARISH:
+            self.cpr_signal_label.setText("BEARISH (Sell Call)")
+            self.cpr_signal_label.setStyleSheet(
+                "font-size: 18px; font-weight: bold; padding: 10px; "
+                "background-color: #F44336; color: white; border-radius: 5px;"
+            )
+            self.cpr_strike_label.setText(f"CE Strike: ₹{signal.strike_value:.0f}")
+
+        elif signal.signal == CPRSignal.SIDEWAYS:
+            self.cpr_signal_label.setText("SIDEWAYS (Iron Condor)")
+            self.cpr_signal_label.setStyleSheet(
+                "font-size: 18px; font-weight: bold; padding: 10px; "
+                "background-color: #FF9800; color: white; border-radius: 5px;"
+            )
+            self.cpr_strike_label.setText(
+                f"CE: ₹{signal.strike_value:.0f} | PE: ₹{signal.strike_value_2:.0f}"
+            )
+        else:
+            self.cpr_signal_label.setText("No Signal")
+            self.cpr_signal_label.setStyleSheet(
+                "font-size: 18px; font-weight: bold; padding: 10px; "
+                "background-color: #666; color: white; border-radius: 5px;"
+            )
+            self.cpr_strike_label.setText("--")
+
+        self.cpr_premium_zone_label.setText(zone_text)
+
+    def _start_cpr_monitoring(self):
+        """Start CPR monitoring"""
+        if not self.cpr_trader.cpr_levels:
+            QMessageBox.warning(self, "No CPR Data",
+                              "Please calculate CPR levels first")
+            return
+
+        self.cpr_trader.auto_trade_enabled = self.cpr_auto_trade_check.isChecked()
+        self.cpr_trader.test_mode = self.cpr_test_mode_check.isChecked()
+
+        # Start monitoring with price callback
+        self.cpr_trader.start_monitoring(lambda: self.cpr_current_price.value())
+
+        self.cpr_start_btn.setEnabled(False)
+        self.cpr_stop_btn.setEnabled(True)
+
+        mode = "TEST" if self.cpr_trader.test_mode else "LIVE"
+        auto = "AUTO-TRADE ON" if self.cpr_trader.auto_trade_enabled else "Manual"
+        self._log_cpr(f"Monitoring STARTED - Mode: {mode}, {auto}")
+
+    def _stop_cpr_monitoring(self):
+        """Stop CPR monitoring"""
+        self.cpr_trader.stop_monitoring()
+
+        self.cpr_start_btn.setEnabled(True)
+        self.cpr_stop_btn.setEnabled(False)
+
+        self._log_cpr("Monitoring STOPPED")
+
+    def _execute_cpr_signal(self):
+        """Manually execute current CPR signal"""
+        from algo_trader.strategies.cpr_strategy import CPRSignal
+
+        if not self.cpr_trader.current_signal:
+            QMessageBox.warning(self, "No Signal", "No signal to execute")
+            return
+
+        signal = self.cpr_trader.current_signal
+
+        if signal.signal == CPRSignal.NO_SIGNAL:
+            QMessageBox.warning(self, "No Signal", "Current signal is 'No Signal'")
+            return
+
+        # Confirm execution
+        reply = QMessageBox.question(
+            self, "Confirm Trade",
+            f"Execute {signal.signal.value}?\n\n"
+            f"Strike: {signal.strike_value:.0f}\n"
+            f"Premium Zone: {signal.premium_zone.value}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.cpr_trader._execute_trade(signal)
+
+    def _on_cpr_signal_change(self, signal):
+        """Callback when CPR signal changes"""
+        self._display_cpr_signal(signal)
+        self._log_cpr(f"SIGNAL CHANGE: {signal.signal.value} at ₹{signal.current_price:.2f}")
+
+    def _on_cpr_trade_executed(self, trade_details):
+        """Callback when trade is executed"""
+        from algo_trader.strategies.cpr_strategy import CPRSignal
+
+        self._log_cpr(f"\n{'='*40}\n"
+                     f"TRADE EXECUTED!\n"
+                     f"Signal: {trade_details['signal']}\n"
+                     f"Symbol: {trade_details['symbol']}\n"
+                     f"Strike: {trade_details['strike']}\n"
+                     f"Mode: {'TEST' if trade_details['test_mode'] else 'LIVE'}\n"
+                     f"Time: {trade_details['timestamp']}\n"
+                     f"{'='*40}\n")
+
+        # If sideways, auto-load Iron Condor in Strategy Builder
+        if trade_details.get('action') == 'IRON_CONDOR':
+            self._auto_load_iron_condor(
+                trade_details['ce_strike'],
+                trade_details['pe_strike'],
+                trade_details['symbol']
+            )
+
+    def _auto_load_iron_condor(self, ce_strike, pe_strike, symbol):
+        """Auto-load Iron Condor in Strategy Builder"""
+        try:
+            # Switch to Strategy Builder tab
+            for i in range(self.tabs.count()):
+                if self.tabs.tabText(i) == "Strategy Builder":
+                    self.tabs.setCurrentIndex(i)
+                    break
+
+            # Set symbol
+            idx = self.sb_symbol.findText(symbol)
+            if idx >= 0:
+                self.sb_symbol.setCurrentIndex(idx)
+
+            # Clear existing legs
+            self.strategy_legs = []
+
+            # Add Iron Condor legs
+            gap = 100 if "BANK" in symbol else 50
+
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'CE', 'strike': ce_strike, 'qty': 1, 'premium': 100},
+                {'action': 'SELL', 'type': 'PE', 'strike': pe_strike, 'qty': 1, 'premium': 100},
+                {'action': 'BUY', 'type': 'CE', 'strike': ce_strike + gap * 2, 'qty': 1, 'premium': 30},
+                {'action': 'BUY', 'type': 'PE', 'strike': pe_strike - gap * 2, 'qty': 1, 'premium': 30}
+            ]
+
+            self._refresh_legs_table()
+            self._update_payoff_chart()
+            self._calculate_strategy_metrics()
+
+            self._log_cpr(f"Iron Condor auto-loaded in Strategy Builder:\n"
+                         f"  Sell CE: {ce_strike}\n"
+                         f"  Sell PE: {pe_strike}\n"
+                         f"  Buy CE: {ce_strike + gap * 2}\n"
+                         f"  Buy PE: {pe_strike - gap * 2}")
+
+        except Exception as e:
+            logger.error(f"Failed to auto-load Iron Condor: {e}")
+
+    def _log_cpr(self, message):
+        """Log message to CPR trade log"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.cpr_trade_log.append(f"[{timestamp}] {message}")
 
     def _setup_payoff_chart(self):
         """Setup the payoff chart styling"""

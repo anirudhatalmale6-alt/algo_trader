@@ -4197,10 +4197,12 @@ class MainWindow(QMainWindow):
     def _on_chartink_alert_thread(self, alert):
         """Called from background thread - emit signal to main thread"""
         # Emit signal to handle alert on main GUI thread
+        logger.info(f"Alert received in thread callback: {alert.symbol} @ {alert.price}")
         self.chartink_alert_signal.emit(alert)
 
     def _handle_chartink_alert_gui(self, alert):
         """Handle Chartink alert on main GUI thread - execute trade with position tracking"""
+        logger.info(f"Alert received in GUI handler: {alert.symbol} @ {alert.price}")
         from algo_trader.core.order_manager import Order, OrderType, TransactionType, Exchange
 
         extra = alert.extra_data or {}

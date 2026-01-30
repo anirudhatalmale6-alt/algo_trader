@@ -34,7 +34,7 @@ class ChartinkScanner:
     BASE_URL = "https://chartink.com/screener/"
     SCAN_API_URL = "https://chartink.com/screener/process"
 
-    def __init__(self):
+    def __init__(self, cookie_file: str = None):
         self.active_scans = {}  # scan_name -> scan_config
         self.alert_callbacks = []  # List of callbacks to notify on alerts
         self._running = False
@@ -43,12 +43,42 @@ class ChartinkScanner:
 
         # Set headers to mimic browser
         self._session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
             'Accept-Language': 'en-US,en;q=0.9',
             'X-Requested-With': 'XMLHttpRequest',
             'Referer': 'https://chartink.com/screener/'
         })
+
+        # Load cookies from file if provided
+        if cookie_file:
+            self._load_cookies(cookie_file)
+
+    def _load_cookies(self, cookie_file: str):
+        """Load cookies from Netscape cookie file format"""
+        try:
+            import os
+            if not os.path.exists(cookie_file):
+                logger.warning(f"Cookie file not found: {cookie_file}")
+                return
+
+            with open(cookie_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        domain, _, path, secure, expires, name, value = parts[:7]
+                        # Clean domain (remove leading dot if present)
+                        domain = domain.lstrip('.')
+                        if 'chartink' in domain:
+                            self._session.cookies.set(name, value, domain=domain, path=path)
+                            logger.debug(f"Loaded cookie: {name}")
+
+            logger.info(f"Loaded cookies from {cookie_file}")
+        except Exception as e:
+            logger.error(f"Error loading cookies: {e}")
 
     def register_alert_callback(self, callback: Callable[[ChartinkAlert], None]):
         """Register a callback to be called when alerts are triggered"""
@@ -462,9 +492,49 @@ class ChartinkScanner:
 
             html = response.text
             import re
+            import json
 
-            # Multiple patterns to try - Chartink changes HTML structure
-            patterns = [
+            # NEW FORMAT (2024+): Chartink uses Vue.js with :scan-json attribute containing atlas_query
+            # Look for atlas_query in the scan-json data or inline JSON
+            atlas_patterns = [
+                # Pattern for atlas_query in JSON (handles escaped quotes)
+                r'"atlas_query"\s*:\s*"([^"]+)"',
+                r"'atlas_query'\s*:\s*'([^']+)'",
+                # Pattern in :scan-json Vue attribute
+                r':scan-json=["\'][^"\']*atlas_query["\']?\s*:\s*["\']([^"\']+)["\']',
+                # Pattern with HTML entity encoding
+                r'atlas_query&quot;:&quot;([^&]+)&quot;',
+            ]
+
+            for pattern in atlas_patterns:
+                match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+                if match:
+                    condition = match.group(1)
+                    # Unescape HTML entities and JSON escapes
+                    condition = condition.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                    condition = condition.replace('\\u003c', '<').replace('\\u003e', '>')
+                    condition = condition.replace('\\"', '"').replace("\\'", "'")
+                    logger.info(f"Extracted atlas_query from URL: {condition[:50]}...")
+                    return condition
+
+            # Try to find JSON data in script tags or Vue components
+            json_match = re.search(r':scan-json="([^"]+)"', html)
+            if json_match:
+                try:
+                    json_str = json_match.group(1)
+                    # Unescape HTML entities
+                    json_str = json_str.replace('&quot;', '"').replace('&amp;', '&')
+                    json_str = json_str.replace('&lt;', '<').replace('&gt;', '>')
+                    data = json.loads(json_str)
+                    if 'atlas_query' in data:
+                        condition = data['atlas_query']
+                        logger.info(f"Extracted atlas_query from JSON: {condition[:50]}...")
+                        return condition
+                except json.JSONDecodeError:
+                    pass
+
+            # LEGACY FORMAT: Try old scan_clause patterns for backward compatibility
+            legacy_patterns = [
                 r'scan_clause\s*=\s*["\']([^"\']+)["\']',
                 r'data-scan-clause=["\']([^"\']+)["\']',
                 r'"scan_clause":\s*"([^"]+)"',
@@ -472,17 +542,15 @@ class ChartinkScanner:
                 r'name="scan_clause"[^>]*value="([^"]+)"',
                 r'var\s+scan_clause\s*=\s*["\']([^"\']+)["\']',
                 r'scanClause\s*[:=]\s*["\']([^"\']+)["\']',
-                # Try to find in script tags
-                r'<script[^>]*>[^<]*scan_clause[^<]*["\']([^"\']+)["\'][^<]*</script>',
             ]
 
-            for pattern in patterns:
+            for pattern in legacy_patterns:
                 match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
                 if match:
                     condition = match.group(1)
                     # Unescape HTML entities
                     condition = condition.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-                    logger.info(f"Extracted scan condition from URL: {condition[:50]}...")
+                    logger.info(f"Extracted scan_clause from URL: {condition[:50]}...")
                     return condition
 
             # Try to extract from hidden input
@@ -493,8 +561,12 @@ class ChartinkScanner:
             # Log HTML snippet for debugging
             logger.warning(f"Could not extract scan condition from URL. HTML length: {len(html)}")
 
-            # Save a snippet for debugging
-            if 'scan_clause' in html.lower():
+            # Debug: Check what patterns exist in HTML
+            if 'atlas_query' in html:
+                idx = html.find('atlas_query')
+                snippet = html[max(0, idx-50):idx+150]
+                logger.debug(f"HTML snippet around 'atlas_query': {snippet}")
+            elif 'scan_clause' in html.lower():
                 idx = html.lower().find('scan_clause')
                 snippet = html[max(0, idx-100):idx+200]
                 logger.debug(f"HTML snippet around 'scan_clause': {snippet}")

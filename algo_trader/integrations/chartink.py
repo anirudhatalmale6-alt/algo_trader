@@ -597,9 +597,17 @@ class ChartinkScanner:
             return []
 
         try:
-            # Get CSRF token
+            # Get CSRF token from meta tag (not cookie - cookie doesn't work)
             csrf_response = self._session.get("https://chartink.com/screener/")
-            csrf_token = self._session.cookies.get('XSRF-TOKEN', '')
+            csrf_token = ''
+
+            # Extract CSRF token from meta tag in HTML
+            import re
+            csrf_match = re.search(r'<meta\s+name="csrf-token"\s+content="([^"]+)"', csrf_response.text)
+            if csrf_match:
+                csrf_token = csrf_match.group(1)
+            else:
+                logger.warning("Could not find CSRF token in HTML")
 
             payload = {
                 'scan_clause': scan_condition
@@ -607,7 +615,10 @@ class ChartinkScanner:
 
             headers = {
                 'X-CSRF-TOKEN': csrf_token,
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': 'https://chartink.com/screener/'
             }
 
             response = self._session.post(

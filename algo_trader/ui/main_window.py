@@ -425,6 +425,32 @@ class MainWindow(QMainWindow):
         self.chartink_action.addItems(["BUY", "SELL"])
         left_form.addRow("Action:", self.chartink_action)
 
+        # Trade Type - Equity or Options
+        self.chartink_trade_type = QComboBox()
+        self.chartink_trade_type.addItems(["Equity", "Options (F&O)"])
+        self.chartink_trade_type.currentIndexChanged.connect(self._on_chartink_trade_type_changed)
+        left_form.addRow("Trade Type:", self.chartink_trade_type)
+
+        # Options settings (hidden by default)
+        self.chartink_options_frame = QWidget()
+        options_layout = QFormLayout(self.chartink_options_frame)
+        options_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.chartink_strike_selection = QComboBox()
+        self.chartink_strike_selection.addItems(["ATM", "ITM-1", "ITM-2", "OTM-1", "OTM-2"])
+        options_layout.addRow("Strike:", self.chartink_strike_selection)
+
+        self.chartink_option_type = QComboBox()
+        self.chartink_option_type.addItems(["Auto (BUY=CE, SELL=PE)", "CE Only", "PE Only"])
+        options_layout.addRow("Option Type:", self.chartink_option_type)
+
+        self.chartink_expiry = QComboBox()
+        self.chartink_expiry.addItems(["Current Week", "Next Week", "Current Month"])
+        options_layout.addRow("Expiry:", self.chartink_expiry)
+
+        self.chartink_options_frame.setVisible(False)
+        left_form.addRow("", self.chartink_options_frame)
+
         self.chartink_quantity = QSpinBox()
         self.chartink_quantity.setRange(1, 10000)
         self.chartink_quantity.setValue(1)
@@ -4285,6 +4311,15 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error loading Chartink scans: {e}")
 
+    def _on_chartink_trade_type_changed(self, index):
+        """Handle trade type change (Equity/Options)"""
+        is_options = index == 1  # Options (F&O)
+        self.chartink_options_frame.setVisible(is_options)
+        if is_options:
+            self.chartink_quantity.setSuffix(" lots")
+        else:
+            self.chartink_quantity.setSuffix("")
+
     def _on_chartink_alloc_type_changed(self, index):
         """Handle allocation type change"""
         if index == 0:  # Auto
@@ -4360,6 +4395,21 @@ class MainWindow(QMainWindow):
         total_capital = self.chartink_total_capital.value()
         max_trades = self.chartink_max_trades.value()
 
+        # Trade type (Equity or Options)
+        trade_type = "options" if self.chartink_trade_type.currentIndex() == 1 else "equity"
+
+        # Options config (if F&O selected)
+        options_config = None
+        if trade_type == "options":
+            strike_map = ["ATM", "ITM-1", "ITM-2", "OTM-1", "OTM-2"]
+            option_type_map = ["auto", "CE", "PE"]
+            expiry_map = ["current_week", "next_week", "current_month"]
+            options_config = {
+                'strike_selection': strike_map[self.chartink_strike_selection.currentIndex()],
+                'option_type': option_type_map[self.chartink_option_type.currentIndex()],
+                'expiry': expiry_map[self.chartink_expiry.currentIndex()]
+            }
+
         # Get allocation type and value
         alloc_type_index = self.chartink_alloc_type.currentIndex()
         alloc_type = ["auto", "fixed_qty", "fixed_amount"][alloc_type_index]
@@ -4425,7 +4475,7 @@ class MainWindow(QMainWindow):
 
         # Save to config
         scans = self.config.get('chartink.scans', [])
-        scans.append({
+        scan_config = {
             'name': name,
             'url': url,
             'action': action,
@@ -4440,8 +4490,12 @@ class MainWindow(QMainWindow):
             'max_trades': max_trades,
             'risk_config': risk_config,
             'trigger_on_first': trigger_on_first,
-            'enabled': True
-        })
+            'enabled': True,
+            'trade_type': trade_type
+        }
+        if options_config:
+            scan_config['options_config'] = options_config
+        scans.append(scan_config)
         self.config.set('chartink.scans', scans)
 
         # Clear inputs
@@ -4617,15 +4671,21 @@ class MainWindow(QMainWindow):
         extra = alert.extra_data or {}
         is_squareoff = extra.get('is_squareoff', False)
 
+        # Get scan config to check trade type
+        scan_config = self.chartink_scanner.active_scans.get(alert.scan_name, {})
+
         # Determine action and quantity
         if is_squareoff:
             action = extra.get('exit_action', 'SELL')
             quantity = extra.get('quantity', 1)
         else:
-            scan_config = self.chartink_scanner.active_scans.get(alert.scan_name, {})
             action = scan_config.get('action', 'BUY')
             # Use calculated quantity from allocation logic
             quantity = extra.get('calculated_quantity', scan_config.get('quantity', 1))
+
+        # Check if this is an F&O trade
+        trade_type = scan_config.get('trade_type', 'equity')
+        options_config = scan_config.get('options_config')
 
         # Log alert to table
         row = self.chartink_alerts_table.rowCount()
@@ -4636,7 +4696,13 @@ class MainWindow(QMainWindow):
         self.chartink_alerts_table.setItem(row, 3, QTableWidgetItem(f"₹{alert.price:.2f}" if alert.price else "N/A"))
         self.chartink_alerts_table.setItem(row, 4, QTableWidgetItem(str(quantity)))
 
-        # Execute trade - Paper Trading mode or Broker mode
+        # Check if this is an OPTIONS trade
+        if trade_type == "options" and options_config and not is_squareoff:
+            # Execute as Options trade using Auto Options
+            self._execute_chartink_options_trade(alert, action, quantity, options_config)
+            return
+
+        # Execute trade - Paper Trading mode or Broker mode (EQUITY)
         paper_mode = self.config.get('trading.paper_mode', False)
 
         if paper_mode and hasattr(self, 'paper_simulator') and self.paper_simulator:
@@ -4742,6 +4808,84 @@ class MainWindow(QMainWindow):
             table.setMinimumHeight(120)
             table.setMaximumHeight(200)
             button.setText("⬜ Expand")
+
+    def _execute_chartink_options_trade(self, alert, action: str, quantity: int, options_config: dict):
+        """Execute an options trade from Chartink F&O scanner signal"""
+        try:
+            symbol = alert.symbol
+            strike_selection = options_config.get('strike_selection', 'ATM')
+            option_type_setting = options_config.get('option_type', 'auto')
+            expiry_setting = options_config.get('expiry', 'current_week')
+
+            # Determine option type (CE/PE)
+            if option_type_setting == 'auto':
+                # BUY signal = CE (bullish), SELL signal = PE (bearish)
+                option_type = 'CE' if action == 'BUY' else 'PE'
+            else:
+                option_type = option_type_setting  # CE or PE
+
+            # Log to alerts table
+            row = self.chartink_alerts_table.rowCount() - 1  # Last added row
+            action_text = f"OPTIONS: {symbol} {strike_selection} {option_type}"
+
+            logger.info(f"Chartink F&O Signal: {symbol} -> {action} -> {option_type} {strike_selection}")
+
+            # Check if Auto Options executor is available
+            if hasattr(self, 'auto_options') and self.auto_options:
+                # Use Auto Options to execute
+                from algo_trader.core.auto_options import SignalAction, StrikeSelection, ExpirySelection
+
+                # Map strike selection
+                strike_map = {
+                    'ATM': StrikeSelection.ATM,
+                    'ITM-1': StrikeSelection.ITM_1,
+                    'ITM-2': StrikeSelection.ITM_2,
+                    'OTM-1': StrikeSelection.OTM_1,
+                    'OTM-2': StrikeSelection.OTM_2
+                }
+
+                # Map expiry
+                expiry_map = {
+                    'current_week': ExpirySelection.CURRENT_WEEK,
+                    'next_week': ExpirySelection.NEXT_WEEK,
+                    'current_month': ExpirySelection.CURRENT_MONTH
+                }
+
+                try:
+                    # Execute via Auto Options
+                    result = self.auto_options.execute_signal(
+                        underlying=symbol,
+                        signal=SignalAction.BUY if action == 'BUY' else SignalAction.SELL,
+                        strike_selection=strike_map.get(strike_selection, StrikeSelection.ATM),
+                        expiry_selection=expiry_map.get(expiry_setting, ExpirySelection.CURRENT_WEEK),
+                        quantity=quantity
+                    )
+
+                    if result and result.get('success'):
+                        action_text = f"OPTIONS {option_type}: {result.get('option_symbol', 'N/A')}"
+                        self.chartink_scanner.record_trade(
+                            alert.scan_name, symbol, action, quantity,
+                            alert.price or 0
+                        )
+                        logger.info(f"Chartink F&O trade executed: {action_text}")
+                    else:
+                        action_text = f"OPTIONS FAILED: {result.get('message', 'Unknown error')}"
+                        logger.error(f"Chartink F&O trade failed: {result}")
+                except Exception as e:
+                    action_text = f"OPTIONS ERROR: {str(e)[:30]}"
+                    logger.error(f"Chartink F&O trade error: {e}")
+            else:
+                # No Auto Options - just log the signal
+                action_text = f"OPTIONS SIGNAL: {option_type} {strike_selection} (Auto-Options not configured)"
+                logger.warning("Chartink F&O signal received but Auto-Options not configured")
+
+            self.chartink_alerts_table.setItem(row, 5, QTableWidgetItem(action_text))
+            self._refresh_chartink_scans_table()
+
+        except Exception as e:
+            logger.error(f"Error executing Chartink options trade: {e}")
+            row = self.chartink_alerts_table.rowCount() - 1
+            self.chartink_alerts_table.setItem(row, 5, QTableWidgetItem(f"OPTIONS ERROR: {str(e)[:30]}"))
 
     # Risk Management / TSL Methods
     def _init_risk_manager(self):

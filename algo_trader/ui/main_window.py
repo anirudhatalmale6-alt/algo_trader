@@ -1549,6 +1549,22 @@ class MainWindow(QMainWindow):
         self.sb_show_greeks_btn.clicked.connect(self._show_strategy_greeks)
         chart_controls.addWidget(self.sb_show_greeks_btn)
 
+        # Greeks line chart toggles
+        self.sb_show_vega_check = QCheckBox("Show Vega")
+        self.sb_show_vega_check.setStyleSheet("color: #FF9800;")
+        self.sb_show_vega_check.stateChanged.connect(self._update_payoff_chart)
+        chart_controls.addWidget(self.sb_show_vega_check)
+
+        self.sb_show_delta_check = QCheckBox("Show Delta")
+        self.sb_show_delta_check.setStyleSheet("color: #2196F3;")
+        self.sb_show_delta_check.stateChanged.connect(self._update_payoff_chart)
+        chart_controls.addWidget(self.sb_show_delta_check)
+
+        self.sb_show_theta_check = QCheckBox("Show Theta")
+        self.sb_show_theta_check.setStyleSheet("color: #9C27B0;")
+        self.sb_show_theta_check.stateChanged.connect(self._update_payoff_chart)
+        chart_controls.addWidget(self.sb_show_theta_check)
+
         chart_controls.addStretch()
         chart_layout.addLayout(chart_controls)
 
@@ -1698,10 +1714,44 @@ class MainWindow(QMainWindow):
                                 color='#4CAF50', alpha=0.3, label='Profit')
         self.sb_ax.fill_between(price_range, total_payoff, 0, where=loss_mask,
                                 color='#F44336', alpha=0.3, label='Loss')
-        self.sb_ax.plot(price_range, total_payoff, color='#2196F3', linewidth=2)
+        self.sb_ax.plot(price_range, total_payoff, color='#2196F3', linewidth=2, label='Payoff')
 
         # Mark spot price
         self.sb_ax.axvline(x=spot, color='yellow', linestyle='--', alpha=0.7, label=f'Spot: ₹{spot:.0f}')
+
+        # Calculate and plot Greeks if checkboxes are selected
+        show_vega = hasattr(self, 'sb_show_vega_check') and self.sb_show_vega_check.isChecked()
+        show_delta = hasattr(self, 'sb_show_delta_check') and self.sb_show_delta_check.isChecked()
+        show_theta = hasattr(self, 'sb_show_theta_check') and self.sb_show_theta_check.isChecked()
+
+        if show_vega or show_delta or show_theta:
+            # Create secondary Y-axis for Greeks
+            ax2 = self.sb_ax.twinx()
+            ax2.set_ylabel('Greeks Value', color='white')
+            ax2.tick_params(colors='white')
+
+            lot_size = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 25
+
+            if show_vega:
+                # Calculate Vega across price range (sensitivity to IV change)
+                vega_line = self._calculate_strategy_vega(price_range, lot_size)
+                ax2.plot(price_range, vega_line, color='#FF9800', linewidth=2,
+                        linestyle='-', label='Vega', alpha=0.9)
+
+            if show_delta:
+                # Calculate Delta across price range
+                delta_line = self._calculate_strategy_delta(price_range, lot_size)
+                ax2.plot(price_range, delta_line, color='#2196F3', linewidth=2,
+                        linestyle='--', label='Delta', alpha=0.9)
+
+            if show_theta:
+                # Calculate Theta across price range
+                theta_line = self._calculate_strategy_theta(price_range, lot_size)
+                ax2.plot(price_range, theta_line, color='#9C27B0', linewidth=2,
+                        linestyle='-.', label='Theta', alpha=0.9)
+
+            ax2.legend(loc='upper left', facecolor='#2d2d2d', labelcolor='white')
+            ax2.axhline(y=0, color='gray', linestyle=':', alpha=0.3)
 
         # Mark breakeven points
         breakeven_points = []
@@ -1718,6 +1768,91 @@ class MainWindow(QMainWindow):
         self.sb_ax.grid(True, alpha=0.2)
         self.sb_figure.tight_layout()
         self.sb_canvas.draw()
+
+    def _calculate_strategy_vega(self, price_range, lot_size):
+        """Calculate strategy Vega across price range (like Moving Average line)"""
+        import numpy as np
+
+        vega_values = np.zeros_like(price_range)
+
+        for leg in self.strategy_legs:
+            strike = leg['strike']
+            premium = leg['premium']
+            qty = leg['qty']
+
+            # Vega calculation (simplified Black-Scholes approximation)
+            # Vega is highest at ATM and decreases as we move ITM/OTM
+            for i, spot in enumerate(price_range):
+                moneyness = abs(spot - strike) / spot
+                # ATM has highest vega, decreases with distance from strike
+                # Using Gaussian-like decay
+                atm_vega = premium * 0.4  # Base vega ~40% of premium for ATM
+                vega = atm_vega * np.exp(-0.5 * (moneyness / 0.1) ** 2)
+
+                # Adjust for position direction
+                if leg['action'] == 'BUY':
+                    vega_values[i] += vega * qty * lot_size
+                else:
+                    vega_values[i] -= vega * qty * lot_size
+
+        return vega_values
+
+    def _calculate_strategy_delta(self, price_range, lot_size):
+        """Calculate strategy Delta across price range"""
+        import numpy as np
+
+        delta_values = np.zeros_like(price_range)
+
+        for leg in self.strategy_legs:
+            strike = leg['strike']
+            qty = leg['qty']
+
+            for i, spot in enumerate(price_range):
+                # Simplified delta calculation
+                moneyness = (spot - strike) / spot
+
+                if leg['type'] == 'CE':
+                    # Call delta: 0 to 1, ~0.5 at ATM
+                    delta = 0.5 + moneyness * 3  # Simplified
+                    delta = max(0, min(1, delta))
+                else:
+                    # Put delta: -1 to 0, ~-0.5 at ATM
+                    delta = -0.5 + moneyness * 3
+                    delta = max(-1, min(0, delta))
+
+                # Adjust for position direction
+                if leg['action'] == 'SELL':
+                    delta = -delta
+
+                delta_values[i] += delta * qty * lot_size
+
+        return delta_values
+
+    def _calculate_strategy_theta(self, price_range, lot_size):
+        """Calculate strategy Theta across price range"""
+        import numpy as np
+
+        theta_values = np.zeros_like(price_range)
+
+        for leg in self.strategy_legs:
+            strike = leg['strike']
+            premium = leg['premium']
+            qty = leg['qty']
+
+            for i, spot in enumerate(price_range):
+                # Theta is highest at ATM, decreases as we move away
+                moneyness = abs(spot - strike) / spot
+                # Daily theta decay (negative for buyers)
+                atm_theta = -premium * 0.05  # ~5% daily decay at ATM
+                theta = atm_theta * np.exp(-0.5 * (moneyness / 0.15) ** 2)
+
+                # Buyers have negative theta, sellers have positive
+                if leg['action'] == 'SELL':
+                    theta = -theta
+
+                theta_values[i] += theta * qty * lot_size
+
+        return theta_values
 
     def _calculate_strategy_metrics(self):
         """Calculate max profit, max loss, breakeven, etc."""

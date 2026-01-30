@@ -772,11 +772,13 @@ class ChartinkScanner:
                     interval = scan_config.get('interval', 60)
 
                     if last_scan is None or (datetime.now() - last_scan).seconds >= interval:
-                        logger.info(f"Running scan '{scan_name}' (first_scan={last_scan is None})")
+                        logger.info(f"Running scan '{scan_name}' (first_scan={last_scan is None}, trigger_on_first={scan_config.get('trigger_on_first')})")
                         # Only process new alerts if we can take new trades
-                        if self._can_take_new_trade(scan_config):
+                        can_trade = self._can_take_new_trade(scan_config)
+                        logger.info(f"Scan '{scan_name}' can_take_new_trade={can_trade}, trade_count={scan_config.get('trade_count', 0)}, max_trades={scan_config.get('max_trades', 0)}")
+                        if can_trade:
                             new_alerts = self._check_for_new_alerts(scan_name)
-                            logger.info(f"Scan '{scan_name}' found {len(new_alerts)} new alerts")
+                            logger.info(f"Scan '{scan_name}' found {len(new_alerts)} new alerts, callbacks registered: {len(self.alert_callbacks)}")
 
                             for alert in new_alerts:
                                 # Calculate quantity based on allocation

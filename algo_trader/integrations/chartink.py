@@ -719,10 +719,12 @@ class ChartinkScanner:
                 try:
                     # Check if scanner is enabled
                     if not scan_config.get('enabled', True):
+                        logger.debug(f"Scanner '{scan_name}' is disabled, skipping")
                         continue
 
                     # Check if scan is within active time window
                     if not self._is_scan_active(scan_config):
+                        logger.debug(f"Scanner '{scan_name}' outside active time window ({scan_config.get('start_time')} - {scan_config.get('exit_time')})")
                         continue
 
                     # Check if it's exit time - square off positions
@@ -755,9 +757,11 @@ class ChartinkScanner:
                     interval = scan_config.get('interval', 60)
 
                     if last_scan is None or (datetime.now() - last_scan).seconds >= interval:
+                        logger.info(f"Running scan '{scan_name}' (first_scan={last_scan is None})")
                         # Only process new alerts if we can take new trades
                         if self._can_take_new_trade(scan_config):
                             new_alerts = self._check_for_new_alerts(scan_name)
+                            logger.info(f"Scan '{scan_name}' found {len(new_alerts)} new alerts")
 
                             for alert in new_alerts:
                                 # Calculate quantity based on allocation

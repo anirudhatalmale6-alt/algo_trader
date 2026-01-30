@@ -1416,13 +1416,7 @@ class MainWindow(QMainWindow):
         self.sb_risk_reward.setMinimumHeight(25)
         summary_layout.addRow("Risk:Reward:", self.sb_risk_reward)
 
-        # Row 3: Summary + Live P&L side by side
-        row3_layout = QHBoxLayout()
-        row3_layout.addWidget(summary_group)
-        row3_layout.addWidget(pnl_group)
-        config_layout.addLayout(row3_layout)
-
-        # Live P&L Box (shows difference when spot moves)
+        # Live P&L Box (define before row3_layout)
         pnl_group = QGroupBox("📊 Live P&L")
         pnl_layout = QFormLayout(pnl_group)
 
@@ -1451,7 +1445,11 @@ class MainWindow(QMainWindow):
         self.sb_lock_entry_btn.clicked.connect(self._lock_entry_price)
         pnl_layout.addRow(self.sb_lock_entry_btn)
 
-        # pnl_group already added in row3_layout
+        # Row 3: Summary + Live P&L side by side
+        row3_layout = QHBoxLayout()
+        row3_layout.addWidget(summary_group)
+        row3_layout.addWidget(pnl_group)
+        config_layout.addLayout(row3_layout)
 
         # Save/Load Strategy Buttons
         strategy_io_group = QGroupBox("💾 Save/Load Strategy")

@@ -246,6 +246,9 @@ class ChartinkScanner:
 
     def _is_exit_time(self, scan_config: Dict) -> bool:
         """Check if it's time to square off positions"""
+        # In test mode, never trigger auto exit (allow testing anytime)
+        if self.test_mode:
+            return False
         now = datetime.now().time()
         exit_t = self._parse_time(scan_config.get('exit_time', '15:15'))
         return now >= exit_t
@@ -749,7 +752,9 @@ class ChartinkScanner:
                         continue
 
                     # Check if it's exit time - square off positions
-                    if self._is_exit_time(scan_config):
+                    is_exit = self._is_exit_time(scan_config)
+                    logger.info(f"Scanner '{scan_name}' is_exit_time={is_exit}")
+                    if is_exit:
                         positions = self.get_positions_to_squareoff(scan_name)
                         if positions:
                             logger.info(f"Exit time reached for '{scan_name}', squaring off {len(positions)} positions")

@@ -106,7 +106,7 @@ class PaperTradingSimulator:
 
     def place_order(self, symbol: str, action: str, quantity: int,
                     order_type: str = "MARKET", price: float = 0.0,
-                    source: str = "") -> Optional[str]:
+                    source: str = "") -> Dict:
         """
         Place a simulated order
 
@@ -119,22 +119,22 @@ class PaperTradingSimulator:
             source: Source of the order (strategy name, scanner, etc.)
 
         Returns:
-            order_id if successful, None otherwise
+            Dict with 'success', 'order_id', and 'message' keys
         """
         with self._lock:
             if quantity <= 0:
                 logger.error("Invalid quantity")
-                return None
+                return {'success': False, 'order_id': None, 'message': 'Invalid quantity'}
 
             if price <= 0 and order_type == "MARKET":
                 logger.error("Price required for simulation")
-                return None
+                return {'success': False, 'order_id': None, 'message': 'Price required for MARKET order'}
 
             # Check capital for BUY orders
             required_capital = price * quantity
             if action.upper() == "BUY" and required_capital > self.available_capital:
                 logger.warning(f"Insufficient capital: need ₹{required_capital:.2f}, have ₹{self.available_capital:.2f}")
-                return None
+                return {'success': False, 'order_id': None, 'message': f'Insufficient capital: need ₹{required_capital:.2f}'}
 
             order_id = self._generate_order_id()
 
@@ -155,7 +155,7 @@ class PaperTradingSimulator:
             if order_type == "MARKET":
                 self._execute_order(order_id, price)
 
-            return order_id
+            return {'success': True, 'order_id': order_id, 'message': 'Order executed'}
 
     def _execute_order(self, order_id: str, market_price: float):
         """Execute a pending order"""

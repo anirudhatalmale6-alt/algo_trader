@@ -34,12 +34,13 @@ class ChartinkScanner:
     BASE_URL = "https://chartink.com/screener/"
     SCAN_API_URL = "https://chartink.com/screener/process"
 
-    def __init__(self, cookie_file: str = None):
+    def __init__(self, cookie_file: str = None, test_mode: bool = False):
         self.active_scans = {}  # scan_name -> scan_config
         self.alert_callbacks = []  # List of callbacks to notify on alerts
         self._running = False
         self._thread = None
         self._session = requests.Session()
+        self.test_mode = test_mode  # If True, skip time checks for testing
 
         # Set headers to mimic browser
         self._session.headers.update({
@@ -203,6 +204,9 @@ class ChartinkScanner:
 
     def _is_scan_active(self, scan_config: Dict) -> bool:
         """Check if current time is within scan's active window (start_time to exit_time)"""
+        # Skip time check in test mode
+        if self.test_mode:
+            return True
         now = datetime.now().time()
         start = self._parse_time(scan_config.get('start_time', '09:15'))
         exit_t = self._parse_time(scan_config.get('exit_time', '15:15'))
@@ -210,6 +214,17 @@ class ChartinkScanner:
 
     def _can_take_new_trade(self, scan_config: Dict) -> bool:
         """Check if new trades are allowed (before no_new_trade_time and under limits)"""
+        # Skip time check in test mode
+        if self.test_mode:
+            # Still check trade limits even in test mode
+            max_trades = scan_config.get('max_trades', 0)
+            if max_trades > 0 and scan_config.get('trade_count', 0) >= max_trades:
+                return False
+            total_capital = scan_config.get('total_capital', scan_config.get('total_amount', 0))
+            if total_capital > 0 and scan_config.get('amount_used', 0) >= total_capital:
+                return False
+            return True
+
         now = datetime.now().time()
         no_new = self._parse_time(scan_config.get('no_new_trade_time', '14:30'))
 

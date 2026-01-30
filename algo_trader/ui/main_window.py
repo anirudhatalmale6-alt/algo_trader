@@ -3845,10 +3845,14 @@ class MainWindow(QMainWindow):
     def _init_chartink(self):
         """Initialize Chartink scanner"""
         from algo_trader.integrations.chartink import ChartinkScanner
-        self.chartink_scanner = ChartinkScanner()
+        # Enable test_mode to skip time checks (allows testing outside market hours)
+        test_mode = self.config.get('chartink.test_mode', True)  # Default True for easy testing
+        self.chartink_scanner = ChartinkScanner(test_mode=test_mode)
         # Use signal to ensure GUI updates happen on main thread
         self.chartink_alert_signal.connect(self._handle_chartink_alert_gui)
         self.chartink_scanner.register_alert_callback(self._on_chartink_alert_thread)
+        if test_mode:
+            logger.info("Chartink scanner initialized in TEST MODE (time checks disabled)")
 
     def _load_chartink_scans(self):
         """Load saved Chartink scans from config"""

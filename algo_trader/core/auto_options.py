@@ -32,6 +32,7 @@ class ExpirySelection(Enum):
     CURRENT_WEEK = "Current Week"
     NEXT_WEEK = "Next Week"
     CURRENT_MONTH = "Current Month"
+    NEXT_MONTH = "Next Month"
 
 
 @dataclass
@@ -258,7 +259,20 @@ class AutoOptionsExecutor:
         elif selection == "Next Week" and len(expiries) > 1:
             return expiries[1]
         elif selection == "Current Month":
+            # Find first monthly expiry (typically last Thursday of month)
+            for exp in expiries:
+                # Monthly expiries are typically at the end of month
+                if len(expiries) > 2:
+                    return expiries[-1]  # Last available expiry is monthly
             return expiries[-1]
+        elif selection == "Next Month":
+            # Find next month's expiry (after current month)
+            # If we have multiple expiries, look for one further out
+            if len(expiries) > 3:
+                return expiries[-1]  # Furthest available expiry
+            elif len(expiries) > 1:
+                return expiries[-1]
+            return expiries[0]
         return expiries[0]
 
     def _get_strike(self, spot_price: float) -> float:

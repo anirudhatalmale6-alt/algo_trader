@@ -455,7 +455,7 @@ class MainWindow(QMainWindow):
         options_layout.addRow("Option Type:", self.chartink_option_type)
 
         self.chartink_expiry = QComboBox()
-        self.chartink_expiry.addItems(["Current Week", "Next Week", "Current Month"])
+        self.chartink_expiry.addItems(["Current Week", "Next Week", "Current Month", "Next Month"])
         options_layout.addRow("Expiry:", self.chartink_expiry)
 
         self.chartink_options_frame.setVisible(False)
@@ -4448,7 +4448,7 @@ class MainWindow(QMainWindow):
         if trade_type == "options":
             strike_map = ["ATM", "ITM-1", "ITM-2", "OTM-1", "OTM-2"]
             option_type_map = ["auto", "CE", "PE"]
-            expiry_map = ["current_week", "next_week", "current_month"]
+            expiry_map = ["current_week", "next_week", "current_month", "next_month"]
             strike_idx = self.chartink_strike_selection.currentIndex()
             options_config = {
                 'strike_selection': strike_map[strike_idx] if strike_idx < 5 else "Manual",

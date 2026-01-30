@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (
     QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox,
     QScrollArea, QApplication, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal, QUrl
+from PyQt6.QtGui import QAction, QFont, QDesktopServices, QCursor
 from datetime import datetime
 
 from algo_trader.core.config import Config
@@ -648,12 +648,25 @@ class MainWindow(QMainWindow):
         positions_group = QGroupBox("Scanner Open Positions (Only Executed Trades)")
         positions_layout = QVBoxLayout(positions_group)
 
+        # Header with expand button
+        positions_header = QHBoxLayout()
+        positions_header.addWidget(QLabel("Click on Symbol to open TradingView chart"))
+        positions_header.addStretch()
+        self.positions_expand_btn = QPushButton("⬜ Expand")
+        self.positions_expand_btn.setFixedWidth(100)
+        self.positions_expand_btn.clicked.connect(lambda: self._toggle_table_expand(self.chartink_positions_table, self.positions_expand_btn))
+        positions_header.addWidget(self.positions_expand_btn)
+        positions_layout.addLayout(positions_header)
+
         self.chartink_positions_table = QTableWidget()
         self.chartink_positions_table.setColumnCount(6)
         self.chartink_positions_table.setHorizontalHeaderLabels([
             "Scanner", "Symbol", "Action", "Qty", "Entry Price", "Entry Time"
         ])
         self.chartink_positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.chartink_positions_table.setMinimumHeight(120)
+        self.chartink_positions_table.cellClicked.connect(self._on_positions_cell_clicked)
+        self.chartink_positions_table.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         positions_layout.addWidget(self.chartink_positions_table)
 
         layout.addWidget(positions_group)
@@ -662,12 +675,25 @@ class MainWindow(QMainWindow):
         alerts_group = QGroupBox("Recent Alerts")
         alerts_layout = QVBoxLayout(alerts_group)
 
+        # Header with expand button
+        alerts_header = QHBoxLayout()
+        alerts_header.addWidget(QLabel("Click on Symbol to open TradingView chart"))
+        alerts_header.addStretch()
+        self.alerts_expand_btn = QPushButton("⬜ Expand")
+        self.alerts_expand_btn.setFixedWidth(100)
+        self.alerts_expand_btn.clicked.connect(lambda: self._toggle_table_expand(self.chartink_alerts_table, self.alerts_expand_btn))
+        alerts_header.addWidget(self.alerts_expand_btn)
+        alerts_layout.addLayout(alerts_header)
+
         self.chartink_alerts_table = QTableWidget()
         self.chartink_alerts_table.setColumnCount(6)
         self.chartink_alerts_table.setHorizontalHeaderLabels([
             "Time", "Scanner", "Symbol", "Price", "Qty", "Action Taken"
         ])
         self.chartink_alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.chartink_alerts_table.setMinimumHeight(120)
+        self.chartink_alerts_table.cellClicked.connect(self._on_alerts_cell_clicked)
+        self.chartink_alerts_table.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         alerts_layout.addWidget(self.chartink_alerts_table)
 
         layout.addWidget(alerts_group)
@@ -4299,6 +4325,45 @@ class MainWindow(QMainWindow):
 
         # Refresh positions and scans tables
         self._refresh_chartink_scans_table()
+
+    def _on_positions_cell_clicked(self, row, col):
+        """Handle click on positions table - open chart for Symbol column"""
+        if col == 1:  # Symbol column
+            item = self.chartink_positions_table.item(row, col)
+            if item:
+                symbol = item.text()
+                self._open_tradingview_chart(symbol)
+
+    def _on_alerts_cell_clicked(self, row, col):
+        """Handle click on alerts table - open chart for Symbol column"""
+        if col == 2:  # Symbol column
+            item = self.chartink_alerts_table.item(row, col)
+            if item:
+                symbol = item.text()
+                self._open_tradingview_chart(symbol)
+
+    def _open_tradingview_chart(self, symbol: str):
+        """Open TradingView chart for the given symbol"""
+        # Clean symbol (remove .NS if present)
+        clean_symbol = symbol.replace('.NS', '').replace('.BSE', '').upper()
+        # TradingView URL for NSE stocks
+        url = f"https://www.tradingview.com/chart/?symbol=NSE%3A{clean_symbol}"
+        QDesktopServices.openUrl(QUrl(url))
+        logger.info(f"Opening TradingView chart for {clean_symbol}")
+        self.status_bar.showMessage(f"Opening chart for {clean_symbol}...", 3000)
+
+    def _toggle_table_expand(self, table: QTableWidget, button: QPushButton):
+        """Toggle table between normal and expanded view"""
+        if button.text() == "⬜ Expand":
+            # Expand
+            table.setMinimumHeight(400)
+            table.setMaximumHeight(600)
+            button.setText("⬛ Collapse")
+        else:
+            # Collapse
+            table.setMinimumHeight(120)
+            table.setMaximumHeight(200)
+            button.setText("⬜ Expand")
 
     # Risk Management / TSL Methods
     def _init_risk_manager(self):

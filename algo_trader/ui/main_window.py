@@ -32,6 +32,9 @@ from loguru import logger
 class MainWindow(QMainWindow):
     """Main application window"""
 
+    # Signal to handle Chartink alerts from background thread
+    chartink_alert_signal = pyqtSignal(object)
+
     def __init__(self):
         super().__init__()
 
@@ -3843,7 +3846,9 @@ class MainWindow(QMainWindow):
         """Initialize Chartink scanner"""
         from algo_trader.integrations.chartink import ChartinkScanner
         self.chartink_scanner = ChartinkScanner()
-        self.chartink_scanner.register_alert_callback(self._on_chartink_alert)
+        # Use signal to ensure GUI updates happen on main thread
+        self.chartink_alert_signal.connect(self._handle_chartink_alert_gui)
+        self.chartink_scanner.register_alert_callback(self._on_chartink_alert_thread)
 
     def _load_chartink_scans(self):
         """Load saved Chartink scans from config"""
@@ -4185,8 +4190,13 @@ class MainWindow(QMainWindow):
         self._refresh_chartink_scans_table()
         self.status_bar.showMessage("Daily counters reset")
 
-    def _on_chartink_alert(self, alert):
-        """Handle Chartink alert - execute trade with position tracking"""
+    def _on_chartink_alert_thread(self, alert):
+        """Called from background thread - emit signal to main thread"""
+        # Emit signal to handle alert on main GUI thread
+        self.chartink_alert_signal.emit(alert)
+
+    def _handle_chartink_alert_gui(self, alert):
+        """Handle Chartink alert on main GUI thread - execute trade with position tracking"""
         from algo_trader.core.order_manager import Order, OrderType, TransactionType, Exchange
 
         extra = alert.extra_data or {}

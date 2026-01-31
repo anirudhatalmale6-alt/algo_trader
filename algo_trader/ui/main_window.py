@@ -1591,7 +1591,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(builder_widget, "Strategy Builder")
 
     def _create_cpr_strategy_tab(self):
-        """Create CPR Auto-Trade Strategy tab"""
+        """Create CPR Auto-Trade Strategy tab with Multi-Symbol Support"""
         from algo_trader.strategies.cpr_strategy import (
             CPRAutoTrader, CPRCalculator, CPRSignal, PremiumZone
         )
@@ -1601,16 +1601,14 @@ class MainWindow(QMainWindow):
         cpr_scroll.setWidgetResizable(True)
 
         cpr_widget = QWidget()
-        main_layout = QHBoxLayout(cpr_widget)
+        main_layout = QVBoxLayout(cpr_widget)
 
-        # Left Panel - Configuration
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_panel.setMaximumWidth(450)
+        # Top Section - Multi-Symbol Management
+        multi_symbol_group = QGroupBox("Multi-Symbol CPR Management")
+        multi_layout = QVBoxLayout(multi_symbol_group)
 
-        # Symbol & Settings
-        settings_group = QGroupBox("CPR Settings")
-        settings_layout = QFormLayout(settings_group)
+        # Add Symbol Row
+        add_symbol_layout = QHBoxLayout()
 
         self.cpr_symbol = QComboBox()
         self.cpr_symbol.setEditable(True)
@@ -1642,8 +1640,49 @@ class MainWindow(QMainWindow):
         ]
         self.cpr_symbol.addItems(fo_indices + sorted(fo_stocks))
         self.cpr_symbol.setMinimumHeight(30)
-        self.cpr_symbol.currentTextChanged.connect(self._on_cpr_symbol_changed)
-        settings_layout.addRow("Symbol:", self.cpr_symbol)
+        self.cpr_symbol.setMinimumWidth(150)
+        add_symbol_layout.addWidget(QLabel("Symbol:"))
+        add_symbol_layout.addWidget(self.cpr_symbol)
+
+        self.cpr_add_symbol_btn = QPushButton("+ Add Symbol")
+        self.cpr_add_symbol_btn.setMinimumHeight(30)
+        self.cpr_add_symbol_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.cpr_add_symbol_btn.clicked.connect(self._add_cpr_symbol)
+        add_symbol_layout.addWidget(self.cpr_add_symbol_btn)
+
+        self.cpr_remove_symbol_btn = QPushButton("- Remove Selected")
+        self.cpr_remove_symbol_btn.setMinimumHeight(30)
+        self.cpr_remove_symbol_btn.setStyleSheet("background-color: #F44336; color: white;")
+        self.cpr_remove_symbol_btn.clicked.connect(self._remove_cpr_symbol)
+        add_symbol_layout.addWidget(self.cpr_remove_symbol_btn)
+
+        add_symbol_layout.addStretch()
+        multi_layout.addLayout(add_symbol_layout)
+
+        # Active Symbols Display
+        self.cpr_active_symbols_label = QLabel("Active Symbols: None")
+        self.cpr_active_symbols_label.setStyleSheet("font-size: 12px; color: #888;")
+        multi_layout.addWidget(self.cpr_active_symbols_label)
+
+        main_layout.addWidget(multi_symbol_group)
+
+        # Middle Section - Horizontal Layout
+        middle_layout = QHBoxLayout()
+
+        # Left Panel - Configuration for Selected Symbol
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_panel.setMaximumWidth(400)
+
+        # Symbol Tabs for multi-symbol
+        self.cpr_symbol_tabs = QTabWidget()
+        self.cpr_symbol_tabs.setTabsClosable(False)
+        self.cpr_symbol_tabs.currentChanged.connect(self._on_cpr_tab_changed)
+        left_layout.addWidget(self.cpr_symbol_tabs)
+
+        # Settings for current symbol
+        settings_group = QGroupBox("Settings (Current Symbol)")
+        settings_layout = QFormLayout(settings_group)
 
         self.cpr_timeframe = QComboBox()
         self.cpr_timeframe.addItems(["Daily", "Weekly", "Monthly"])
@@ -1663,14 +1702,13 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(settings_group)
 
-        # Prior Day Data Input
-        data_group = QGroupBox("OHLC Data (Auto-Fetch or Manual)")
+        # OHLC Data Input
+        data_group = QGroupBox("OHLC Data")
         data_layout = QFormLayout(data_group)
 
-        # Auto-fetch button
         fetch_btn_layout = QHBoxLayout()
-        self.cpr_auto_fetch_btn = QPushButton("🔄 Auto-Fetch OHLC")
-        self.cpr_auto_fetch_btn.setMinimumHeight(35)
+        self.cpr_auto_fetch_btn = QPushButton("Auto-Fetch OHLC")
+        self.cpr_auto_fetch_btn.setMinimumHeight(32)
         self.cpr_auto_fetch_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         self.cpr_auto_fetch_btn.clicked.connect(self._auto_fetch_ohlc)
         fetch_btn_layout.addWidget(self.cpr_auto_fetch_btn)
@@ -1684,52 +1722,52 @@ class MainWindow(QMainWindow):
         self.cpr_prior_high.setRange(0, 999999)
         self.cpr_prior_high.setDecimals(2)
         self.cpr_prior_high.setValue(25100)
-        self.cpr_prior_high.setMinimumHeight(30)
+        self.cpr_prior_high.setMinimumHeight(28)
         data_layout.addRow("High:", self.cpr_prior_high)
 
         self.cpr_prior_low = QDoubleSpinBox()
         self.cpr_prior_low.setRange(0, 999999)
         self.cpr_prior_low.setDecimals(2)
         self.cpr_prior_low.setValue(24900)
-        self.cpr_prior_low.setMinimumHeight(30)
+        self.cpr_prior_low.setMinimumHeight(28)
         data_layout.addRow("Low:", self.cpr_prior_low)
 
         self.cpr_prior_close = QDoubleSpinBox()
         self.cpr_prior_close.setRange(0, 999999)
         self.cpr_prior_close.setDecimals(2)
         self.cpr_prior_close.setValue(25000)
-        self.cpr_prior_close.setMinimumHeight(30)
+        self.cpr_prior_close.setMinimumHeight(28)
         data_layout.addRow("Close:", self.cpr_prior_close)
 
         calc_cpr_btn = QPushButton("Calculate CPR Levels")
-        calc_cpr_btn.setMinimumHeight(35)
+        calc_cpr_btn.setMinimumHeight(32)
         calc_cpr_btn.clicked.connect(self._calculate_cpr_levels)
         data_layout.addRow(calc_cpr_btn)
 
         left_layout.addWidget(data_group)
 
         # CPR Levels Display
-        levels_group = QGroupBox("CPR Levels (Calculated)")
+        levels_group = QGroupBox("CPR Levels")
         levels_layout = QFormLayout(levels_group)
 
         self.cpr_tc_label = QLabel("--")
-        self.cpr_tc_label.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 14px;")
-        levels_layout.addRow("Top Pivot (TC):", self.cpr_tc_label)
+        self.cpr_tc_label.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 13px;")
+        levels_layout.addRow("Top Pivot:", self.cpr_tc_label)
 
         self.cpr_cp_label = QLabel("--")
-        self.cpr_cp_label.setStyleSheet("color: #FF9800; font-weight: bold; font-size: 14px;")
+        self.cpr_cp_label.setStyleSheet("color: #FF9800; font-weight: bold; font-size: 13px;")
         levels_layout.addRow("Central Pivot:", self.cpr_cp_label)
 
         self.cpr_bc_label = QLabel("--")
-        self.cpr_bc_label.setStyleSheet("color: #F44336; font-weight: bold; font-size: 14px;")
-        levels_layout.addRow("Bottom Pivot (BC):", self.cpr_bc_label)
+        self.cpr_bc_label.setStyleSheet("color: #F44336; font-weight: bold; font-size: 13px;")
+        levels_layout.addRow("Bottom Pivot:", self.cpr_bc_label)
 
         self.cpr_range_label = QLabel("--")
         levels_layout.addRow("CPR Range:", self.cpr_range_label)
 
         left_layout.addWidget(levels_group)
 
-        # Current Price & Signal
+        # Signal Display
         signal_group = QGroupBox("Live Signal")
         signal_layout = QFormLayout(signal_group)
 
@@ -1737,52 +1775,105 @@ class MainWindow(QMainWindow):
         self.cpr_current_price.setRange(0, 999999)
         self.cpr_current_price.setDecimals(2)
         self.cpr_current_price.setValue(25000)
-        self.cpr_current_price.setMinimumHeight(35)
+        self.cpr_current_price.setMinimumHeight(32)
         self.cpr_current_price.valueChanged.connect(self._update_cpr_signal)
         signal_layout.addRow("Current Price:", self.cpr_current_price)
 
         self.cpr_signal_label = QLabel("No Signal")
-        self.cpr_signal_label.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
+        self.cpr_signal_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 8px;")
         self.cpr_signal_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         signal_layout.addRow("Signal:", self.cpr_signal_label)
 
         self.cpr_premium_zone_label = QLabel("--")
-        self.cpr_premium_zone_label.setStyleSheet("font-size: 14px;")
+        self.cpr_premium_zone_label.setStyleSheet("font-size: 12px;")
         signal_layout.addRow("Premium Zone:", self.cpr_premium_zone_label)
 
         self.cpr_strike_label = QLabel("--")
-        self.cpr_strike_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.cpr_strike_label.setStyleSheet("font-size: 12px; font-weight: bold;")
         signal_layout.addRow("Suggested Strike:", self.cpr_strike_label)
 
         left_layout.addWidget(signal_group)
 
+        # Risk Management Section (NEW)
+        risk_group = QGroupBox("Risk Management (Per Trade)")
+        risk_layout = QFormLayout(risk_group)
+
+        self.cpr_target = QDoubleSpinBox()
+        self.cpr_target.setRange(0, 100000)
+        self.cpr_target.setDecimals(0)
+        self.cpr_target.setValue(0)
+        self.cpr_target.setPrefix("₹ ")
+        self.cpr_target.setSpecialValueText("No Target")
+        self.cpr_target.setMinimumHeight(28)
+        risk_layout.addRow("Target (per lot):", self.cpr_target)
+
+        self.cpr_stoploss = QDoubleSpinBox()
+        self.cpr_stoploss.setRange(0, 100000)
+        self.cpr_stoploss.setDecimals(0)
+        self.cpr_stoploss.setValue(0)
+        self.cpr_stoploss.setPrefix("₹ ")
+        self.cpr_stoploss.setSpecialValueText("No SL")
+        self.cpr_stoploss.setMinimumHeight(28)
+        risk_layout.addRow("Stop Loss (per lot):", self.cpr_stoploss)
+
+        self.cpr_trailing_sl = QDoubleSpinBox()
+        self.cpr_trailing_sl.setRange(0, 100)
+        self.cpr_trailing_sl.setDecimals(1)
+        self.cpr_trailing_sl.setValue(0)
+        self.cpr_trailing_sl.setSuffix(" %")
+        self.cpr_trailing_sl.setSpecialValueText("No Trailing")
+        self.cpr_trailing_sl.setMinimumHeight(28)
+        risk_layout.addRow("Trailing SL:", self.cpr_trailing_sl)
+
+        self.cpr_mtm_target = QDoubleSpinBox()
+        self.cpr_mtm_target.setRange(0, 9999999)
+        self.cpr_mtm_target.setDecimals(0)
+        self.cpr_mtm_target.setValue(0)
+        self.cpr_mtm_target.setPrefix("₹ ")
+        self.cpr_mtm_target.setSpecialValueText("No MTM Target")
+        self.cpr_mtm_target.setMinimumHeight(28)
+        risk_layout.addRow("MTM Target (Total):", self.cpr_mtm_target)
+
+        self.cpr_mtm_loss = QDoubleSpinBox()
+        self.cpr_mtm_loss.setRange(0, 9999999)
+        self.cpr_mtm_loss.setDecimals(0)
+        self.cpr_mtm_loss.setValue(0)
+        self.cpr_mtm_loss.setPrefix("₹ ")
+        self.cpr_mtm_loss.setSpecialValueText("No MTM Loss Limit")
+        self.cpr_mtm_loss.setMinimumHeight(28)
+        risk_layout.addRow("MTM Loss Limit:", self.cpr_mtm_loss)
+
+        left_layout.addWidget(risk_group)
+
         # Auto-Trade Controls
-        auto_group = QGroupBox("Auto-Trade")
+        auto_group = QGroupBox("Auto-Trade Controls")
         auto_layout = QVBoxLayout(auto_group)
 
-        self.cpr_auto_trade_check = QCheckBox("Enable Auto-Trade")
-        self.cpr_auto_trade_check.setStyleSheet("font-size: 14px; font-weight: bold;")
-        auto_layout.addWidget(self.cpr_auto_trade_check)
+        check_layout = QHBoxLayout()
+        self.cpr_auto_trade_check = QCheckBox("Auto-Trade")
+        self.cpr_auto_trade_check.setStyleSheet("font-weight: bold;")
+        check_layout.addWidget(self.cpr_auto_trade_check)
 
-        self.cpr_hedging_check = QCheckBox("Enable Hedging (Protective Wings)")
+        self.cpr_hedging_check = QCheckBox("Hedging")
         self.cpr_hedging_check.setChecked(True)
         self.cpr_hedging_check.setStyleSheet("color: #4CAF50;")
-        auto_layout.addWidget(self.cpr_hedging_check)
+        check_layout.addWidget(self.cpr_hedging_check)
 
-        self.cpr_test_mode_check = QCheckBox("Test Mode (Paper Trading)")
+        self.cpr_test_mode_check = QCheckBox("Test Mode")
         self.cpr_test_mode_check.setChecked(True)
-        auto_layout.addWidget(self.cpr_test_mode_check)
+        check_layout.addWidget(self.cpr_test_mode_check)
+        auto_layout.addLayout(check_layout)
 
         auto_btn_layout = QHBoxLayout()
 
-        self.cpr_start_btn = QPushButton("Start Monitoring")
-        self.cpr_start_btn.setMinimumHeight(40)
+        self.cpr_start_btn = QPushButton("Start All")
+        self.cpr_start_btn.setMinimumHeight(35)
         self.cpr_start_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         self.cpr_start_btn.clicked.connect(self._start_cpr_monitoring)
         auto_btn_layout.addWidget(self.cpr_start_btn)
 
-        self.cpr_stop_btn = QPushButton("Stop")
-        self.cpr_stop_btn.setMinimumHeight(40)
+        self.cpr_stop_btn = QPushButton("Stop All")
+        self.cpr_stop_btn.setMinimumHeight(35)
         self.cpr_stop_btn.setStyleSheet("background-color: #F44336; color: white;")
         self.cpr_stop_btn.clicked.connect(self._stop_cpr_monitoring)
         self.cpr_stop_btn.setEnabled(False)
@@ -1790,67 +1881,64 @@ class MainWindow(QMainWindow):
 
         auto_layout.addLayout(auto_btn_layout)
 
-        # Manual Execute Button
         self.cpr_execute_btn = QPushButton("Execute Current Signal")
-        self.cpr_execute_btn.setMinimumHeight(45)
-        self.cpr_execute_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; font-size: 14px;")
+        self.cpr_execute_btn.setMinimumHeight(38)
+        self.cpr_execute_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold;")
         self.cpr_execute_btn.clicked.connect(self._execute_cpr_signal)
         auto_layout.addWidget(self.cpr_execute_btn)
 
         left_layout.addWidget(auto_group)
-        left_layout.addStretch()
 
-        main_layout.addWidget(left_panel)
+        middle_layout.addWidget(left_panel)
 
-        # Right Panel - Trade Log & Info
+        # Right Panel - Multi-Symbol Logs
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
 
-        # Trade Actions Info
-        info_group = QGroupBox("Signal Actions (With Hedging)")
-        info_layout = QVBoxLayout(info_group)
+        # Summary Table (All Symbols)
+        summary_group = QGroupBox("All Symbols Status")
+        summary_layout = QVBoxLayout(summary_group)
 
-        info_text = QLabel("""
-<b style="color: #4CAF50;">BULLISH Signal</b> (Price > Top Pivot):<br>
-<b>Bull Put Spread:</b><br>
-- SELL PE at strike (collect premium)<br>
-- BUY PE at lower strike (hedge/protection)<br><br>
+        self.cpr_summary_table = QTableWidget()
+        self.cpr_summary_table.setColumnCount(6)
+        self.cpr_summary_table.setHorizontalHeaderLabels([
+            "Symbol", "Signal", "Strike", "Status", "P&L", "Action"
+        ])
+        self.cpr_summary_table.horizontalHeader().setStretchLastSection(True)
+        self.cpr_summary_table.setMaximumHeight(150)
+        summary_layout.addWidget(self.cpr_summary_table)
+        right_layout.addWidget(summary_group)
 
-<b style="color: #F44336;">BEARISH Signal</b> (Price < Bottom Pivot):<br>
-<b>Bear Call Spread:</b><br>
-- SELL CE at strike (collect premium)<br>
-- BUY CE at higher strike (hedge/protection)<br><br>
-
-<b style="color: #FF9800;">SIDEWAYS Signal</b> (Price between TC & BC):<br>
-<b>Iron Condor:</b><br>
-- SELL CE at upper strike<br>
-- SELL PE at lower strike<br>
-- BUY CE higher (hedge)<br>
-- BUY PE lower (hedge)
-        """)
-        info_text.setWordWrap(True)
-        info_text.setStyleSheet("font-size: 13px; padding: 10px;")
-        info_layout.addWidget(info_text)
-        right_layout.addWidget(info_group)
-
-        # Trade Log
-        log_group = QGroupBox("Trade Log")
+        # Symbol-wise Log Tabs
+        log_group = QGroupBox("Trade Logs (Per Symbol)")
         log_layout = QVBoxLayout(log_group)
 
+        self.cpr_log_tabs = QTabWidget()
+        self.cpr_log_tabs.setTabPosition(QTabWidget.TabPosition.North)
+
+        # Master Log Tab
         self.cpr_trade_log = QTextEdit()
         self.cpr_trade_log.setReadOnly(True)
-        self.cpr_trade_log.setStyleSheet("font-family: monospace; font-size: 12px;")
-        log_layout.addWidget(self.cpr_trade_log)
+        self.cpr_trade_log.setStyleSheet("font-family: monospace; font-size: 11px;")
+        self.cpr_log_tabs.addTab(self.cpr_trade_log, "All Logs")
 
-        clear_log_btn = QPushButton("Clear Log")
-        clear_log_btn.clicked.connect(lambda: self.cpr_trade_log.clear())
+        log_layout.addWidget(self.cpr_log_tabs)
+
+        clear_log_btn = QPushButton("Clear All Logs")
+        clear_log_btn.clicked.connect(self._clear_all_cpr_logs)
         log_layout.addWidget(clear_log_btn)
 
         right_layout.addWidget(log_group)
 
-        main_layout.addWidget(right_panel)
+        middle_layout.addWidget(right_panel)
+        main_layout.addLayout(middle_layout)
 
-        # Initialize CPR trader
+        # Initialize multi-symbol CPR traders dictionary
+        self.cpr_traders = {}  # {symbol: CPRAutoTrader}
+        self.cpr_symbol_logs = {}  # {symbol: QTextEdit}
+        self.cpr_symbol_data = {}  # {symbol: {high, low, close, levels, current_price}}
+
+        # Legacy single trader for backward compatibility
         self.cpr_trader = CPRAutoTrader(
             symbol="NIFTY",
             auto_trade_enabled=False,
@@ -1862,10 +1950,180 @@ class MainWindow(QMainWindow):
         cpr_scroll.setWidget(cpr_widget)
         self.tabs.addTab(cpr_scroll, "CPR Strategy")
 
+    def _add_cpr_symbol(self):
+        """Add a new symbol to multi-symbol CPR tracking"""
+        from algo_trader.strategies.cpr_strategy import CPRAutoTrader
+
+        symbol = self.cpr_symbol.currentText().upper()
+
+        if symbol in self.cpr_traders:
+            QMessageBox.warning(self, "Duplicate", f"{symbol} is already added!")
+            return
+
+        # Create trader for this symbol
+        trader = CPRAutoTrader(
+            symbol=symbol,
+            auto_trade_enabled=self.cpr_auto_trade_check.isChecked(),
+            test_mode=self.cpr_test_mode_check.isChecked(),
+            hedging_enabled=self.cpr_hedging_check.isChecked()
+        )
+        trader.on_signal_change = lambda sig, s=symbol: self._on_cpr_symbol_signal_change(s, sig)
+        trader.on_trade_executed = lambda td, s=symbol: self._on_cpr_symbol_trade_executed(s, td)
+
+        self.cpr_traders[symbol] = trader
+
+        # Create log tab for this symbol
+        log_widget = QTextEdit()
+        log_widget.setReadOnly(True)
+        log_widget.setStyleSheet("font-family: monospace; font-size: 11px;")
+        self.cpr_symbol_logs[symbol] = log_widget
+        self.cpr_log_tabs.addTab(log_widget, symbol)
+
+        # Initialize symbol data
+        self.cpr_symbol_data[symbol] = {
+            'high': 0, 'low': 0, 'close': 0,
+            'levels': None, 'current_price': 0, 'signal': None
+        }
+
+        # Add to summary table
+        self._update_cpr_summary_table()
+        self._update_active_symbols_label()
+
+        self._log_cpr(f"Added symbol: {symbol}")
+        self._log_cpr_symbol(symbol, f"Symbol {symbol} added to monitoring")
+
+    def _remove_cpr_symbol(self):
+        """Remove selected symbol from multi-symbol tracking"""
+        current_tab = self.cpr_log_tabs.currentIndex()
+        if current_tab <= 0:  # Can't remove "All Logs" tab
+            QMessageBox.warning(self, "Cannot Remove", "Select a symbol tab to remove")
+            return
+
+        symbol = self.cpr_log_tabs.tabText(current_tab)
+
+        if symbol in self.cpr_traders:
+            # Stop monitoring if running
+            self.cpr_traders[symbol].stop_monitoring()
+            del self.cpr_traders[symbol]
+
+        if symbol in self.cpr_symbol_logs:
+            del self.cpr_symbol_logs[symbol]
+
+        if symbol in self.cpr_symbol_data:
+            del self.cpr_symbol_data[symbol]
+
+        # Remove tab
+        self.cpr_log_tabs.removeTab(current_tab)
+
+        self._update_cpr_summary_table()
+        self._update_active_symbols_label()
+        self._log_cpr(f"Removed symbol: {symbol}")
+
+    def _update_active_symbols_label(self):
+        """Update the active symbols label"""
+        if self.cpr_traders:
+            symbols = ", ".join(sorted(self.cpr_traders.keys()))
+            self.cpr_active_symbols_label.setText(f"Active Symbols: {symbols}")
+            self.cpr_active_symbols_label.setStyleSheet("font-size: 12px; color: #4CAF50;")
+        else:
+            self.cpr_active_symbols_label.setText("Active Symbols: None")
+            self.cpr_active_symbols_label.setStyleSheet("font-size: 12px; color: #888;")
+
+    def _update_cpr_summary_table(self):
+        """Update the multi-symbol summary table"""
+        self.cpr_summary_table.setRowCount(len(self.cpr_traders))
+
+        for i, (symbol, trader) in enumerate(sorted(self.cpr_traders.items())):
+            data = self.cpr_symbol_data.get(symbol, {})
+
+            # Symbol
+            self.cpr_summary_table.setItem(i, 0, QTableWidgetItem(symbol))
+
+            # Signal
+            signal_text = "--"
+            if trader.current_signal:
+                signal_text = trader.current_signal.signal.value.split(' ')[0]
+            self.cpr_summary_table.setItem(i, 1, QTableWidgetItem(signal_text))
+
+            # Strike
+            strike_text = "--"
+            if trader.current_signal and trader.current_signal.strike_value > 0:
+                strike_text = f"₹{trader.current_signal.strike_value:.0f}"
+            self.cpr_summary_table.setItem(i, 2, QTableWidgetItem(strike_text))
+
+            # Status
+            status = "Running" if trader._running else "Stopped"
+            self.cpr_summary_table.setItem(i, 3, QTableWidgetItem(status))
+
+            # P&L (placeholder)
+            self.cpr_summary_table.setItem(i, 4, QTableWidgetItem("--"))
+
+            # Action button
+            action_btn = QPushButton("Execute")
+            action_btn.clicked.connect(lambda checked, s=symbol: self._execute_cpr_symbol_signal(s))
+            self.cpr_summary_table.setCellWidget(i, 5, action_btn)
+
+    def _on_cpr_tab_changed(self, index):
+        """Handle symbol tab change"""
+        pass  # Future: Load symbol-specific settings
+
+    def _on_cpr_symbol_signal_change(self, symbol, signal):
+        """Callback when a specific symbol's signal changes"""
+        self._log_cpr_symbol(symbol, f"SIGNAL: {signal.signal.value} @ ₹{signal.current_price:.2f}")
+        self._log_cpr(f"[{symbol}] SIGNAL: {signal.signal.value}")
+        self._update_cpr_summary_table()
+
+    def _on_cpr_symbol_trade_executed(self, symbol, trade_details):
+        """Callback when trade is executed for a specific symbol"""
+        # Include risk management settings
+        trade_details['target'] = self.cpr_target.value()
+        trade_details['stoploss'] = self.cpr_stoploss.value()
+        trade_details['trailing_sl'] = self.cpr_trailing_sl.value()
+        trade_details['mtm_target'] = self.cpr_mtm_target.value()
+        trade_details['mtm_loss'] = self.cpr_mtm_loss.value()
+
+        action = trade_details.get('action', '')
+        self._log_cpr_symbol(symbol, f"\n{'='*30}\nTRADE EXECUTED!\n"
+                           f"Action: {action}\n"
+                           f"Target: ₹{trade_details['target']}\n"
+                           f"SL: ₹{trade_details['stoploss']}\n"
+                           f"Trailing: {trade_details['trailing_sl']}%\n"
+                           f"MTM Target: ₹{trade_details['mtm_target']}\n"
+                           f"MTM Loss: ₹{trade_details['mtm_loss']}\n"
+                           f"{'='*30}")
+        self._log_cpr(f"[{symbol}] TRADE: {action}")
+
+        # Call the main trade executed handler for Strategy Builder integration
+        self._on_cpr_trade_executed(trade_details)
+
+    def _execute_cpr_symbol_signal(self, symbol):
+        """Execute current signal for a specific symbol"""
+        if symbol not in self.cpr_traders:
+            return
+
+        trader = self.cpr_traders[symbol]
+        if trader.current_signal and trader.current_signal.signal.value != "No Signal":
+            trader._execute_trade(trader.current_signal)
+        else:
+            QMessageBox.warning(self, "No Signal", f"No actionable signal for {symbol}")
+
+    def _log_cpr_symbol(self, symbol, message):
+        """Log message to symbol-specific log"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        if symbol in self.cpr_symbol_logs:
+            self.cpr_symbol_logs[symbol].append(f"[{timestamp}] {message}")
+
+    def _clear_all_cpr_logs(self):
+        """Clear all CPR logs"""
+        self.cpr_trade_log.clear()
+        for log in self.cpr_symbol_logs.values():
+            log.clear()
+
     def _calculate_cpr_levels(self):
         """Calculate CPR levels from prior day data"""
         from algo_trader.strategies.cpr_strategy import CPRCalculator
 
+        symbol = self.cpr_symbol.currentText().upper()
         high = self.cpr_prior_high.value()
         low = self.cpr_prior_low.value()
         close = self.cpr_prior_close.value()
@@ -1887,14 +2145,24 @@ class MainWindow(QMainWindow):
         self.cpr_bc_label.setText(f"₹{levels.bottom_pivot:.2f}")
         self.cpr_range_label.setText(f"₹{levels.cpr_range:.2f}")
 
-        # Set in trader
+        # Set in legacy trader
         self.cpr_trader.set_prior_day_data(high, low, close)
-        self.cpr_trader.symbol = self.cpr_symbol.currentText()
+        self.cpr_trader.symbol = symbol
+
+        # Also update multi-symbol trader if exists
+        if symbol in self.cpr_traders:
+            self.cpr_traders[symbol].set_prior_day_data(high, low, close)
+            self.cpr_symbol_data[symbol].update({
+                'high': high, 'low': low, 'close': close,
+                'levels': levels
+            })
+            self._log_cpr_symbol(symbol, f"CPR Levels: TC={levels.top_pivot:.2f}, "
+                                        f"CP={levels.central_pivot:.2f}, BC={levels.bottom_pivot:.2f}")
 
         # Update signal
         self._update_cpr_signal()
 
-        self._log_cpr(f"CPR Levels Calculated:\n"
+        self._log_cpr(f"[{symbol}] CPR Levels Calculated:\n"
                      f"  Top Pivot: {levels.top_pivot:.2f}\n"
                      f"  Central Pivot: {levels.central_pivot:.2f}\n"
                      f"  Bottom Pivot: {levels.bottom_pivot:.2f}\n"
@@ -1955,35 +2223,65 @@ class MainWindow(QMainWindow):
         self.cpr_premium_zone_label.setText(zone_text)
 
     def _start_cpr_monitoring(self):
-        """Start CPR monitoring"""
-        if not self.cpr_trader.cpr_levels:
+        """Start CPR monitoring for all symbols"""
+        # Check if any traders have CPR levels
+        has_levels = self.cpr_trader.cpr_levels is not None
+        for trader in self.cpr_traders.values():
+            if trader.cpr_levels:
+                has_levels = True
+                break
+
+        if not has_levels:
             QMessageBox.warning(self, "No CPR Data",
-                              "Please calculate CPR levels first")
+                              "Please add symbols and calculate CPR levels first")
             return
 
-        self.cpr_trader.auto_trade_enabled = self.cpr_auto_trade_check.isChecked()
-        self.cpr_trader.test_mode = self.cpr_test_mode_check.isChecked()
-        self.cpr_trader.hedging_enabled = self.cpr_hedging_check.isChecked()
+        mode = "TEST" if self.cpr_test_mode_check.isChecked() else "LIVE"
+        auto = "AUTO-TRADE ON" if self.cpr_auto_trade_check.isChecked() else "Manual"
+        hedge = "HEDGING ON" if self.cpr_hedging_check.isChecked() else "No Hedge"
 
-        # Start monitoring with price callback
-        self.cpr_trader.start_monitoring(lambda: self.cpr_current_price.value())
+        # Start legacy trader
+        if self.cpr_trader.cpr_levels:
+            self.cpr_trader.auto_trade_enabled = self.cpr_auto_trade_check.isChecked()
+            self.cpr_trader.test_mode = self.cpr_test_mode_check.isChecked()
+            self.cpr_trader.hedging_enabled = self.cpr_hedging_check.isChecked()
+            self.cpr_trader.start_monitoring(lambda: self.cpr_current_price.value())
+
+        # Start all multi-symbol traders
+        started_count = 0
+        for symbol, trader in self.cpr_traders.items():
+            if trader.cpr_levels:
+                trader.auto_trade_enabled = self.cpr_auto_trade_check.isChecked()
+                trader.test_mode = self.cpr_test_mode_check.isChecked()
+                trader.hedging_enabled = self.cpr_hedging_check.isChecked()
+
+                # Use symbol-specific price callback if available
+                price_cb = lambda s=symbol: self.cpr_symbol_data.get(s, {}).get('current_price', 0)
+                trader.start_monitoring(price_cb)
+                started_count += 1
+                self._log_cpr_symbol(symbol, f"Monitoring STARTED - {mode}, {auto}, {hedge}")
 
         self.cpr_start_btn.setEnabled(False)
         self.cpr_stop_btn.setEnabled(True)
 
-        mode = "TEST" if self.cpr_trader.test_mode else "LIVE"
-        auto = "AUTO-TRADE ON" if self.cpr_trader.auto_trade_enabled else "Manual"
-        hedge = "HEDGING ON" if self.cpr_trader.hedging_enabled else "No Hedge"
-        self._log_cpr(f"Monitoring STARTED - Mode: {mode}, {auto}, {hedge}")
+        self._log_cpr(f"Monitoring STARTED for {started_count} symbols - {mode}, {auto}, {hedge}")
+        self._update_cpr_summary_table()
 
     def _stop_cpr_monitoring(self):
-        """Stop CPR monitoring"""
+        """Stop CPR monitoring for all symbols"""
+        # Stop legacy trader
         self.cpr_trader.stop_monitoring()
+
+        # Stop all multi-symbol traders
+        for symbol, trader in self.cpr_traders.items():
+            trader.stop_monitoring()
+            self._log_cpr_symbol(symbol, "Monitoring STOPPED")
 
         self.cpr_start_btn.setEnabled(True)
         self.cpr_stop_btn.setEnabled(False)
 
-        self._log_cpr("Monitoring STOPPED")
+        self._log_cpr("Monitoring STOPPED for all symbols")
+        self._update_cpr_summary_table()
 
     def _execute_cpr_signal(self):
         """Manually execute current CPR signal"""
@@ -2023,6 +2321,31 @@ class MainWindow(QMainWindow):
         action = trade_details.get('action', '')
         hedge_info = "WITH HEDGING" if trade_details.get('hedging_enabled') else "NO HEDGE"
 
+        # Add risk management settings if not already present
+        if 'target' not in trade_details:
+            trade_details['target'] = self.cpr_target.value()
+        if 'stoploss' not in trade_details:
+            trade_details['stoploss'] = self.cpr_stoploss.value()
+        if 'trailing_sl' not in trade_details:
+            trade_details['trailing_sl'] = self.cpr_trailing_sl.value()
+        if 'mtm_target' not in trade_details:
+            trade_details['mtm_target'] = self.cpr_mtm_target.value()
+        if 'mtm_loss' not in trade_details:
+            trade_details['mtm_loss'] = self.cpr_mtm_loss.value()
+
+        # Build risk info string
+        risk_info = ""
+        if trade_details['target'] > 0:
+            risk_info += f"Target: ₹{trade_details['target']} | "
+        if trade_details['stoploss'] > 0:
+            risk_info += f"SL: ₹{trade_details['stoploss']} | "
+        if trade_details['trailing_sl'] > 0:
+            risk_info += f"TSL: {trade_details['trailing_sl']}% | "
+        if trade_details['mtm_target'] > 0:
+            risk_info += f"MTM Target: ₹{trade_details['mtm_target']} | "
+        if trade_details['mtm_loss'] > 0:
+            risk_info += f"MTM Loss: ₹{trade_details['mtm_loss']}"
+
         self._log_cpr(f"\n{'='*40}\n"
                      f"TRADE EXECUTED! ({hedge_info})\n"
                      f"Signal: {trade_details['signal']}\n"
@@ -2030,6 +2353,7 @@ class MainWindow(QMainWindow):
                      f"Symbol: {trade_details['symbol']}\n"
                      f"Mode: {'TEST' if trade_details['test_mode'] else 'LIVE'}\n"
                      f"Time: {trade_details['timestamp']}\n"
+                     f"{f'Risk: {risk_info}' if risk_info else ''}\n"
                      f"{'='*40}\n")
 
         # Auto-load strategy in Strategy Builder based on action

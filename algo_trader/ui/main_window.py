@@ -1613,13 +1613,42 @@ class MainWindow(QMainWindow):
         settings_layout = QFormLayout(settings_group)
 
         self.cpr_symbol = QComboBox()
-        self.cpr_symbol.addItems(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
+        self.cpr_symbol.setEditable(True)
+        # Index F&O
+        fo_indices = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"]
+        # F&O Stocks (NSE)
+        fo_stocks = [
+            "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "SBIN",
+            "BHARTIARTL", "ITC", "KOTAKBANK", "LT", "AXISBANK", "ASIANPAINT", "MARUTI",
+            "BAJFINANCE", "HCLTECH", "WIPRO", "SUNPHARMA", "ULTRACEMCO", "TITAN",
+            "NTPC", "POWERGRID", "ONGC", "COALINDIA", "JSWSTEEL", "TATASTEEL",
+            "HINDALCO", "ADANIENT", "ADANIPORTS", "GRASIM", "DRREDDY", "CIPLA",
+            "APOLLOHOSP", "DIVISLAB", "EICHERMOT", "BAJAJ-AUTO", "HEROMOTOCO",
+            "M&M", "TATAMOTORS", "TECHM", "BPCL", "IOC", "NESTLEIND", "BRITANNIA",
+            "DABUR", "GODREJCP", "MARICO", "PIDILITIND", "HAVELLS", "VOLTAS",
+            "INDUSINDBK", "BANKBARODA", "PNB", "CANBK", "IDFCFIRSTB", "FEDERALBNK",
+            "AUBANK", "BANDHANBNK", "SBILIFE", "HDFCLIFE", "ICICIPRULI", "BAJAJFINSV",
+            "CHOLAFIN", "MUTHOOTFIN", "SHRIRAMFIN", "PEL", "RECLTD", "PFC", "IRFC",
+            "TATAPOWER", "ADANIGREEN", "NHPC", "SJVN", "TORNTPOWER", "CUMMINSIND",
+            "ABB", "SIEMENS", "BHEL", "BEL", "HAL", "BHARATFORG", "ESCORTS",
+            "ASHOKLEY", "TVSMOTOR", "BALKRISIND", "MRF", "APOLLOTYRE", "EXIDEIND",
+            "BOSCHLTD", "MOTHERSON", "AUROPHARMA", "BIOCON", "LUPIN", "ALKEM",
+            "LAURUSLABS", "IPCALAB", "ZYDUSLIFE", "GLENMARK", "TORNTPHARM",
+            "ACC", "AMBUJACEM", "SHREECEM", "RAMCOCEM", "DALBHARAT", "JKCEMENT",
+            "UPL", "PIIND", "COFORGE", "LTIM", "MPHASIS", "PERSISTENT", "TATAELXSI",
+            "LTTS", "NAUKRI", "INDIGO", "TRENT", "DMART", "ZOMATO", "PAYTM",
+            "POLICYBZR", "NYKAA", "IRCTC", "INDIANHOTELS", "LICI", "SBICARD",
+            "PAGEIND", "MCDOWELL-N", "BERGEPAINT", "KANSAINER", "INDHOTEL"
+        ]
+        self.cpr_symbol.addItems(fo_indices + sorted(fo_stocks))
         self.cpr_symbol.setMinimumHeight(30)
+        self.cpr_symbol.currentTextChanged.connect(self._on_cpr_symbol_changed)
         settings_layout.addRow("Symbol:", self.cpr_symbol)
 
         self.cpr_timeframe = QComboBox()
-        self.cpr_timeframe.addItems(["Daily", "Weekly"])
+        self.cpr_timeframe.addItems(["Daily", "Weekly", "Monthly"])
         self.cpr_timeframe.setMinimumHeight(30)
+        self.cpr_timeframe.currentTextChanged.connect(self._auto_fetch_ohlc)
         settings_layout.addRow("Pivot Timeframe:", self.cpr_timeframe)
 
         self.cpr_strike_method = QComboBox()
@@ -1635,29 +1664,42 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(settings_group)
 
         # Prior Day Data Input
-        data_group = QGroupBox("Prior Day OHLC Data")
+        data_group = QGroupBox("OHLC Data (Auto-Fetch or Manual)")
         data_layout = QFormLayout(data_group)
+
+        # Auto-fetch button
+        fetch_btn_layout = QHBoxLayout()
+        self.cpr_auto_fetch_btn = QPushButton("🔄 Auto-Fetch OHLC")
+        self.cpr_auto_fetch_btn.setMinimumHeight(35)
+        self.cpr_auto_fetch_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+        self.cpr_auto_fetch_btn.clicked.connect(self._auto_fetch_ohlc)
+        fetch_btn_layout.addWidget(self.cpr_auto_fetch_btn)
+
+        self.cpr_fetch_status = QLabel("")
+        self.cpr_fetch_status.setStyleSheet("font-size: 11px;")
+        fetch_btn_layout.addWidget(self.cpr_fetch_status)
+        data_layout.addRow(fetch_btn_layout)
 
         self.cpr_prior_high = QDoubleSpinBox()
         self.cpr_prior_high.setRange(0, 999999)
         self.cpr_prior_high.setDecimals(2)
         self.cpr_prior_high.setValue(25100)
         self.cpr_prior_high.setMinimumHeight(30)
-        data_layout.addRow("Prior High:", self.cpr_prior_high)
+        data_layout.addRow("High:", self.cpr_prior_high)
 
         self.cpr_prior_low = QDoubleSpinBox()
         self.cpr_prior_low.setRange(0, 999999)
         self.cpr_prior_low.setDecimals(2)
         self.cpr_prior_low.setValue(24900)
         self.cpr_prior_low.setMinimumHeight(30)
-        data_layout.addRow("Prior Low:", self.cpr_prior_low)
+        data_layout.addRow("Low:", self.cpr_prior_low)
 
         self.cpr_prior_close = QDoubleSpinBox()
         self.cpr_prior_close.setRange(0, 999999)
         self.cpr_prior_close.setDecimals(2)
         self.cpr_prior_close.setValue(25000)
         self.cpr_prior_close.setMinimumHeight(30)
-        data_layout.addRow("Prior Close:", self.cpr_prior_close)
+        data_layout.addRow("Close:", self.cpr_prior_close)
 
         calc_cpr_btn = QPushButton("Calculate CPR Levels")
         calc_cpr_btn.setMinimumHeight(35)
@@ -2105,6 +2147,141 @@ class MainWindow(QMainWindow):
         """Log message to CPR trade log"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.cpr_trade_log.append(f"[{timestamp}] {message}")
+
+    def _on_cpr_symbol_changed(self, symbol):
+        """Handle CPR symbol change - update default price and fetch OHLC"""
+        # Set approximate current price based on symbol
+        spot_prices = {
+            "NIFTY": 25000,
+            "BANKNIFTY": 52000,
+            "FINNIFTY": 23000,
+            "MIDCPNIFTY": 12000,
+            "SENSEX": 82000,
+            "BANKEX": 58000,
+            # Some major F&O stocks - approximate prices
+            "RELIANCE": 1300,
+            "TCS": 4000,
+            "HDFCBANK": 1700,
+            "INFY": 1900,
+            "ICICIBANK": 1300,
+            "SBIN": 800,
+            "BHARTIARTL": 1700,
+            "ITC": 480,
+            "KOTAKBANK": 1800,
+            "LT": 3600,
+            "AXISBANK": 1100,
+            "MARUTI": 12000,
+            "BAJFINANCE": 6800,
+            "TATAMOTORS": 780,
+            "TATASTEEL": 150,
+            "WIPRO": 300,
+            "HCLTECH": 1900,
+            "SUNPHARMA": 1800,
+            "TITAN": 3500,
+            "ADANIENT": 2400,
+            "M&M": 3000,
+        }
+
+        symbol_upper = symbol.upper()
+        if symbol_upper in spot_prices:
+            self.cpr_current_price.setValue(spot_prices[symbol_upper])
+
+        # Auto-fetch OHLC for the new symbol
+        self._auto_fetch_ohlc()
+
+    def _auto_fetch_ohlc(self):
+        """Auto-fetch OHLC data for CPR calculation based on symbol and timeframe"""
+        try:
+            import yfinance as yf
+            from datetime import datetime, timedelta
+
+            symbol = self.cpr_symbol.currentText().upper()
+            timeframe = self.cpr_timeframe.currentText()
+
+            self.cpr_fetch_status.setText("Fetching...")
+            self.cpr_fetch_status.setStyleSheet("color: #2196F3; font-size: 11px;")
+            QApplication.processEvents()
+
+            # Map symbol to Yahoo Finance ticker
+            # NSE stocks need .NS suffix, indices need special handling
+            yf_symbol_map = {
+                "NIFTY": "^NSEI",
+                "BANKNIFTY": "^NSEBANK",
+                "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
+                "MIDCPNIFTY": "NIFTY_MID_SELECT.NS",
+                "SENSEX": "^BSESN",
+                "BANKEX": "BSE-BANK.BO",
+            }
+
+            if symbol in yf_symbol_map:
+                yf_ticker = yf_symbol_map[symbol]
+            else:
+                # Regular NSE stock
+                yf_ticker = f"{symbol}.NS"
+
+            # Determine period and interval based on timeframe
+            if timeframe == "Daily":
+                # Fetch last 5 days to get previous day's OHLC
+                period = "5d"
+                interval = "1d"
+            elif timeframe == "Weekly":
+                # Fetch last 2 weeks to get previous week's OHLC
+                period = "1mo"
+                interval = "1wk"
+            else:  # Monthly
+                # Fetch last 3 months to get previous month's OHLC
+                period = "3mo"
+                interval = "1mo"
+
+            # Fetch data
+            ticker = yf.Ticker(yf_ticker)
+            hist = ticker.history(period=period, interval=interval)
+
+            if hist.empty:
+                self.cpr_fetch_status.setText("No data found")
+                self.cpr_fetch_status.setStyleSheet("color: #F44336; font-size: 11px;")
+                self._log_cpr(f"No data found for {symbol} ({yf_ticker})")
+                return
+
+            # Get the previous period's OHLC (second last row if available, else last)
+            if len(hist) >= 2:
+                prior_data = hist.iloc[-2]  # Previous completed period
+                current_data = hist.iloc[-1]  # Current/latest period
+            else:
+                prior_data = hist.iloc[-1]
+                current_data = hist.iloc[-1]
+
+            high = prior_data['High']
+            low = prior_data['Low']
+            close = prior_data['Close']
+
+            # Update the input fields
+            self.cpr_prior_high.setValue(high)
+            self.cpr_prior_low.setValue(low)
+            self.cpr_prior_close.setValue(close)
+
+            # Update current price with latest close
+            self.cpr_current_price.setValue(current_data['Close'])
+
+            # Show success
+            date_str = prior_data.name.strftime("%d-%b-%Y") if hasattr(prior_data.name, 'strftime') else str(prior_data.name)[:10]
+            self.cpr_fetch_status.setText(f"✓ {date_str}")
+            self.cpr_fetch_status.setStyleSheet("color: #4CAF50; font-size: 11px;")
+
+            self._log_cpr(f"OHLC fetched for {symbol} ({timeframe}): H={high:.2f}, L={low:.2f}, C={close:.2f}")
+
+            # Auto-calculate CPR levels
+            self._calculate_cpr_levels()
+
+        except ImportError:
+            self.cpr_fetch_status.setText("yfinance not installed")
+            self.cpr_fetch_status.setStyleSheet("color: #F44336; font-size: 11px;")
+            self._log_cpr("Error: yfinance package not installed. Run: pip install yfinance")
+        except Exception as e:
+            self.cpr_fetch_status.setText(f"Error: {str(e)[:20]}")
+            self.cpr_fetch_status.setStyleSheet("color: #F44336; font-size: 11px;")
+            self._log_cpr(f"Error fetching OHLC: {e}")
+            logger.error(f"Auto-fetch OHLC error: {e}")
 
     def _setup_payoff_chart(self):
         """Setup the payoff chart styling"""

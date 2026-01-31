@@ -1333,13 +1333,24 @@ class MainWindow(QMainWindow):
 
         # Legs Table
         self.sb_legs_table = QTableWidget()
-        self.sb_legs_table.setColumnCount(6)
-        self.sb_legs_table.setHorizontalHeaderLabels(["B/S", "Type", "Strike", "Qty", "Premium", "Remove"])
+        self.sb_legs_table.setColumnCount(8)
+        self.sb_legs_table.setHorizontalHeaderLabels([
+            "Symbol", "B/S", "Type", "Strike", "Qty", "Premium", "Exit", "Remove"
+        ])
         self.sb_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.sb_legs_table.setMinimumHeight(120)
         self.sb_legs_table.setMaximumHeight(180)
         self.sb_legs_table.verticalHeader().setDefaultSectionSize(30)
         legs_layout.addWidget(self.sb_legs_table)
+
+        # Square-off All Button
+        squareoff_layout = QHBoxLayout()
+        self.sb_squareoff_all_btn = QPushButton("🔴 Square-off ALL Positions")
+        self.sb_squareoff_all_btn.setMinimumHeight(35)
+        self.sb_squareoff_all_btn.setStyleSheet("background-color: #d32f2f; color: white; font-weight: bold;")
+        self.sb_squareoff_all_btn.clicked.connect(self._squareoff_all_legs)
+        squareoff_layout.addWidget(self.sb_squareoff_all_btn)
+        legs_layout.addLayout(squareoff_layout)
 
         # Add Leg Controls
         add_leg_layout = QHBoxLayout()
@@ -1900,12 +1911,12 @@ class MainWindow(QMainWindow):
         summary_layout = QVBoxLayout(summary_group)
 
         self.cpr_summary_table = QTableWidget()
-        self.cpr_summary_table.setColumnCount(6)
+        self.cpr_summary_table.setColumnCount(7)
         self.cpr_summary_table.setHorizontalHeaderLabels([
-            "Symbol", "Signal", "Strike", "Status", "P&L", "Action"
+            "Symbol", "Mode", "Signal", "Strike", "Status", "P&L", "Action"
         ])
         self.cpr_summary_table.horizontalHeader().setStretchLastSection(True)
-        self.cpr_summary_table.setMaximumHeight(150)
+        self.cpr_summary_table.setMaximumHeight(180)
         summary_layout.addWidget(self.cpr_summary_table)
         right_layout.addWidget(summary_group)
 
@@ -1979,10 +1990,11 @@ class MainWindow(QMainWindow):
         self.cpr_symbol_logs[symbol] = log_widget
         self.cpr_log_tabs.addTab(log_widget, symbol)
 
-        # Initialize symbol data
+        # Initialize symbol data with independent mode
         self.cpr_symbol_data[symbol] = {
             'high': 0, 'low': 0, 'close': 0,
-            'levels': None, 'current_price': 0, 'signal': None
+            'levels': None, 'current_price': 0, 'signal': None,
+            'test_mode': self.cpr_test_mode_check.isChecked()  # Independent mode per symbol
         }
 
         # Add to summary table
@@ -2039,33 +2051,60 @@ class MainWindow(QMainWindow):
             # Symbol
             self.cpr_summary_table.setItem(i, 0, QTableWidgetItem(symbol))
 
+            # Mode - with toggle button
+            mode_btn = QPushButton("PAPER" if trader.test_mode else "LIVE")
+            mode_btn.setStyleSheet(
+                "background-color: #FF9800; color: white;" if trader.test_mode
+                else "background-color: #4CAF50; color: white;"
+            )
+            mode_btn.clicked.connect(lambda checked, s=symbol: self._toggle_cpr_symbol_mode(s))
+            self.cpr_summary_table.setCellWidget(i, 1, mode_btn)
+
             # Signal
             signal_text = "--"
             if trader.current_signal:
                 signal_text = trader.current_signal.signal.value.split(' ')[0]
-            self.cpr_summary_table.setItem(i, 1, QTableWidgetItem(signal_text))
+            self.cpr_summary_table.setItem(i, 2, QTableWidgetItem(signal_text))
 
             # Strike
             strike_text = "--"
             if trader.current_signal and trader.current_signal.strike_value > 0:
                 strike_text = f"₹{trader.current_signal.strike_value:.0f}"
-            self.cpr_summary_table.setItem(i, 2, QTableWidgetItem(strike_text))
+            self.cpr_summary_table.setItem(i, 3, QTableWidgetItem(strike_text))
 
             # Status
             status = "Running" if trader._running else "Stopped"
-            self.cpr_summary_table.setItem(i, 3, QTableWidgetItem(status))
+            self.cpr_summary_table.setItem(i, 4, QTableWidgetItem(status))
 
             # P&L (placeholder)
-            self.cpr_summary_table.setItem(i, 4, QTableWidgetItem("--"))
+            self.cpr_summary_table.setItem(i, 5, QTableWidgetItem("--"))
 
             # Action button
             action_btn = QPushButton("Execute")
             action_btn.clicked.connect(lambda checked, s=symbol: self._execute_cpr_symbol_signal(s))
-            self.cpr_summary_table.setCellWidget(i, 5, action_btn)
+            self.cpr_summary_table.setCellWidget(i, 6, action_btn)
 
     def _on_cpr_tab_changed(self, index):
         """Handle symbol tab change"""
         pass  # Future: Load symbol-specific settings
+
+    def _toggle_cpr_symbol_mode(self, symbol):
+        """Toggle paper/live mode for a specific symbol"""
+        if symbol not in self.cpr_traders:
+            return
+
+        trader = self.cpr_traders[symbol]
+        trader.test_mode = not trader.test_mode
+
+        # Update symbol data
+        if symbol in self.cpr_symbol_data:
+            self.cpr_symbol_data[symbol]['test_mode'] = trader.test_mode
+
+        mode = "PAPER" if trader.test_mode else "LIVE"
+        self._log_cpr_symbol(symbol, f"Mode changed to: {mode}")
+        self._log_cpr(f"[{symbol}] Mode: {mode}")
+
+        self._update_cpr_summary_table()
 
     def _on_cpr_symbol_signal_change(self, symbol, signal):
         """Callback when a specific symbol's signal changes"""
@@ -2372,23 +2411,24 @@ class MainWindow(QMainWindow):
             pe_sell = trade_details.get('pe_sell_strike', trade_details.get('pe_strike', 0))
             ce_buy = trade_details.get('ce_buy_strike', ce_sell + 100)
             pe_buy = trade_details.get('pe_buy_strike', pe_sell - 100)
+            mode = 'TEST' if trade_details.get('test_mode', True) else 'LIVE'
 
             self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'CE', 'strike': ce_sell, 'qty': 1, 'premium': 100},
-                {'action': 'SELL', 'type': 'PE', 'strike': pe_sell, 'qty': 1, 'premium': 100},
-                {'action': 'BUY', 'type': 'CE', 'strike': ce_buy, 'qty': 1, 'premium': 30},
-                {'action': 'BUY', 'type': 'PE', 'strike': pe_buy, 'qty': 1, 'premium': 30}
+                {'action': 'SELL', 'type': 'CE', 'strike': ce_sell, 'qty': 1, 'premium': 100, 'symbol': symbol, 'mode': mode},
+                {'action': 'SELL', 'type': 'PE', 'strike': pe_sell, 'qty': 1, 'premium': 100, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'CE', 'strike': ce_buy, 'qty': 1, 'premium': 30, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'PE', 'strike': pe_buy, 'qty': 1, 'premium': 30, 'symbol': symbol, 'mode': mode}
             ]
 
             self._refresh_legs_table()
             self._update_payoff_chart()
             self._calculate_strategy_metrics()
 
-            self._log_cpr(f"Iron Condor auto-loaded:\n"
-                         f"  Sell CE: {ce_sell} | Buy CE: {ce_buy}\n"
-                         f"  Sell PE: {pe_sell} | Buy PE: {pe_buy}")
+            self._log_cpr(f"Iron Condor auto-loaded [{mode}]:\n"
+                         f"  {symbol} Sell CE: {ce_sell} | Buy CE: {ce_buy}\n"
+                         f"  {symbol} Sell PE: {pe_sell} | Buy PE: {pe_buy}")
 
         except Exception as e:
             logger.error(f"Failed to auto-load Iron Condor: {e}")
@@ -2399,21 +2439,22 @@ class MainWindow(QMainWindow):
             symbol = trade_details['symbol']
             sell_strike = trade_details.get('sell_strike', trade_details.get('strike', 0))
             buy_strike = trade_details.get('buy_strike', sell_strike - 100)
+            mode = 'TEST' if trade_details.get('test_mode', True) else 'LIVE'
 
             self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'PE', 'strike': sell_strike, 'qty': 1, 'premium': 150},
-                {'action': 'BUY', 'type': 'PE', 'strike': buy_strike, 'qty': 1, 'premium': 50}
+                {'action': 'SELL', 'type': 'PE', 'strike': sell_strike, 'qty': 1, 'premium': 150, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'PE', 'strike': buy_strike, 'qty': 1, 'premium': 50, 'symbol': symbol, 'mode': mode}
             ]
 
             self._refresh_legs_table()
             self._update_payoff_chart()
             self._calculate_strategy_metrics()
 
-            self._log_cpr(f"Bull Put Spread auto-loaded:\n"
-                         f"  Sell PE: {sell_strike} (collect premium)\n"
-                         f"  Buy PE: {buy_strike} (hedge)")
+            self._log_cpr(f"Bull Put Spread auto-loaded [{mode}]:\n"
+                         f"  {symbol} Sell PE: {sell_strike} (collect premium)\n"
+                         f"  {symbol} Buy PE: {buy_strike} (hedge)")
 
         except Exception as e:
             logger.error(f"Failed to auto-load Bull Put Spread: {e}")
@@ -2424,12 +2465,13 @@ class MainWindow(QMainWindow):
             symbol = trade_details['symbol']
             sell_strike = trade_details.get('sell_strike', trade_details.get('strike', 0))
             buy_strike = trade_details.get('buy_strike', sell_strike + 100)
+            mode = 'TEST' if trade_details.get('test_mode', True) else 'LIVE'
 
             self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'CE', 'strike': sell_strike, 'qty': 1, 'premium': 150},
-                {'action': 'BUY', 'type': 'CE', 'strike': buy_strike, 'qty': 1, 'premium': 50}
+                {'action': 'SELL', 'type': 'CE', 'strike': sell_strike, 'qty': 1, 'premium': 150, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'CE', 'strike': buy_strike, 'qty': 1, 'premium': 50, 'symbol': symbol, 'mode': mode}
             ]
 
             self._refresh_legs_table()
@@ -2679,15 +2721,26 @@ class MainWindow(QMainWindow):
         """Refresh the legs table"""
         self.sb_legs_table.setRowCount(len(self.strategy_legs))
         for i, leg in enumerate(self.strategy_legs):
-            self.sb_legs_table.setItem(i, 0, QTableWidgetItem(leg['action']))
-            self.sb_legs_table.setItem(i, 1, QTableWidgetItem(leg['type']))
-            self.sb_legs_table.setItem(i, 2, QTableWidgetItem(f"₹{leg['strike']:.0f}"))
-            self.sb_legs_table.setItem(i, 3, QTableWidgetItem(str(leg['qty'])))
-            self.sb_legs_table.setItem(i, 4, QTableWidgetItem(f"₹{leg['premium']:.2f}"))
+            # Symbol column (get from leg or use current symbol)
+            symbol = leg.get('symbol', self.sb_symbol.currentText())
+            self.sb_legs_table.setItem(i, 0, QTableWidgetItem(symbol))
 
+            self.sb_legs_table.setItem(i, 1, QTableWidgetItem(leg['action']))
+            self.sb_legs_table.setItem(i, 2, QTableWidgetItem(leg['type']))
+            self.sb_legs_table.setItem(i, 3, QTableWidgetItem(f"₹{leg['strike']:.0f}"))
+            self.sb_legs_table.setItem(i, 4, QTableWidgetItem(str(leg['qty'])))
+            self.sb_legs_table.setItem(i, 5, QTableWidgetItem(f"₹{leg['premium']:.2f}"))
+
+            # Exit button for individual leg square-off
+            exit_btn = QPushButton("Exit")
+            exit_btn.setStyleSheet("background-color: #FF5722; color: white;")
+            exit_btn.clicked.connect(lambda checked, idx=i: self._squareoff_single_leg(idx))
+            self.sb_legs_table.setCellWidget(i, 6, exit_btn)
+
+            # Remove button
             remove_btn = QPushButton("❌")
             remove_btn.clicked.connect(lambda checked, idx=i: self._remove_strategy_leg(idx))
-            self.sb_legs_table.setCellWidget(i, 5, remove_btn)
+            self.sb_legs_table.setCellWidget(i, 7, remove_btn)
 
     def _calculate_leg_payoff(self, leg, spot_prices):
         """Calculate payoff for a single leg at given spot prices"""
@@ -2710,6 +2763,80 @@ class MainWindow(QMainWindow):
             payoff = (premium - intrinsic) * qty * lot_size
 
         return payoff
+
+    def _squareoff_single_leg(self, index):
+        """Square-off a single leg (exit position)"""
+        if index >= len(self.strategy_legs):
+            return
+
+        leg = self.strategy_legs[index]
+        symbol = leg.get('symbol', self.sb_symbol.currentText())
+        leg_desc = f"{symbol} {leg['action']} {leg['type']} {leg['strike']}"
+
+        reply = QMessageBox.question(
+            self, "Square-off Leg",
+            f"Square-off this position?\n\n{leg_desc}\n\n"
+            "This will place a reverse order to exit the position.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Reverse the action (BUY -> SELL, SELL -> BUY)
+            exit_action = "SELL" if leg['action'] == "BUY" else "BUY"
+
+            self._log_cpr(f"SQUARE-OFF: {leg_desc}")
+            self._log_cpr(f"  Exit Order: {exit_action} {leg['type']} {leg['strike']} x {leg['qty']}")
+
+            # Mark leg as exited (change color or remove)
+            leg['status'] = 'EXITED'
+            leg['exit_action'] = exit_action
+
+            # Update table to show exited status
+            self._refresh_legs_table()
+
+            QMessageBox.information(
+                self, "Square-off Initiated",
+                f"Exit order placed:\n{exit_action} {symbol} {leg['type']} {leg['strike']}"
+            )
+
+    def _squareoff_all_legs(self):
+        """Square-off all legs (exit entire strategy)"""
+        if not self.strategy_legs:
+            QMessageBox.warning(self, "No Positions", "No positions to square-off")
+            return
+
+        # Build summary of all legs
+        leg_summary = "\n".join([
+            f"  • {leg.get('symbol', self.sb_symbol.currentText())} {leg['action']} {leg['type']} {leg['strike']}"
+            for leg in self.strategy_legs
+        ])
+
+        reply = QMessageBox.question(
+            self, "Square-off ALL",
+            f"Square-off ALL positions?\n\n{leg_summary}\n\n"
+            "This will place reverse orders to exit ALL positions.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self._log_cpr("="*40)
+            self._log_cpr("SQUARE-OFF ALL POSITIONS")
+
+            for leg in self.strategy_legs:
+                symbol = leg.get('symbol', self.sb_symbol.currentText())
+                exit_action = "SELL" if leg['action'] == "BUY" else "BUY"
+
+                self._log_cpr(f"  Exit: {exit_action} {symbol} {leg['type']} {leg['strike']}")
+                leg['status'] = 'EXITED'
+                leg['exit_action'] = exit_action
+
+            self._log_cpr("="*40)
+            self._refresh_legs_table()
+
+            QMessageBox.information(
+                self, "All Squared-off",
+                f"Exit orders placed for {len(self.strategy_legs)} positions"
+            )
 
     def _update_payoff_chart(self):
         """Update the payoff chart based on current strategy"""

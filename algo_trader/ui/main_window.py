@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
         self._create_mtf_tab()  # Multi-Timeframe Analysis
         self._create_strategy_builder_tab()  # Option Strategy Builder
         self._create_cpr_strategy_tab()  # CPR Auto-Trade Strategy
+        self._create_custom_strategy_tab()  # Custom Strategy Builder
         self._create_orders_tab()
         self._create_positions_tab()
         self._create_risk_tab()
@@ -115,6 +116,7 @@ class MainWindow(QMainWindow):
         # Load strategies after all tabs are created
         self._load_strategies()
         self._load_chartink_scans()
+        self._load_custom_strategies()  # Load custom strategies
         self._init_risk_manager()
         self._init_options_manager()
         self._init_alert_manager()
@@ -3558,6 +3560,529 @@ For accurate Greeks, use live option data."""
         self.sb_ax.grid(True, alpha=0.2)
         self.sb_figure.tight_layout()
         self.sb_canvas.draw()
+
+    def _create_custom_strategy_tab(self):
+        """Create Custom Strategy tab for user-defined trading rules"""
+        # Wrap in scroll area
+        custom_scroll = QScrollArea()
+        custom_scroll.setWidgetResizable(True)
+
+        custom_widget = QWidget()
+        main_layout = QVBoxLayout(custom_widget)
+
+        # Header
+        header_label = QLabel("Custom Strategy Builder")
+        header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #4CAF50; padding: 10px;")
+        main_layout.addWidget(header_label)
+
+        info_label = QLabel("Create your own trading strategy with simple rules. No Pine Script needed!")
+        info_label.setStyleSheet("color: #888; padding-bottom: 10px;")
+        main_layout.addWidget(info_label)
+
+        # Two column layout
+        columns_layout = QHBoxLayout()
+
+        # LEFT COLUMN - Strategy Configuration
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_panel.setMaximumWidth(500)
+
+        # Strategy Name
+        name_group = QGroupBox("Strategy Details")
+        name_layout = QFormLayout(name_group)
+
+        self.custom_strategy_name = QLineEdit()
+        self.custom_strategy_name.setPlaceholderText("My EMA Crossover Strategy")
+        self.custom_strategy_name.setMinimumHeight(30)
+        name_layout.addRow("Strategy Name:", self.custom_strategy_name)
+
+        self.custom_strategy_symbol = QComboBox()
+        self.custom_strategy_symbol.setEditable(True)
+        fo_indices = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"]
+        fo_stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK", "LT", "AXISBANK", "MARUTI", "BAJFINANCE", "HCLTECH", "WIPRO", "TATASTEEL", "TATAMOTORS"]
+        self.custom_strategy_symbol.addItems(fo_indices + sorted(fo_stocks))
+        self.custom_strategy_symbol.setMinimumHeight(30)
+        name_layout.addRow("Symbol:", self.custom_strategy_symbol)
+
+        self.custom_strategy_timeframe = QComboBox()
+        self.custom_strategy_timeframe.addItems(["1 Minute", "5 Minutes", "15 Minutes", "1 Hour", "Daily"])
+        self.custom_strategy_timeframe.setMinimumHeight(30)
+        name_layout.addRow("Timeframe:", self.custom_strategy_timeframe)
+
+        left_layout.addWidget(name_group)
+
+        # Entry Conditions
+        entry_group = QGroupBox("Entry Conditions (When to Buy)")
+        entry_layout = QVBoxLayout(entry_group)
+
+        entry_info = QLabel("Set conditions - signal triggers when ALL conditions are true")
+        entry_info.setStyleSheet("color: #888; font-size: 11px;")
+        entry_layout.addWidget(entry_info)
+
+        # Condition 1
+        cond1_layout = QHBoxLayout()
+        self.custom_entry_ind1 = QComboBox()
+        self.custom_entry_ind1.addItems(["Price", "EMA(9)", "EMA(21)", "SMA(20)", "SMA(50)", "RSI(14)", "MACD", "Supertrend", "VWAP", "High", "Low", "Open", "Close"])
+        self.custom_entry_ind1.setMinimumHeight(28)
+        cond1_layout.addWidget(self.custom_entry_ind1)
+
+        self.custom_entry_op1 = QComboBox()
+        self.custom_entry_op1.addItems(["Crosses Above", "Crosses Below", ">", "<", ">=", "<=", "="])
+        self.custom_entry_op1.setMinimumHeight(28)
+        cond1_layout.addWidget(self.custom_entry_op1)
+
+        self.custom_entry_ind2 = QComboBox()
+        self.custom_entry_ind2.addItems(["EMA(21)", "EMA(9)", "SMA(20)", "SMA(50)", "RSI(14)", "Value", "MACD Signal", "Supertrend", "VWAP", "High", "Low", "Open", "Close", "Price"])
+        self.custom_entry_ind2.setMinimumHeight(28)
+        cond1_layout.addWidget(self.custom_entry_ind2)
+
+        self.custom_entry_val1 = QLineEdit()
+        self.custom_entry_val1.setPlaceholderText("(optional value)")
+        self.custom_entry_val1.setMaximumWidth(80)
+        self.custom_entry_val1.setMinimumHeight(28)
+        cond1_layout.addWidget(self.custom_entry_val1)
+
+        entry_layout.addLayout(cond1_layout)
+
+        # Condition 2 (optional)
+        cond2_layout = QHBoxLayout()
+        cond2_layout.addWidget(QLabel("AND"))
+
+        self.custom_entry_ind3 = QComboBox()
+        self.custom_entry_ind3.addItems(["-- None --", "RSI(14)", "MACD", "Volume", "Price", "EMA(9)", "EMA(21)", "SMA(20)", "SMA(50)", "Supertrend"])
+        self.custom_entry_ind3.setMinimumHeight(28)
+        cond2_layout.addWidget(self.custom_entry_ind3)
+
+        self.custom_entry_op2 = QComboBox()
+        self.custom_entry_op2.addItems([">", "<", ">=", "<=", "Crosses Above", "Crosses Below"])
+        self.custom_entry_op2.setMinimumHeight(28)
+        cond2_layout.addWidget(self.custom_entry_op2)
+
+        self.custom_entry_val2 = QLineEdit()
+        self.custom_entry_val2.setPlaceholderText("Value (e.g., 30)")
+        self.custom_entry_val2.setMaximumWidth(100)
+        self.custom_entry_val2.setMinimumHeight(28)
+        cond2_layout.addWidget(self.custom_entry_val2)
+
+        entry_layout.addLayout(cond2_layout)
+
+        left_layout.addWidget(entry_group)
+
+        # Exit Conditions
+        exit_group = QGroupBox("Exit Conditions (When to Sell)")
+        exit_layout = QVBoxLayout(exit_group)
+
+        # Exit Condition
+        exit_cond_layout = QHBoxLayout()
+        self.custom_exit_ind1 = QComboBox()
+        self.custom_exit_ind1.addItems(["Price", "EMA(9)", "EMA(21)", "SMA(20)", "RSI(14)", "MACD", "Supertrend"])
+        self.custom_exit_ind1.setMinimumHeight(28)
+        exit_cond_layout.addWidget(self.custom_exit_ind1)
+
+        self.custom_exit_op1 = QComboBox()
+        self.custom_exit_op1.addItems(["Crosses Below", "Crosses Above", ">", "<", ">=", "<="])
+        self.custom_exit_op1.setMinimumHeight(28)
+        exit_cond_layout.addWidget(self.custom_exit_op1)
+
+        self.custom_exit_ind2 = QComboBox()
+        self.custom_exit_ind2.addItems(["EMA(21)", "EMA(9)", "SMA(20)", "Value", "MACD Signal", "Supertrend"])
+        self.custom_exit_ind2.setMinimumHeight(28)
+        exit_cond_layout.addWidget(self.custom_exit_ind2)
+
+        self.custom_exit_val1 = QLineEdit()
+        self.custom_exit_val1.setPlaceholderText("(optional)")
+        self.custom_exit_val1.setMaximumWidth(80)
+        self.custom_exit_val1.setMinimumHeight(28)
+        exit_cond_layout.addWidget(self.custom_exit_val1)
+
+        exit_layout.addLayout(exit_cond_layout)
+
+        left_layout.addWidget(exit_group)
+
+        # Trade Action
+        action_group = QGroupBox("Trade Action (On Signal)")
+        action_layout = QFormLayout(action_group)
+
+        self.custom_action_type = QComboBox()
+        self.custom_action_type.addItems([
+            "Buy Call (CE)",
+            "Buy Put (PE)",
+            "Sell Call (CE)",
+            "Sell Put (PE)",
+            "Bull Call Spread",
+            "Bear Put Spread",
+            "Iron Condor",
+            "Straddle",
+            "Alert Only (No Trade)"
+        ])
+        self.custom_action_type.setMinimumHeight(30)
+        action_layout.addRow("Action:", self.custom_action_type)
+
+        self.custom_lots = QSpinBox()
+        self.custom_lots.setRange(1, 100)
+        self.custom_lots.setValue(1)
+        self.custom_lots.setMinimumHeight(28)
+        action_layout.addRow("Lots:", self.custom_lots)
+
+        self.custom_strike_offset = QSpinBox()
+        self.custom_strike_offset.setRange(-10, 10)
+        self.custom_strike_offset.setValue(0)
+        self.custom_strike_offset.setSuffix(" strikes from ATM")
+        self.custom_strike_offset.setMinimumHeight(28)
+        action_layout.addRow("Strike:", self.custom_strike_offset)
+
+        left_layout.addWidget(action_group)
+
+        # Controls
+        controls_layout = QHBoxLayout()
+
+        self.custom_test_mode_check = QCheckBox("Test Mode")
+        self.custom_test_mode_check.setChecked(True)
+        controls_layout.addWidget(self.custom_test_mode_check)
+
+        self.custom_save_btn = QPushButton("Save Strategy")
+        self.custom_save_btn.setMinimumHeight(35)
+        self.custom_save_btn.setStyleSheet("background-color: #2196F3; color: white;")
+        self.custom_save_btn.clicked.connect(self._save_custom_strategy)
+        controls_layout.addWidget(self.custom_save_btn)
+
+        self.custom_start_btn = QPushButton("Start Monitoring")
+        self.custom_start_btn.setMinimumHeight(35)
+        self.custom_start_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.custom_start_btn.clicked.connect(self._start_custom_strategy)
+        controls_layout.addWidget(self.custom_start_btn)
+
+        self.custom_stop_btn = QPushButton("Stop")
+        self.custom_stop_btn.setMinimumHeight(35)
+        self.custom_stop_btn.setStyleSheet("background-color: #F44336; color: white;")
+        self.custom_stop_btn.clicked.connect(self._stop_custom_strategy)
+        self.custom_stop_btn.setEnabled(False)
+        controls_layout.addWidget(self.custom_stop_btn)
+
+        left_layout.addLayout(controls_layout)
+        columns_layout.addWidget(left_panel)
+
+        # RIGHT COLUMN - Saved Strategies & Logs
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+
+        # Saved Strategies
+        saved_group = QGroupBox("Saved Custom Strategies")
+        saved_layout = QVBoxLayout(saved_group)
+
+        self.custom_strategies_table = QTableWidget()
+        self.custom_strategies_table.setColumnCount(5)
+        self.custom_strategies_table.setHorizontalHeaderLabels(["Name", "Symbol", "Status", "Signals", "Action"])
+        self.custom_strategies_table.horizontalHeader().setStretchLastSection(True)
+        self.custom_strategies_table.setMaximumHeight(200)
+        saved_layout.addWidget(self.custom_strategies_table)
+
+        btn_layout = QHBoxLayout()
+        load_btn = QPushButton("Load Selected")
+        load_btn.clicked.connect(self._load_custom_strategy)
+        btn_layout.addWidget(load_btn)
+
+        delete_btn = QPushButton("Delete")
+        delete_btn.setStyleSheet("background-color: #F44336; color: white;")
+        delete_btn.clicked.connect(self._delete_custom_strategy)
+        btn_layout.addWidget(delete_btn)
+        saved_layout.addLayout(btn_layout)
+
+        right_layout.addWidget(saved_group)
+
+        # Strategy Log
+        log_group = QGroupBox("Signal Log")
+        log_layout = QVBoxLayout(log_group)
+
+        self.custom_strategy_log = QTextEdit()
+        self.custom_strategy_log.setReadOnly(True)
+        self.custom_strategy_log.setStyleSheet("font-family: monospace; font-size: 11px;")
+        self.custom_strategy_log.setPlaceholderText("Strategy signals will appear here...")
+        log_layout.addWidget(self.custom_strategy_log)
+
+        clear_log_btn = QPushButton("Clear Log")
+        clear_log_btn.clicked.connect(lambda: self.custom_strategy_log.clear())
+        log_layout.addWidget(clear_log_btn)
+
+        right_layout.addWidget(log_group)
+
+        columns_layout.addWidget(right_panel)
+        main_layout.addLayout(columns_layout)
+
+        # Examples Section
+        examples_group = QGroupBox("Quick Start Examples")
+        examples_layout = QHBoxLayout(examples_group)
+
+        ema_cross_btn = QPushButton("EMA 9/21 Crossover")
+        ema_cross_btn.clicked.connect(lambda: self._load_example_strategy("ema_cross"))
+        examples_layout.addWidget(ema_cross_btn)
+
+        rsi_btn = QPushButton("RSI Oversold/Overbought")
+        rsi_btn.clicked.connect(lambda: self._load_example_strategy("rsi"))
+        examples_layout.addWidget(rsi_btn)
+
+        supertrend_btn = QPushButton("Supertrend")
+        supertrend_btn.clicked.connect(lambda: self._load_example_strategy("supertrend"))
+        examples_layout.addWidget(supertrend_btn)
+
+        vwap_btn = QPushButton("VWAP Breakout")
+        vwap_btn.clicked.connect(lambda: self._load_example_strategy("vwap"))
+        examples_layout.addWidget(vwap_btn)
+
+        main_layout.addWidget(examples_group)
+
+        # Initialize storage
+        self.custom_strategies = {}  # {name: strategy_config}
+        self.custom_strategy_running = False
+
+        custom_scroll.setWidget(custom_widget)
+        self.tabs.addTab(custom_scroll, "Custom Strategy")
+
+    def _save_custom_strategy(self):
+        """Save custom strategy to JSON"""
+        import json
+        import os
+
+        name = self.custom_strategy_name.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Error", "Please enter a strategy name")
+            return
+
+        strategy = {
+            'name': name,
+            'symbol': self.custom_strategy_symbol.currentText(),
+            'timeframe': self.custom_strategy_timeframe.currentText(),
+            'entry': {
+                'indicator1': self.custom_entry_ind1.currentText(),
+                'operator1': self.custom_entry_op1.currentText(),
+                'indicator2': self.custom_entry_ind2.currentText(),
+                'value1': self.custom_entry_val1.text(),
+                'indicator3': self.custom_entry_ind3.currentText(),
+                'operator2': self.custom_entry_op2.currentText(),
+                'value2': self.custom_entry_val2.text()
+            },
+            'exit': {
+                'indicator1': self.custom_exit_ind1.currentText(),
+                'operator1': self.custom_exit_op1.currentText(),
+                'indicator2': self.custom_exit_ind2.currentText(),
+                'value1': self.custom_exit_val1.text()
+            },
+            'action': {
+                'type': self.custom_action_type.currentText(),
+                'lots': self.custom_lots.value(),
+                'strike_offset': self.custom_strike_offset.value()
+            },
+            'test_mode': self.custom_test_mode_check.isChecked()
+        }
+
+        # Save to file
+        strategies_dir = os.path.expanduser("~/.algo_trader/custom_strategies")
+        os.makedirs(strategies_dir, exist_ok=True)
+
+        filepath = os.path.join(strategies_dir, f"{name.replace(' ', '_')}.json")
+        with open(filepath, 'w') as f:
+            json.dump(strategy, f, indent=2)
+
+        self.custom_strategies[name] = strategy
+        self._update_custom_strategies_table()
+        self._log_custom_strategy(f"Strategy '{name}' saved successfully")
+        QMessageBox.information(self, "Saved", f"Strategy '{name}' saved!")
+
+    def _load_custom_strategies(self):
+        """Load saved custom strategies from disk"""
+        import json
+        import os
+
+        strategies_dir = os.path.expanduser("~/.algo_trader/custom_strategies")
+        if not os.path.exists(strategies_dir):
+            return
+
+        for filename in os.listdir(strategies_dir):
+            if filename.endswith('.json'):
+                filepath = os.path.join(strategies_dir, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        strategy = json.load(f)
+                        self.custom_strategies[strategy['name']] = strategy
+                except Exception as e:
+                    logger.error(f"Error loading strategy {filename}: {e}")
+
+        self._update_custom_strategies_table()
+
+    def _update_custom_strategies_table(self):
+        """Update the custom strategies table"""
+        self.custom_strategies_table.setRowCount(len(self.custom_strategies))
+
+        for i, (name, strategy) in enumerate(self.custom_strategies.items()):
+            self.custom_strategies_table.setItem(i, 0, QTableWidgetItem(name))
+            self.custom_strategies_table.setItem(i, 1, QTableWidgetItem(strategy.get('symbol', 'N/A')))
+            self.custom_strategies_table.setItem(i, 2, QTableWidgetItem("Stopped"))
+            self.custom_strategies_table.setItem(i, 3, QTableWidgetItem("0"))
+
+            start_btn = QPushButton("Start")
+            start_btn.clicked.connect(lambda checked, n=name: self._start_saved_strategy(n))
+            self.custom_strategies_table.setCellWidget(i, 4, start_btn)
+
+    def _load_custom_strategy(self):
+        """Load selected strategy into form"""
+        row = self.custom_strategies_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Select", "Please select a strategy to load")
+            return
+
+        name = self.custom_strategies_table.item(row, 0).text()
+        strategy = self.custom_strategies.get(name)
+        if not strategy:
+            return
+
+        # Populate form
+        self.custom_strategy_name.setText(strategy['name'])
+        self.custom_strategy_symbol.setCurrentText(strategy['symbol'])
+        self.custom_strategy_timeframe.setCurrentText(strategy['timeframe'])
+
+        # Entry conditions
+        entry = strategy['entry']
+        self.custom_entry_ind1.setCurrentText(entry['indicator1'])
+        self.custom_entry_op1.setCurrentText(entry['operator1'])
+        self.custom_entry_ind2.setCurrentText(entry['indicator2'])
+        self.custom_entry_val1.setText(entry.get('value1', ''))
+        self.custom_entry_ind3.setCurrentText(entry.get('indicator3', '-- None --'))
+        self.custom_entry_op2.setCurrentText(entry.get('operator2', '>'))
+        self.custom_entry_val2.setText(entry.get('value2', ''))
+
+        # Exit conditions
+        exit_cond = strategy['exit']
+        self.custom_exit_ind1.setCurrentText(exit_cond['indicator1'])
+        self.custom_exit_op1.setCurrentText(exit_cond['operator1'])
+        self.custom_exit_ind2.setCurrentText(exit_cond['indicator2'])
+        self.custom_exit_val1.setText(exit_cond.get('value1', ''))
+
+        # Action
+        action = strategy['action']
+        self.custom_action_type.setCurrentText(action['type'])
+        self.custom_lots.setValue(action.get('lots', 1))
+        self.custom_strike_offset.setValue(action.get('strike_offset', 0))
+
+        self.custom_test_mode_check.setChecked(strategy.get('test_mode', True))
+        self._log_custom_strategy(f"Loaded strategy: {name}")
+
+    def _delete_custom_strategy(self):
+        """Delete selected custom strategy"""
+        import os
+
+        row = self.custom_strategies_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Select", "Please select a strategy to delete")
+            return
+
+        name = self.custom_strategies_table.item(row, 0).text()
+
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                    f"Delete strategy '{name}'?",
+                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Remove from memory
+            if name in self.custom_strategies:
+                del self.custom_strategies[name]
+
+            # Remove file
+            strategies_dir = os.path.expanduser("~/.algo_trader/custom_strategies")
+            filepath = os.path.join(strategies_dir, f"{name.replace(' ', '_')}.json")
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+            self._update_custom_strategies_table()
+            self._log_custom_strategy(f"Deleted strategy: {name}")
+
+    def _start_custom_strategy(self):
+        """Start monitoring with current custom strategy"""
+        name = self.custom_strategy_name.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Error", "Please enter a strategy name first")
+            return
+
+        # Save first
+        self._save_custom_strategy()
+
+        self.custom_strategy_running = True
+        self.custom_start_btn.setEnabled(False)
+        self.custom_stop_btn.setEnabled(True)
+
+        mode = "Test Mode" if self.custom_test_mode_check.isChecked() else "LIVE"
+        self._log_custom_strategy(f"Started monitoring: {name} [{mode}]")
+        self._log_custom_strategy(f"Symbol: {self.custom_strategy_symbol.currentText()}")
+        self._log_custom_strategy(f"Waiting for signal...")
+
+    def _stop_custom_strategy(self):
+        """Stop custom strategy monitoring"""
+        self.custom_strategy_running = False
+        self.custom_start_btn.setEnabled(True)
+        self.custom_stop_btn.setEnabled(False)
+        self._log_custom_strategy("Stopped monitoring")
+
+    def _start_saved_strategy(self, name):
+        """Start a saved strategy by name"""
+        strategy = self.custom_strategies.get(name)
+        if not strategy:
+            return
+
+        # Load into form and start
+        self._load_custom_strategy()
+        self._start_custom_strategy()
+
+    def _load_example_strategy(self, example_type):
+        """Load a pre-defined example strategy"""
+        if example_type == "ema_cross":
+            self.custom_strategy_name.setText("EMA 9/21 Crossover")
+            self.custom_entry_ind1.setCurrentText("EMA(9)")
+            self.custom_entry_op1.setCurrentText("Crosses Above")
+            self.custom_entry_ind2.setCurrentText("EMA(21)")
+            self.custom_exit_ind1.setCurrentText("EMA(9)")
+            self.custom_exit_op1.setCurrentText("Crosses Below")
+            self.custom_exit_ind2.setCurrentText("EMA(21)")
+            self.custom_action_type.setCurrentText("Buy Call (CE)")
+            self._log_custom_strategy("Loaded EMA 9/21 Crossover example")
+
+        elif example_type == "rsi":
+            self.custom_strategy_name.setText("RSI Oversold Buy")
+            self.custom_entry_ind1.setCurrentText("RSI(14)")
+            self.custom_entry_op1.setCurrentText("Crosses Above")
+            self.custom_entry_ind2.setCurrentText("Value")
+            self.custom_entry_val1.setText("30")
+            self.custom_exit_ind1.setCurrentText("RSI(14)")
+            self.custom_exit_op1.setCurrentText("Crosses Above")
+            self.custom_exit_ind2.setCurrentText("Value")
+            self.custom_exit_val1.setText("70")
+            self.custom_action_type.setCurrentText("Buy Call (CE)")
+            self._log_custom_strategy("Loaded RSI Oversold/Overbought example")
+
+        elif example_type == "supertrend":
+            self.custom_strategy_name.setText("Supertrend Strategy")
+            self.custom_entry_ind1.setCurrentText("Price")
+            self.custom_entry_op1.setCurrentText("Crosses Above")
+            self.custom_entry_ind2.setCurrentText("Supertrend")
+            self.custom_exit_ind1.setCurrentText("Price")
+            self.custom_exit_op1.setCurrentText("Crosses Below")
+            self.custom_exit_ind2.setCurrentText("Supertrend")
+            self.custom_action_type.setCurrentText("Buy Call (CE)")
+            self._log_custom_strategy("Loaded Supertrend example")
+
+        elif example_type == "vwap":
+            self.custom_strategy_name.setText("VWAP Breakout")
+            self.custom_entry_ind1.setCurrentText("Price")
+            self.custom_entry_op1.setCurrentText("Crosses Above")
+            self.custom_entry_ind2.setCurrentText("VWAP")
+            self.custom_exit_ind1.setCurrentText("Price")
+            self.custom_exit_op1.setCurrentText("Crosses Below")
+            self.custom_exit_ind2.setCurrentText("VWAP")
+            self.custom_action_type.setCurrentText("Buy Call (CE)")
+            self._log_custom_strategy("Loaded VWAP Breakout example")
+
+    def _log_custom_strategy(self, message):
+        """Log message to custom strategy log"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.custom_strategy_log.append(f"[{timestamp}] {message}")
 
     def _create_orders_tab(self):
         """Create orders management tab"""

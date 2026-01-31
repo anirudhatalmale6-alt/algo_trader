@@ -292,11 +292,13 @@ class CPRAutoTrader:
     """Auto-trade based on CPR signals"""
 
     def __init__(self, symbol: str = "NIFTY", timeframe: str = "D",
-                 auto_trade_enabled: bool = False, test_mode: bool = True):
+                 auto_trade_enabled: bool = False, test_mode: bool = True,
+                 hedging_enabled: bool = True):
         self.symbol = symbol
         self.timeframe = timeframe
         self.auto_trade_enabled = auto_trade_enabled
         self.test_mode = test_mode
+        self.hedging_enabled = hedging_enabled  # Enable protective hedging
 
         self.calculator = CPRCalculator()
         self.signal_generator = CPRSignalGenerator()
@@ -355,7 +357,10 @@ class CPRAutoTrader:
         return new_signal
 
     def _execute_trade(self, signal: CPRTradeSignal):
-        """Execute trade based on signal"""
+        """Execute trade based on signal with hedging"""
+        # Calculate hedge distance (2 strikes away for protection)
+        hedge_gap = 100 if "BANK" in signal.symbol else 50
+
         trade_details = {
             'signal': signal.signal.value,
             'symbol': signal.symbol,
@@ -364,29 +369,41 @@ class CPRAutoTrader:
             'premium_zone': signal.premium_zone.value,
             'price': signal.current_price,
             'timestamp': signal.timestamp.isoformat(),
-            'test_mode': self.test_mode
+            'test_mode': self.test_mode,
+            'hedging_enabled': self.hedging_enabled
         }
 
         if signal.signal == CPRSignal.BULLISH:
-            # Sell Put
-            trade_details['action'] = 'SELL'
+            # Bull Put Spread (Credit Spread with Hedge)
+            # Sell Put + Buy lower Put for protection
+            trade_details['action'] = 'BULL_PUT_SPREAD'
             trade_details['option_type'] = 'PE'
-            logger.info(f"AUTO-TRADE: Selling PE at strike {signal.strike_value}")
+            trade_details['sell_strike'] = signal.strike_value
+            trade_details['buy_strike'] = signal.strike_value - hedge_gap * 2  # Hedge
+            logger.info(f"AUTO-TRADE: Bull Put Spread - "
+                       f"Sell PE {signal.strike_value}, Buy PE {trade_details['buy_strike']}")
 
         elif signal.signal == CPRSignal.BEARISH:
-            # Sell Call
-            trade_details['action'] = 'SELL'
+            # Bear Call Spread (Credit Spread with Hedge)
+            # Sell Call + Buy higher Call for protection
+            trade_details['action'] = 'BEAR_CALL_SPREAD'
             trade_details['option_type'] = 'CE'
-            logger.info(f"AUTO-TRADE: Selling CE at strike {signal.strike_value}")
+            trade_details['sell_strike'] = signal.strike_value
+            trade_details['buy_strike'] = signal.strike_value + hedge_gap * 2  # Hedge
+            logger.info(f"AUTO-TRADE: Bear Call Spread - "
+                       f"Sell CE {signal.strike_value}, Buy CE {trade_details['buy_strike']}")
 
         elif signal.signal == CPRSignal.SIDEWAYS:
-            # Iron Condor
+            # Iron Condor (already hedged)
             trade_details['action'] = 'IRON_CONDOR'
             trade_details['option_type'] = 'IC'
-            trade_details['ce_strike'] = signal.strike_value
-            trade_details['pe_strike'] = signal.strike_value_2
-            logger.info(f"AUTO-TRADE: Iron Condor - CE strike {signal.strike_value}, "
-                       f"PE strike {signal.strike_value_2}")
+            trade_details['ce_sell_strike'] = signal.strike_value
+            trade_details['pe_sell_strike'] = signal.strike_value_2
+            trade_details['ce_buy_strike'] = signal.strike_value + hedge_gap * 2
+            trade_details['pe_buy_strike'] = signal.strike_value_2 - hedge_gap * 2
+            logger.info(f"AUTO-TRADE: Iron Condor - "
+                       f"Sell CE {signal.strike_value}, Sell PE {signal.strike_value_2}, "
+                       f"Buy CE {trade_details['ce_buy_strike']}, Buy PE {trade_details['pe_buy_strike']}")
 
         self.last_trade_signal = signal.signal
 

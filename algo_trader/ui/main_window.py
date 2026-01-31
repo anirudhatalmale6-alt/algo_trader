@@ -184,6 +184,15 @@ class MainWindow(QMainWindow):
         current_time = datetime.now().strftime("%H:%M:%S")
         self.clock_label.setText(current_time)
 
+    def _make_scrollable(self, widget):
+        """Wrap a widget in a scroll area for scrolling support"""
+        scroll = QScrollArea()
+        scroll.setWidget(widget)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        return scroll
+
     def _create_dashboard_tab(self):
         """Create enhanced dashboard tab with live P&L"""
         dashboard = QWidget()
@@ -1587,6 +1596,10 @@ class MainWindow(QMainWindow):
             CPRAutoTrader, CPRCalculator, CPRSignal, PremiumZone
         )
 
+        # Wrap in scroll area
+        cpr_scroll = QScrollArea()
+        cpr_scroll.setWidgetResizable(True)
+
         cpr_widget = QWidget()
         main_layout = QHBoxLayout(cpr_widget)
 
@@ -1709,6 +1722,11 @@ class MainWindow(QMainWindow):
         self.cpr_auto_trade_check.setStyleSheet("font-size: 14px; font-weight: bold;")
         auto_layout.addWidget(self.cpr_auto_trade_check)
 
+        self.cpr_hedging_check = QCheckBox("Enable Hedging (Protective Wings)")
+        self.cpr_hedging_check.setChecked(True)
+        self.cpr_hedging_check.setStyleSheet("color: #4CAF50;")
+        auto_layout.addWidget(self.cpr_hedging_check)
+
         self.cpr_test_mode_check = QCheckBox("Test Mode (Paper Trading)")
         self.cpr_test_mode_check.setChecked(True)
         auto_layout.addWidget(self.cpr_test_mode_check)
@@ -1747,21 +1765,26 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
 
         # Trade Actions Info
-        info_group = QGroupBox("Signal Actions")
+        info_group = QGroupBox("Signal Actions (With Hedging)")
         info_layout = QVBoxLayout(info_group)
 
         info_text = QLabel("""
-<b>BULLISH Signal</b> (Price > Top Pivot):<br>
-Action: SELL PE (Put) at calculated strike<br><br>
+<b style="color: #4CAF50;">BULLISH Signal</b> (Price > Top Pivot):<br>
+<b>Bull Put Spread:</b><br>
+- SELL PE at strike (collect premium)<br>
+- BUY PE at lower strike (hedge/protection)<br><br>
 
-<b>BEARISH Signal</b> (Price < Bottom Pivot):<br>
-Action: SELL CE (Call) at calculated strike<br><br>
+<b style="color: #F44336;">BEARISH Signal</b> (Price < Bottom Pivot):<br>
+<b>Bear Call Spread:</b><br>
+- SELL CE at strike (collect premium)<br>
+- BUY CE at higher strike (hedge/protection)<br><br>
 
-<b>SIDEWAYS Signal</b> (Price between TC & BC):<br>
-Action: IRON CONDOR<br>
-- Sell CE at upper strike<br>
-- Sell PE at lower strike<br>
-- Buy protective wings
+<b style="color: #FF9800;">SIDEWAYS Signal</b> (Price between TC & BC):<br>
+<b>Iron Condor:</b><br>
+- SELL CE at upper strike<br>
+- SELL PE at lower strike<br>
+- BUY CE higher (hedge)<br>
+- BUY PE lower (hedge)
         """)
         info_text.setWordWrap(True)
         info_text.setStyleSheet("font-size: 13px; padding: 10px;")
@@ -1794,7 +1817,8 @@ Action: IRON CONDOR<br>
         self.cpr_trader.on_signal_change = self._on_cpr_signal_change
         self.cpr_trader.on_trade_executed = self._on_cpr_trade_executed
 
-        self.tabs.addTab(cpr_widget, "CPR Strategy")
+        cpr_scroll.setWidget(cpr_widget)
+        self.tabs.addTab(cpr_scroll, "CPR Strategy")
 
     def _calculate_cpr_levels(self):
         """Calculate CPR levels from prior day data"""
@@ -1897,6 +1921,7 @@ Action: IRON CONDOR<br>
 
         self.cpr_trader.auto_trade_enabled = self.cpr_auto_trade_check.isChecked()
         self.cpr_trader.test_mode = self.cpr_test_mode_check.isChecked()
+        self.cpr_trader.hedging_enabled = self.cpr_hedging_check.isChecked()
 
         # Start monitoring with price callback
         self.cpr_trader.start_monitoring(lambda: self.cpr_current_price.value())
@@ -1906,7 +1931,8 @@ Action: IRON CONDOR<br>
 
         mode = "TEST" if self.cpr_trader.test_mode else "LIVE"
         auto = "AUTO-TRADE ON" if self.cpr_trader.auto_trade_enabled else "Manual"
-        self._log_cpr(f"Monitoring STARTED - Mode: {mode}, {auto}")
+        hedge = "HEDGING ON" if self.cpr_trader.hedging_enabled else "No Hedge"
+        self._log_cpr(f"Monitoring STARTED - Mode: {mode}, {auto}, {hedge}")
 
     def _stop_cpr_monitoring(self):
         """Stop CPR monitoring"""
@@ -1952,62 +1978,128 @@ Action: IRON CONDOR<br>
         """Callback when trade is executed"""
         from algo_trader.strategies.cpr_strategy import CPRSignal
 
+        action = trade_details.get('action', '')
+        hedge_info = "WITH HEDGING" if trade_details.get('hedging_enabled') else "NO HEDGE"
+
         self._log_cpr(f"\n{'='*40}\n"
-                     f"TRADE EXECUTED!\n"
+                     f"TRADE EXECUTED! ({hedge_info})\n"
                      f"Signal: {trade_details['signal']}\n"
+                     f"Action: {action}\n"
                      f"Symbol: {trade_details['symbol']}\n"
-                     f"Strike: {trade_details['strike']}\n"
                      f"Mode: {'TEST' if trade_details['test_mode'] else 'LIVE'}\n"
                      f"Time: {trade_details['timestamp']}\n"
                      f"{'='*40}\n")
 
-        # If sideways, auto-load Iron Condor in Strategy Builder
-        if trade_details.get('action') == 'IRON_CONDOR':
-            self._auto_load_iron_condor(
-                trade_details['ce_strike'],
-                trade_details['pe_strike'],
-                trade_details['symbol']
-            )
+        # Auto-load strategy in Strategy Builder based on action
+        if action == 'IRON_CONDOR':
+            self._auto_load_iron_condor_full(trade_details)
+        elif action == 'BULL_PUT_SPREAD':
+            self._auto_load_bull_put_spread(trade_details)
+        elif action == 'BEAR_CALL_SPREAD':
+            self._auto_load_bear_call_spread(trade_details)
 
-    def _auto_load_iron_condor(self, ce_strike, pe_strike, symbol):
-        """Auto-load Iron Condor in Strategy Builder"""
+    def _auto_load_iron_condor_full(self, trade_details):
+        """Auto-load Iron Condor in Strategy Builder from trade details"""
         try:
-            # Switch to Strategy Builder tab
-            for i in range(self.tabs.count()):
-                if self.tabs.tabText(i) == "Strategy Builder":
-                    self.tabs.setCurrentIndex(i)
-                    break
+            symbol = trade_details['symbol']
+            ce_sell = trade_details.get('ce_sell_strike', trade_details.get('ce_strike', 0))
+            pe_sell = trade_details.get('pe_sell_strike', trade_details.get('pe_strike', 0))
+            ce_buy = trade_details.get('ce_buy_strike', ce_sell + 100)
+            pe_buy = trade_details.get('pe_buy_strike', pe_sell - 100)
 
-            # Set symbol
-            idx = self.sb_symbol.findText(symbol)
-            if idx >= 0:
-                self.sb_symbol.setCurrentIndex(idx)
-
-            # Clear existing legs
-            self.strategy_legs = []
-
-            # Add Iron Condor legs
-            gap = 100 if "BANK" in symbol else 50
+            self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'CE', 'strike': ce_strike, 'qty': 1, 'premium': 100},
-                {'action': 'SELL', 'type': 'PE', 'strike': pe_strike, 'qty': 1, 'premium': 100},
-                {'action': 'BUY', 'type': 'CE', 'strike': ce_strike + gap * 2, 'qty': 1, 'premium': 30},
-                {'action': 'BUY', 'type': 'PE', 'strike': pe_strike - gap * 2, 'qty': 1, 'premium': 30}
+                {'action': 'SELL', 'type': 'CE', 'strike': ce_sell, 'qty': 1, 'premium': 100},
+                {'action': 'SELL', 'type': 'PE', 'strike': pe_sell, 'qty': 1, 'premium': 100},
+                {'action': 'BUY', 'type': 'CE', 'strike': ce_buy, 'qty': 1, 'premium': 30},
+                {'action': 'BUY', 'type': 'PE', 'strike': pe_buy, 'qty': 1, 'premium': 30}
             ]
 
             self._refresh_legs_table()
             self._update_payoff_chart()
             self._calculate_strategy_metrics()
 
-            self._log_cpr(f"Iron Condor auto-loaded in Strategy Builder:\n"
-                         f"  Sell CE: {ce_strike}\n"
-                         f"  Sell PE: {pe_strike}\n"
-                         f"  Buy CE: {ce_strike + gap * 2}\n"
-                         f"  Buy PE: {pe_strike - gap * 2}")
+            self._log_cpr(f"Iron Condor auto-loaded:\n"
+                         f"  Sell CE: {ce_sell} | Buy CE: {ce_buy}\n"
+                         f"  Sell PE: {pe_sell} | Buy PE: {pe_buy}")
 
         except Exception as e:
             logger.error(f"Failed to auto-load Iron Condor: {e}")
+
+    def _auto_load_bull_put_spread(self, trade_details):
+        """Auto-load Bull Put Spread (Bullish with Hedge)"""
+        try:
+            symbol = trade_details['symbol']
+            sell_strike = trade_details.get('sell_strike', trade_details.get('strike', 0))
+            buy_strike = trade_details.get('buy_strike', sell_strike - 100)
+
+            self._switch_to_strategy_builder(symbol)
+
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'PE', 'strike': sell_strike, 'qty': 1, 'premium': 150},
+                {'action': 'BUY', 'type': 'PE', 'strike': buy_strike, 'qty': 1, 'premium': 50}
+            ]
+
+            self._refresh_legs_table()
+            self._update_payoff_chart()
+            self._calculate_strategy_metrics()
+
+            self._log_cpr(f"Bull Put Spread auto-loaded:\n"
+                         f"  Sell PE: {sell_strike} (collect premium)\n"
+                         f"  Buy PE: {buy_strike} (hedge)")
+
+        except Exception as e:
+            logger.error(f"Failed to auto-load Bull Put Spread: {e}")
+
+    def _auto_load_bear_call_spread(self, trade_details):
+        """Auto-load Bear Call Spread (Bearish with Hedge)"""
+        try:
+            symbol = trade_details['symbol']
+            sell_strike = trade_details.get('sell_strike', trade_details.get('strike', 0))
+            buy_strike = trade_details.get('buy_strike', sell_strike + 100)
+
+            self._switch_to_strategy_builder(symbol)
+
+            self.strategy_legs = [
+                {'action': 'SELL', 'type': 'CE', 'strike': sell_strike, 'qty': 1, 'premium': 150},
+                {'action': 'BUY', 'type': 'CE', 'strike': buy_strike, 'qty': 1, 'premium': 50}
+            ]
+
+            self._refresh_legs_table()
+            self._update_payoff_chart()
+            self._calculate_strategy_metrics()
+
+            self._log_cpr(f"Bear Call Spread auto-loaded:\n"
+                         f"  Sell CE: {sell_strike} (collect premium)\n"
+                         f"  Buy CE: {buy_strike} (hedge)")
+
+        except Exception as e:
+            logger.error(f"Failed to auto-load Bear Call Spread: {e}")
+
+    def _switch_to_strategy_builder(self, symbol):
+        """Switch to Strategy Builder tab and set symbol"""
+        for i in range(self.tabs.count()):
+            if self.tabs.tabText(i) == "Strategy Builder":
+                self.tabs.setCurrentIndex(i)
+                break
+
+        idx = self.sb_symbol.findText(symbol)
+        if idx >= 0:
+            self.sb_symbol.setCurrentIndex(idx)
+
+        self.strategy_legs = []
+
+    def _auto_load_iron_condor(self, ce_strike, pe_strike, symbol):
+        """Auto-load Iron Condor in Strategy Builder (legacy method)"""
+        trade_details = {
+            'symbol': symbol,
+            'ce_sell_strike': ce_strike,
+            'pe_sell_strike': pe_strike,
+            'ce_buy_strike': ce_strike + (100 if "BANK" in symbol else 50) * 2,
+            'pe_buy_strike': pe_strike - (100 if "BANK" in symbol else 50) * 2
+        }
+        self._auto_load_iron_condor_full(trade_details)
 
     def _log_cpr(self, message):
         """Log message to CPR trade log"""
@@ -3008,6 +3100,10 @@ For accurate Greeks, use live option data."""
 
     def _create_risk_tab(self):
         """Create Risk Management tab with TSL and MTM"""
+        # Wrap in scroll area
+        risk_scroll = QScrollArea()
+        risk_scroll.setWidgetResizable(True)
+
         risk = QWidget()
         layout = QVBoxLayout(risk)
 
@@ -3102,7 +3198,8 @@ For accurate Greeks, use live option data."""
 
         layout.addWidget(tracked_group)
 
-        self.tabs.addTab(risk, "Risk/TSL")
+        risk_scroll.setWidget(risk)
+        self.tabs.addTab(risk_scroll, "Risk/TSL")
 
     def _create_options_tab(self):
         """Create Options Trading tab with Expiry, Strike, Hedge strategies"""
@@ -3571,6 +3668,9 @@ For accurate Greeks, use live option data."""
 
     def _create_journal_tab(self):
         """Create Trade Journal / Performance Analytics tab"""
+        journal_scroll = QScrollArea()
+        journal_scroll.setWidgetResizable(True)
+
         journal = QWidget()
         layout = QVBoxLayout(journal)
 
@@ -3734,7 +3834,8 @@ For accurate Greeks, use live option data."""
 
         layout.addWidget(history_group)
 
-        self.tabs.addTab(journal, "Journal")
+        journal_scroll.setWidget(journal)
+        self.tabs.addTab(journal_scroll, "Journal")
 
         # Initial load
         QTimer.singleShot(100, self._refresh_journal)

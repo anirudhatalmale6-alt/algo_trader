@@ -171,6 +171,21 @@ class CPRCalculator:
 class CPRSignalGenerator:
     """Generate trading signals based on CPR levels"""
 
+    # Strike gap for each symbol (standard NSE F&O strike gaps)
+    STRIKE_GAPS = {
+        # Indices
+        "NIFTY": 50,
+        "BANKNIFTY": 100,
+        "FINNIFTY": 50,
+        "MIDCPNIFTY": 25,
+        "SENSEX": 100,
+        "BANKEX": 100,
+        # Default for stocks - most F&O stocks have different gaps
+        # High-priced stocks (>2000) typically have 50 gap
+        # Mid-priced stocks (500-2000) typically have 25 or 20 gap
+        # Low-priced stocks (<500) typically have 10 or 5 gap
+    }
+
     def __init__(self, strike_method: str = "Traditional Pivot S1/R1",
                  spread_method: str = "Auto"):
         self.strike_method = strike_method
@@ -192,7 +207,7 @@ class CPRSignalGenerator:
 
         # Calculate strike values
         strike_value, strike_value_2 = self._calculate_strikes(
-            current_price, cpr_levels, signal
+            current_price, cpr_levels, signal, symbol
         )
 
         # Determine premium zone
@@ -210,9 +225,9 @@ class CPRSignalGenerator:
         )
 
     def _calculate_strikes(self, current_price: float, cpr_levels: CPRLevels,
-                           signal: CPRSignal) -> Tuple[float, float]:
+                           signal: CPRSignal, symbol: str = "NIFTY") -> Tuple[float, float]:
         """Calculate strike prices based on method"""
-        spread_value = self._get_spread_value(current_price)
+        spread_value = self._get_strike_gap(symbol, current_price)
 
         if self.strike_method == "Traditional Pivot S1/R1":
             call_trigger = cpr_levels.r1
@@ -230,45 +245,55 @@ class CPRSignalGenerator:
         # Calculate strike values based on signal
         if signal == CPRSignal.BULLISH:
             # Sell Put - strike below current price
-            strike_value = self._round_to_spread(put_trigger, spread_value, "Put")
+            strike_value = self._round_to_strike(put_trigger, spread_value, "Put")
             strike_value_2 = 0
         elif signal == CPRSignal.BEARISH:
             # Sell Call - strike above current price
-            strike_value = self._round_to_spread(call_trigger, spread_value, "Call")
+            strike_value = self._round_to_strike(call_trigger, spread_value, "Call")
             strike_value_2 = 0
         elif signal == CPRSignal.SIDEWAYS:
             # Iron Condor - both calls and puts
-            strike_value = self._round_to_spread(call_trigger, spread_value, "Call")
-            strike_value_2 = self._round_to_spread(put_trigger, spread_value, "Put")
+            strike_value = self._round_to_strike(call_trigger, spread_value, "Call")
+            strike_value_2 = self._round_to_strike(put_trigger, spread_value, "Put")
         else:
             strike_value = 0
             strike_value_2 = 0
 
         return strike_value, strike_value_2
 
-    def _get_spread_value(self, current_price: float) -> float:
-        """Get spread value based on price"""
-        if self.spread_method == "Auto":
-            if current_price >= 1000:
-                return 50.0
-            elif current_price >= 500:
-                return 10.0
-            elif current_price >= 100:
-                return 5.0
-            elif current_price >= 50:
-                return 2.5
-            elif current_price >= 20:
-                return 1.0
-            else:
-                return 0.5
-        return 50.0  # Default
+    def _get_strike_gap(self, symbol: str, current_price: float) -> float:
+        """Get strike gap based on symbol (NSE F&O standard gaps)"""
+        symbol_upper = symbol.upper()
 
-    def _round_to_spread(self, value: float, spread: float, option_type: str) -> float:
-        """Round value to nearest spread"""
-        if option_type == "Call":
-            return (value // spread + 1) * spread  # Round up for calls
+        # Check if symbol has a defined strike gap
+        if symbol_upper in self.STRIKE_GAPS:
+            return float(self.STRIKE_GAPS[symbol_upper])
+
+        # For F&O stocks, calculate based on price (NSE standard rules)
+        # These are approximate - actual gaps depend on NSE circulars
+        if current_price >= 5000:
+            return 100.0  # High-priced stocks like MRF
+        elif current_price >= 2000:
+            return 50.0   # Stocks like MARUTI, BOSCH
+        elif current_price >= 1000:
+            return 25.0   # Most large-cap stocks
+        elif current_price >= 500:
+            return 20.0   # Mid-cap stocks
+        elif current_price >= 250:
+            return 10.0   # Lower mid-cap
+        elif current_price >= 100:
+            return 5.0    # Low-priced stocks
         else:
-            return (value // spread) * spread  # Round down for puts
+            return 2.5    # Very low-priced stocks
+
+    def _round_to_strike(self, value: float, strike_gap: float, option_type: str) -> float:
+        """Round value to valid strike price based on symbol's strike gap"""
+        if option_type == "Call":
+            # Round up to next valid strike for calls
+            return round((value // strike_gap + 1) * strike_gap)
+        else:
+            # Round down to previous valid strike for puts
+            return round((value // strike_gap) * strike_gap)
 
     def _get_premium_zone(self, current_price: float, cpr_levels: CPRLevels,
                           strike_value: float) -> PremiumZone:
@@ -315,6 +340,27 @@ class CPRAutoTrader:
         self.on_trade_executed = None  # Callback when trade is executed
         self.on_levels_updated = None  # Callback when CPR levels update
 
+    def _get_symbol_strike_gap(self, symbol: str) -> int:
+        """Get strike gap for a symbol (NSE F&O standard gaps)"""
+        symbol_upper = symbol.upper()
+
+        # Index-specific strike gaps
+        strike_gaps = {
+            "NIFTY": 50,
+            "BANKNIFTY": 100,
+            "FINNIFTY": 50,
+            "MIDCPNIFTY": 25,
+            "SENSEX": 100,
+            "BANKEX": 100,
+        }
+
+        if symbol_upper in strike_gaps:
+            return strike_gaps[symbol_upper]
+
+        # For stocks, use the signal generator's logic
+        # Default to 50 for unknown symbols
+        return 50
+
     def set_prior_day_data(self, high: float, low: float, close: float):
         """Set prior day OHLC data for CPR calculation"""
         self.cpr_levels = self.calculator.calculate_all(high, low, close)
@@ -358,8 +404,10 @@ class CPRAutoTrader:
 
     def _execute_trade(self, signal: CPRTradeSignal):
         """Execute trade based on signal with hedging"""
-        # Calculate hedge distance (2 strikes away for protection)
-        hedge_gap = 100 if "BANK" in signal.symbol else 50
+        # Get strike gap based on symbol (for hedge calculation)
+        strike_gap = self._get_symbol_strike_gap(signal.symbol)
+        # Hedge is 2 strikes away for protection
+        hedge_distance = strike_gap * 2
 
         trade_details = {
             'signal': signal.signal.value,
@@ -370,7 +418,8 @@ class CPRAutoTrader:
             'price': signal.current_price,
             'timestamp': signal.timestamp.isoformat(),
             'test_mode': self.test_mode,
-            'hedging_enabled': self.hedging_enabled
+            'hedging_enabled': self.hedging_enabled,
+            'strike_gap': strike_gap
         }
 
         if signal.signal == CPRSignal.BULLISH:
@@ -379,7 +428,7 @@ class CPRAutoTrader:
             trade_details['action'] = 'BULL_PUT_SPREAD'
             trade_details['option_type'] = 'PE'
             trade_details['sell_strike'] = signal.strike_value
-            trade_details['buy_strike'] = signal.strike_value - hedge_gap * 2  # Hedge
+            trade_details['buy_strike'] = signal.strike_value - hedge_distance  # Hedge
             logger.info(f"AUTO-TRADE: Bull Put Spread - "
                        f"Sell PE {signal.strike_value}, Buy PE {trade_details['buy_strike']}")
 
@@ -389,7 +438,7 @@ class CPRAutoTrader:
             trade_details['action'] = 'BEAR_CALL_SPREAD'
             trade_details['option_type'] = 'CE'
             trade_details['sell_strike'] = signal.strike_value
-            trade_details['buy_strike'] = signal.strike_value + hedge_gap * 2  # Hedge
+            trade_details['buy_strike'] = signal.strike_value + hedge_distance  # Hedge
             logger.info(f"AUTO-TRADE: Bear Call Spread - "
                        f"Sell CE {signal.strike_value}, Buy CE {trade_details['buy_strike']}")
 
@@ -399,8 +448,8 @@ class CPRAutoTrader:
             trade_details['option_type'] = 'IC'
             trade_details['ce_sell_strike'] = signal.strike_value
             trade_details['pe_sell_strike'] = signal.strike_value_2
-            trade_details['ce_buy_strike'] = signal.strike_value + hedge_gap * 2
-            trade_details['pe_buy_strike'] = signal.strike_value_2 - hedge_gap * 2
+            trade_details['ce_buy_strike'] = signal.strike_value + hedge_distance
+            trade_details['pe_buy_strike'] = signal.strike_value_2 - hedge_distance
             logger.info(f"AUTO-TRADE: Iron Condor - "
                        f"Sell CE {signal.strike_value}, Sell PE {signal.strike_value_2}, "
                        f"Buy CE {trade_details['ce_buy_strike']}, Buy PE {trade_details['pe_buy_strike']}")

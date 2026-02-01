@@ -2425,13 +2425,19 @@ class MainWindow(QMainWindow):
             pe_buy = trade_details.get('pe_buy_strike', pe_sell - 100)
             mode = 'TEST' if trade_details.get('test_mode', True) else 'LIVE'
 
+            # Fetch actual premiums
+            ce_sell_prem = self._get_option_premium(symbol, ce_sell, 'CE')
+            pe_sell_prem = self._get_option_premium(symbol, pe_sell, 'PE')
+            ce_buy_prem = self._get_option_premium(symbol, ce_buy, 'CE')
+            pe_buy_prem = self._get_option_premium(symbol, pe_buy, 'PE')
+
             self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'CE', 'strike': ce_sell, 'qty': 1, 'premium': 100, 'symbol': symbol, 'mode': mode},
-                {'action': 'SELL', 'type': 'PE', 'strike': pe_sell, 'qty': 1, 'premium': 100, 'symbol': symbol, 'mode': mode},
-                {'action': 'BUY', 'type': 'CE', 'strike': ce_buy, 'qty': 1, 'premium': 30, 'symbol': symbol, 'mode': mode},
-                {'action': 'BUY', 'type': 'PE', 'strike': pe_buy, 'qty': 1, 'premium': 30, 'symbol': symbol, 'mode': mode}
+                {'action': 'SELL', 'type': 'CE', 'strike': ce_sell, 'qty': 1, 'premium': ce_sell_prem, 'ltp': ce_sell_prem, 'symbol': symbol, 'mode': mode},
+                {'action': 'SELL', 'type': 'PE', 'strike': pe_sell, 'qty': 1, 'premium': pe_sell_prem, 'ltp': pe_sell_prem, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'CE', 'strike': ce_buy, 'qty': 1, 'premium': ce_buy_prem, 'ltp': ce_buy_prem, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'PE', 'strike': pe_buy, 'qty': 1, 'premium': pe_buy_prem, 'ltp': pe_buy_prem, 'symbol': symbol, 'mode': mode}
             ]
 
             self._refresh_legs_table()
@@ -2439,11 +2445,55 @@ class MainWindow(QMainWindow):
             self._calculate_strategy_metrics()
 
             self._log_cpr(f"Iron Condor auto-loaded [{mode}]:\n"
-                         f"  {symbol} Sell CE: {ce_sell} | Buy CE: {ce_buy}\n"
-                         f"  {symbol} Sell PE: {pe_sell} | Buy PE: {pe_buy}")
+                         f"  {symbol} Sell CE: {ce_sell} @ ₹{ce_sell_prem} | Buy CE: {ce_buy} @ ₹{ce_buy_prem}\n"
+                         f"  {symbol} Sell PE: {pe_sell} @ ₹{pe_sell_prem} | Buy PE: {pe_buy} @ ₹{pe_buy_prem}")
 
         except Exception as e:
             logger.error(f"Failed to auto-load Iron Condor: {e}")
+
+    def _get_option_premium(self, symbol: str, strike: int, opt_type: str) -> float:
+        """Get option premium from broker or estimate if not available"""
+        # Try to get from broker if connected
+        if hasattr(self, 'brokers') and self.brokers:
+            broker = list(self.brokers.values())[0]
+            try:
+                # Try broker-specific methods
+                if hasattr(broker, 'get_option_ltp'):
+                    ltp = broker.get_option_ltp(symbol, strike, opt_type)
+                    if ltp and ltp > 0:
+                        return ltp
+                elif hasattr(broker, 'get_ltp'):
+                    # Build option symbol name
+                    option_symbol = f"{symbol}{strike}{opt_type}"
+                    ltp = broker.get_ltp(option_symbol)
+                    if ltp and ltp > 0:
+                        return ltp
+            except Exception as e:
+                logger.debug(f"Error fetching option LTP from broker: {e}")
+
+        # Estimate premium based on spot price and strike distance
+        spot = self.sb_current_spot.value() if hasattr(self, 'sb_current_spot') else 25000
+
+        # Base premium estimation
+        if 'BANK' in symbol.upper():
+            base_premium = 400
+        elif 'SENSEX' in symbol.upper() or 'BANKEX' in symbol.upper():
+            base_premium = 350
+        else:
+            base_premium = 200
+
+        # Adjust for moneyness (ITM options cost more)
+        strike_distance = abs(spot - strike)
+        moneyness_factor = max(0.2, 1 - (strike_distance / spot) * 3)
+
+        # ITM intrinsic value
+        if opt_type == 'CE':
+            intrinsic = max(0, spot - strike)
+        else:  # PE
+            intrinsic = max(0, strike - spot)
+
+        estimated_premium = intrinsic + (base_premium * moneyness_factor)
+        return round(max(10, estimated_premium), 2)
 
     def _auto_load_bull_put_spread(self, trade_details):
         """Auto-load Bull Put Spread (Bullish with Hedge)"""
@@ -2453,11 +2503,15 @@ class MainWindow(QMainWindow):
             buy_strike = trade_details.get('buy_strike', sell_strike - 100)
             mode = 'TEST' if trade_details.get('test_mode', True) else 'LIVE'
 
+            # Fetch actual premiums
+            sell_premium = self._get_option_premium(symbol, sell_strike, 'PE')
+            buy_premium = self._get_option_premium(symbol, buy_strike, 'PE')
+
             self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'PE', 'strike': sell_strike, 'qty': 1, 'premium': 150, 'symbol': symbol, 'mode': mode},
-                {'action': 'BUY', 'type': 'PE', 'strike': buy_strike, 'qty': 1, 'premium': 50, 'symbol': symbol, 'mode': mode}
+                {'action': 'SELL', 'type': 'PE', 'strike': sell_strike, 'qty': 1, 'premium': sell_premium, 'ltp': sell_premium, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'PE', 'strike': buy_strike, 'qty': 1, 'premium': buy_premium, 'ltp': buy_premium, 'symbol': symbol, 'mode': mode}
             ]
 
             self._refresh_legs_table()
@@ -2465,8 +2519,8 @@ class MainWindow(QMainWindow):
             self._calculate_strategy_metrics()
 
             self._log_cpr(f"Bull Put Spread auto-loaded [{mode}]:\n"
-                         f"  {symbol} Sell PE: {sell_strike} (collect premium)\n"
-                         f"  {symbol} Buy PE: {buy_strike} (hedge)")
+                         f"  {symbol} Sell PE: {sell_strike} @ ₹{sell_premium}\n"
+                         f"  {symbol} Buy PE: {buy_strike} @ ₹{buy_premium}")
 
         except Exception as e:
             logger.error(f"Failed to auto-load Bull Put Spread: {e}")
@@ -2479,20 +2533,24 @@ class MainWindow(QMainWindow):
             buy_strike = trade_details.get('buy_strike', sell_strike + 100)
             mode = 'TEST' if trade_details.get('test_mode', True) else 'LIVE'
 
+            # Fetch actual premiums
+            sell_premium = self._get_option_premium(symbol, sell_strike, 'CE')
+            buy_premium = self._get_option_premium(symbol, buy_strike, 'CE')
+
             self._switch_to_strategy_builder(symbol)
 
             self.strategy_legs = [
-                {'action': 'SELL', 'type': 'CE', 'strike': sell_strike, 'qty': 1, 'premium': 150, 'symbol': symbol, 'mode': mode},
-                {'action': 'BUY', 'type': 'CE', 'strike': buy_strike, 'qty': 1, 'premium': 50, 'symbol': symbol, 'mode': mode}
+                {'action': 'SELL', 'type': 'CE', 'strike': sell_strike, 'qty': 1, 'premium': sell_premium, 'ltp': sell_premium, 'symbol': symbol, 'mode': mode},
+                {'action': 'BUY', 'type': 'CE', 'strike': buy_strike, 'qty': 1, 'premium': buy_premium, 'ltp': buy_premium, 'symbol': symbol, 'mode': mode}
             ]
 
             self._refresh_legs_table()
             self._update_payoff_chart()
             self._calculate_strategy_metrics()
 
-            self._log_cpr(f"Bear Call Spread auto-loaded:\n"
-                         f"  Sell CE: {sell_strike} (collect premium)\n"
-                         f"  Buy CE: {buy_strike} (hedge)")
+            self._log_cpr(f"Bear Call Spread auto-loaded [{mode}]:\n"
+                         f"  {symbol} Sell CE: {sell_strike} @ ₹{sell_premium}\n"
+                         f"  {symbol} Buy CE: {buy_strike} @ ₹{buy_premium}")
 
         except Exception as e:
             logger.error(f"Failed to auto-load Bear Call Spread: {e}")

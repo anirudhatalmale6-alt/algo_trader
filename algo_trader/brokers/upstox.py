@@ -455,52 +455,64 @@ class UpstoxBroker(BaseBroker):
         symbol: NIFTY, BANKNIFTY, SENSEX, etc.
         strike: Strike price (e.g., 25200)
         opt_type: CE or PE
-        expiry: Optional expiry date (defaults to current week/month)
+        expiry: Optional expiry date
         """
         try:
-            # Build option instrument key for Upstox
-            # Format: NSE_FO|NIFTY24FEB25200CE or BFO|SENSEX24FEB81900PE
-            from datetime import datetime
+            from datetime import datetime, timedelta
+            import urllib.parse
+
+            sym_upper = symbol.upper()
 
             # Determine exchange based on symbol
-            if symbol.upper() in ['SENSEX', 'BANKEX']:
-                exchange = 'BFO'  # BSE F&O
+            if sym_upper in ['SENSEX', 'BANKEX']:
+                exchange = 'BFO'
             else:
                 exchange = 'NSE_FO'
 
-            # Get current month/week expiry if not provided
-            if not expiry:
-                now = datetime.now()
-                # Use format like 24FEB for Feb 2024
-                expiry = now.strftime('%y%b').upper()
+            now = datetime.now()
 
-            # Build instrument key
-            instrument_key = f"{exchange}|{symbol.upper()}{expiry}{int(strike)}{opt_type.upper()}"
+            # Find next Thursday for weekly expiry
+            days_until_thursday = (3 - now.weekday()) % 7
+            if days_until_thursday == 0 and now.hour >= 15:
+                days_until_thursday = 7
+            next_thursday = now + timedelta(days=days_until_thursday)
 
-            # Get quote
-            result = self._make_request("GET", f"/market-quote/ltp?instrument_key={instrument_key}")
+            # Try multiple expiry date formats
+            expiry_formats = [
+                next_thursday.strftime('%y%m%d'),  # 260206
+                next_thursday.strftime('%y') + str(next_thursday.month) + next_thursday.strftime('%d'),  # 26206
+                next_thursday.strftime('%y%b%d').upper(),  # 26FEB06
+                now.strftime('%y%m'),  # 2602 (monthly)
+                now.strftime('%y%b').upper(),  # 26FEB (monthly)
+                next_thursday.strftime('%d%b%y').upper(),  # 06FEB26
+            ]
 
-            if result.get('success') and result.get('data'):
-                quote_data = result['data'].get(instrument_key, {})
-                ltp = quote_data.get('last_price', 0)
-                if ltp and ltp > 0:
-                    return float(ltp)
+            for exp_fmt in expiry_formats:
+                instrument_key = f"{exchange}|{sym_upper}{exp_fmt}{int(strike)}{opt_type.upper()}"
+                encoded_key = urllib.parse.quote(instrument_key, safe='')
 
-            # Try alternative format
-            instrument_key2 = f"{exchange}|{symbol.upper()}{int(strike)}{opt_type.upper()}"
-            result = self._make_request("GET", f"/market-quote/ltp?instrument_key={instrument_key2}")
+                logger.debug(f"Trying Upstox key: {instrument_key}")
 
-            if result.get('success') and result.get('data'):
-                quote_data = result['data'].get(instrument_key2, {})
-                ltp = quote_data.get('last_price', 0)
-                if ltp and ltp > 0:
-                    return float(ltp)
+                result = self._make_request("GET", f"/market-quote/ltp?instrument_key={encoded_key}")
 
-            logger.debug(f"Could not fetch option LTP for {symbol} {strike} {opt_type}")
+                if result.get('success') and result.get('data'):
+                    data = result['data']
+                    # Try to get quote from any key in response
+                    quote_data = data.get(instrument_key) or data.get(encoded_key)
+                    if not quote_data and data:
+                        quote_data = list(data.values())[0]
+
+                    if isinstance(quote_data, dict):
+                        ltp = quote_data.get('last_price', 0)
+                        if ltp and float(ltp) > 0:
+                            logger.info(f"Upstox LTP found: {ltp} for {instrument_key}")
+                            return float(ltp)
+
+            logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type}")
             return 0
 
         except Exception as e:
-            logger.error(f"Error fetching option LTP: {e}")
+            logger.error(f"Upstox get_option_ltp error: {e}")
             return 0
 
     def get_ltp(self, symbol: str) -> float:

@@ -2459,7 +2459,9 @@ class MainWindow(QMainWindow):
             try:
                 # Try broker-specific methods
                 if hasattr(broker, 'get_option_ltp'):
+                    logger.info(f"Fetching option LTP from broker: {symbol} {strike} {opt_type}")
                     ltp = broker.get_option_ltp(symbol, strike, opt_type)
+                    logger.info(f"Broker returned LTP: {ltp}")
                     if ltp and ltp > 0:
                         return ltp
                 elif hasattr(broker, 'get_ltp'):
@@ -2469,7 +2471,7 @@ class MainWindow(QMainWindow):
                     if ltp and ltp > 0:
                         return ltp
             except Exception as e:
-                logger.debug(f"Error fetching option LTP from broker: {e}")
+                logger.error(f"Error fetching option LTP from broker: {e}")
 
         # Get appropriate spot price for the symbol
         spot_prices = {

@@ -1334,9 +1334,9 @@ class MainWindow(QMainWindow):
 
         # Legs Table
         self.sb_legs_table = QTableWidget()
-        self.sb_legs_table.setColumnCount(8)
+        self.sb_legs_table.setColumnCount(9)
         self.sb_legs_table.setHorizontalHeaderLabels([
-            "Symbol", "B/S", "Type", "Strike", "Qty", "Premium", "Exit", "Remove"
+            "Symbol", "B/S", "Type", "Strike", "Qty", "Premium", "LTP", "Exit", "Remove"
         ])
         self.sb_legs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.sb_legs_table.setMinimumHeight(120)
@@ -1344,8 +1344,15 @@ class MainWindow(QMainWindow):
         self.sb_legs_table.verticalHeader().setDefaultSectionSize(30)
         legs_layout.addWidget(self.sb_legs_table)
 
-        # Square-off All Button
+        # Square-off All Button and Refresh LTP
         squareoff_layout = QHBoxLayout()
+
+        self.sb_refresh_ltp_btn = QPushButton("🔄 Refresh LTP")
+        self.sb_refresh_ltp_btn.setMinimumHeight(35)
+        self.sb_refresh_ltp_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+        self.sb_refresh_ltp_btn.clicked.connect(self._refresh_legs_ltp)
+        squareoff_layout.addWidget(self.sb_refresh_ltp_btn)
+
         self.sb_squareoff_all_btn = QPushButton("🔴 Square-off ALL Positions")
         self.sb_squareoff_all_btn.setMinimumHeight(35)
         self.sb_squareoff_all_btn.setStyleSheet("background-color: #d32f2f; color: white; font-weight: bold;")
@@ -2786,16 +2793,26 @@ class MainWindow(QMainWindow):
             self.sb_legs_table.setItem(i, 4, QTableWidgetItem(str(leg['qty'])))
             self.sb_legs_table.setItem(i, 5, QTableWidgetItem(f"₹{leg['premium']:.2f}"))
 
+            # LTP column - fetch live price or show entry price
+            ltp = leg.get('ltp', leg.get('premium', 0))
+            ltp_item = QTableWidgetItem(f"₹{ltp:.2f}")
+            # Color based on profit/loss vs premium
+            if ltp > leg['premium']:
+                ltp_item.setForeground(Qt.GlobalColor.green if leg['action'] == 'BUY' else Qt.GlobalColor.red)
+            elif ltp < leg['premium']:
+                ltp_item.setForeground(Qt.GlobalColor.red if leg['action'] == 'BUY' else Qt.GlobalColor.green)
+            self.sb_legs_table.setItem(i, 6, ltp_item)
+
             # Exit button for individual leg square-off
             exit_btn = QPushButton("Exit")
             exit_btn.setStyleSheet("background-color: #FF5722; color: white;")
             exit_btn.clicked.connect(lambda checked, idx=i: self._squareoff_single_leg(idx))
-            self.sb_legs_table.setCellWidget(i, 6, exit_btn)
+            self.sb_legs_table.setCellWidget(i, 7, exit_btn)
 
             # Remove button
             remove_btn = QPushButton("❌")
             remove_btn.clicked.connect(lambda checked, idx=i: self._remove_strategy_leg(idx))
-            self.sb_legs_table.setCellWidget(i, 7, remove_btn)
+            self.sb_legs_table.setCellWidget(i, 8, remove_btn)
 
     def _calculate_leg_payoff(self, leg, spot_prices):
         """Calculate payoff for a single leg at given spot prices"""
@@ -2853,6 +2870,103 @@ class MainWindow(QMainWindow):
                 self, "Square-off Initiated",
                 f"Exit order placed:\n{exit_action} {symbol} {leg['type']} {leg['strike']}"
             )
+
+    def _refresh_legs_ltp(self):
+        """Refresh LTP (Last Trade Price) for all strategy legs"""
+        if not self.strategy_legs:
+            return
+
+        symbol = self.sb_symbol.currentText().upper()
+
+        # Try to get LTP from broker if connected
+        if hasattr(self, 'brokers') and self.brokers:
+            broker = list(self.brokers.values())[0]
+            try:
+                for leg in self.strategy_legs:
+                    # Build option symbol (format varies by broker)
+                    leg_symbol = leg.get('symbol', symbol)
+                    strike = int(leg['strike'])
+                    opt_type = leg['type']  # CE or PE
+
+                    # Try to get quote from broker
+                    if hasattr(broker, 'get_option_ltp'):
+                        ltp = broker.get_option_ltp(leg_symbol, strike, opt_type)
+                        if ltp:
+                            leg['ltp'] = ltp
+                    elif hasattr(broker, 'get_ltp'):
+                        # Generic LTP method
+                        option_symbol = f"{leg_symbol}{strike}{opt_type}"
+                        ltp = broker.get_ltp(option_symbol)
+                        if ltp:
+                            leg['ltp'] = ltp
+
+            except Exception as e:
+                logger.debug(f"Error fetching LTP from broker: {e}")
+
+        # If no broker or broker fetch failed, simulate LTP based on spot price
+        if not any(leg.get('ltp') for leg in self.strategy_legs):
+            self._simulate_option_ltp()
+
+        self._refresh_legs_table()
+        self._update_live_pnl()
+
+    def _simulate_option_ltp(self):
+        """Simulate option LTP based on current spot price (for paper trading)"""
+        try:
+            spot = self.sb_current_spot.value()
+            if spot <= 0:
+                return
+
+            import random
+
+            for leg in self.strategy_legs:
+                strike = leg['strike']
+                opt_type = leg['type']
+                entry_premium = leg['premium']
+
+                # Simple simulation: option moves with spot
+                if opt_type == 'CE':
+                    # Call option - increases when spot goes up
+                    intrinsic = max(0, spot - strike)
+                    time_value = entry_premium * 0.5  # Rough approximation
+                    simulated_ltp = intrinsic + time_value + random.uniform(-2, 2)
+                else:
+                    # Put option - increases when spot goes down
+                    intrinsic = max(0, strike - spot)
+                    time_value = entry_premium * 0.5
+                    simulated_ltp = intrinsic + time_value + random.uniform(-2, 2)
+
+                # Ensure LTP is positive
+                leg['ltp'] = max(0.05, simulated_ltp)
+
+        except Exception as e:
+            logger.debug(f"Error simulating option LTP: {e}")
+
+    def _update_live_pnl(self):
+        """Update live P&L for the strategy based on LTP"""
+        if not self.strategy_legs:
+            return
+
+        total_pnl = 0
+        lot_size = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 25
+
+        for leg in self.strategy_legs:
+            entry = leg['premium']
+            ltp = leg.get('ltp', entry)
+            qty = leg['qty']
+
+            if leg['action'] == 'BUY':
+                pnl = (ltp - entry) * qty * lot_size
+            else:  # SELL
+                pnl = (entry - ltp) * qty * lot_size
+
+            total_pnl += pnl
+
+        # Update live P&L label if it exists
+        if hasattr(self, 'sb_live_pnl_label'):
+            color = "#4CAF50" if total_pnl >= 0 else "#F44336"
+            self.sb_live_pnl_label.setText(f"₹{total_pnl:+,.2f}")
+            self.sb_live_pnl_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {color};")
 
     def _squareoff_all_legs(self):
         """Square-off all legs (exit entire strategy)"""

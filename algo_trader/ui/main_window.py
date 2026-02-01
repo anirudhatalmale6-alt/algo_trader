@@ -2502,44 +2502,66 @@ class MainWindow(QMainWindow):
         try:
             symbol = trade_details.get('symbol', 'NIFTY')
             action = trade_details.get('action', '')
-            current_price = trade_details.get('current_price', 100)
+            strike = trade_details.get('sell_strike', trade_details.get('strike', 0))
+
+            # Calculate realistic premium based on symbol and strike distance from spot
+            spot_price = trade_details.get('current_price', 25000)
+
+            # Get lot size based on symbol
+            if 'BANK' in symbol.upper():
+                lot_size = 15
+                base_premium = 400  # BANKNIFTY options are more expensive
+            elif 'SENSEX' in symbol.upper() or 'BANKEX' in symbol.upper():
+                lot_size = 10
+                base_premium = 350
+            else:  # NIFTY, FINNIFTY, etc.
+                lot_size = 50 if 'NIFTY' in symbol.upper() else 25
+                base_premium = 200
+
+            # Adjust premium based on strike distance (ATM options cost more)
+            strike_distance = abs(spot_price - strike) if strike > 0 else 0
+            distance_factor = max(0.3, 1 - (strike_distance / spot_price) * 5)
+            estimated_premium = base_premium * distance_factor
 
             # Simulate option premium price based on action
             if action == 'IRON_CONDOR':
-                # Net credit from Iron Condor
-                net_premium = 140  # Sell 2 options, buy 2 (100+100-30-30)
+                # Net credit from Iron Condor (sell 2 options, buy 2 wings)
+                net_premium = estimated_premium * 1.4  # ~140% of single premium
+                trade_symbol = f"{symbol}_IC_{int(strike)}"
                 self.paper_simulator.place_order(
-                    symbol=f"{symbol}_IC",
+                    symbol=trade_symbol,
                     action="SELL",
-                    quantity=1,
+                    quantity=lot_size,
                     order_type="MARKET",
                     price=net_premium,
                     source="CPR Iron Condor"
                 )
             elif action == 'BULL_PUT_SPREAD':
                 # Net credit from Bull Put Spread
-                net_premium = 100  # Sell PE - Buy PE (150-50)
+                net_premium = estimated_premium * 0.6  # ~60% after buying hedge
+                trade_symbol = f"{symbol}_BPS_{int(strike)}"
                 self.paper_simulator.place_order(
-                    symbol=f"{symbol}_PE_{trade_details.get('sell_strike', current_price)}",
+                    symbol=trade_symbol,
                     action="SELL",
-                    quantity=1,
+                    quantity=lot_size,
                     order_type="MARKET",
                     price=net_premium,
                     source="CPR Bull Put Spread"
                 )
             elif action == 'BEAR_CALL_SPREAD':
                 # Net credit from Bear Call Spread
-                net_premium = 100  # Sell CE - Buy CE (150-50)
+                net_premium = estimated_premium * 0.6  # ~60% after buying hedge
+                trade_symbol = f"{symbol}_BCS_{int(strike)}"
                 self.paper_simulator.place_order(
-                    symbol=f"{symbol}_CE_{trade_details.get('sell_strike', current_price)}",
+                    symbol=trade_symbol,
                     action="SELL",
-                    quantity=1,
+                    quantity=lot_size,
                     order_type="MARKET",
                     price=net_premium,
                     source="CPR Bear Call Spread"
                 )
 
-            self._log_cpr(f"Paper trade placed: {action} for {symbol}")
+            self._log_cpr(f"Paper trade placed: {action} for {symbol} @ ₹{net_premium:.2f}")
             # Refresh dashboard to show updated P&L
             self._refresh_dashboard()
 
@@ -6201,36 +6223,49 @@ For accurate Greeks, use live option data."""
                 # Get positions for P&L
                 try:
                     positions = broker.get_positions()
-                    self._update_dashboard_positions(positions)
+                    # Combine broker positions with paper positions
+                    all_positions = positions if positions else []
+
+                    # Also add paper positions (marked as PAPER source)
+                    if hasattr(self, 'paper_simulator') and self.paper_simulator:
+                        paper_positions = self.paper_simulator.get_all_positions()
+                        for pp in paper_positions:
+                            pp['source'] = 'PAPER'
+                            all_positions.append(pp)
+
+                    self._update_dashboard_positions_combined(all_positions)
                 except:
                     pass
             else:
                 self.dash_broker_status.setText("Not Connected")
                 self.dash_broker_status.setStyleSheet("color: red;")
 
-                # Show paper trading positions when no broker connected
-                if hasattr(self, 'paper_simulator') and self.paper_simulator:
+            # Always show paper trading positions and P&L (whether broker connected or not)
+            if hasattr(self, 'paper_simulator') and self.paper_simulator:
+                # If no broker, show only paper positions
+                if not (hasattr(self, 'brokers') and self.brokers):
                     paper_positions = self.paper_simulator.get_all_positions()
                     if paper_positions:
                         self._update_dashboard_positions_paper(paper_positions)
 
-                    # Update paper trading P&L
-                    stats = self.paper_simulator.get_stats()
-                    self.dash_realized_pnl.setText(f"₹{stats['total_pnl']:+,.2f}")
-                    self.dash_realized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if stats['total_pnl'] >= 0 else '#F44336'};")
+                # Update paper trading P&L
+                stats = self.paper_simulator.get_stats()
+                self.dash_realized_pnl.setText(f"₹{stats['total_pnl']:+,.2f}")
+                self.dash_realized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if stats['total_pnl'] >= 0 else '#F44336'};")
 
-                    self.dash_unrealized_pnl.setText(f"₹{stats['unrealized_pnl']:+,.2f}")
-                    self.dash_unrealized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if stats['unrealized_pnl'] >= 0 else '#F44336'};")
+                self.dash_unrealized_pnl.setText(f"₹{stats['unrealized_pnl']:+,.2f}")
+                self.dash_unrealized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if stats['unrealized_pnl'] >= 0 else '#F44336'};")
 
-                    total_pnl = stats['total_pnl'] + stats['unrealized_pnl']
-                    self.dash_total_pnl.setText(f"₹{total_pnl:+,.2f}")
-                    self.dash_total_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if total_pnl >= 0 else '#F44336'};")
+                total_pnl = stats['total_pnl'] + stats['unrealized_pnl']
+                self.dash_total_pnl.setText(f"₹{total_pnl:+,.2f}")
+                self.dash_total_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if total_pnl >= 0 else '#F44336'};")
 
-                    self.dash_trades_today.setText(str(stats['total_trades']))
-                    self.dash_win_rate.setText(f"{stats['win_rate']:.1f}%")
-                    self.dash_open_positions.setText(str(stats['open_positions']))
+                self.dash_trades_today.setText(str(stats['total_trades']))
+                self.dash_win_rate.setText(f"{stats['win_rate']:.1f}%")
+                self.dash_open_positions.setText(str(stats['open_positions']))
 
-                    # Update margin display for paper trading
+                # Update margin display for paper trading (only if no broker)
+                if not (hasattr(self, 'brokers') and self.brokers):
                     self.dash_available_margin.setText(f"₹{stats['available_capital']:,.2f}")
                     self.dash_used_margin.setText(f"₹{stats['used_capital']:,.2f}")
                     self.dash_total_balance.setText(f"₹{stats['total_equity']:,.2f}")
@@ -6292,6 +6327,66 @@ For accurate Greeks, use live option data."""
         self.dash_unrealized_pnl.setText(f"₹{total_unrealized:+,.2f}")
         color = "#4CAF50" if total_unrealized >= 0 else "#F44336"
         self.dash_unrealized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+
+    def _update_dashboard_positions_combined(self, positions: list):
+        """Update dashboard with both broker and paper positions"""
+        self.dash_positions_table.setRowCount(len(positions))
+        self.dash_open_positions.setText(str(len(positions)))
+
+        total_unrealized = 0
+        for i, pos in enumerate(positions):
+            # Check if it's a paper position or broker position
+            is_paper = pos.get('source') == 'PAPER'
+
+            if is_paper:
+                symbol = pos.get('symbol', '')
+                qty = pos.get('quantity', 0)
+                action = pos.get('action', 'BUY')
+                avg_price = float(pos.get('avg_price', 0))
+                ltp = float(pos.get('current_price', avg_price))
+                pnl = float(pos.get('pnl', 0))
+                pnl_pct = float(pos.get('pnl_percent', 0))
+                source = "PAPER"
+            else:
+                symbol = pos.get('tradingsymbol', pos.get('symbol', ''))
+                qty = pos.get('quantity', pos.get('netqty', 0))
+                action = 'BUY' if qty > 0 else 'SELL'
+                avg_price = float(pos.get('averageprice', pos.get('buyavgprice', 0)))
+                ltp = float(pos.get('ltp', pos.get('lastprice', avg_price)))
+                pnl = float(pos.get('pnl', pos.get('unrealizedpnl', 0)))
+                pnl_pct = (pnl / (avg_price * abs(qty)) * 100) if avg_price and qty else 0
+                source = pos.get('product', 'LIVE')
+
+            total_unrealized += pnl
+
+            self.dash_positions_table.setItem(i, 0, QTableWidgetItem(symbol))
+            self.dash_positions_table.setItem(i, 1, QTableWidgetItem("LONG" if action == "BUY" or qty > 0 else "SHORT"))
+            self.dash_positions_table.setItem(i, 2, QTableWidgetItem(str(abs(qty))))
+            self.dash_positions_table.setItem(i, 3, QTableWidgetItem(f"₹{avg_price:.2f}"))
+            self.dash_positions_table.setItem(i, 4, QTableWidgetItem(f"₹{ltp:.2f}"))
+
+            pnl_item = QTableWidgetItem(f"₹{pnl:+,.2f}")
+            pnl_item.setForeground(Qt.GlobalColor.green if pnl >= 0 else Qt.GlobalColor.red)
+            self.dash_positions_table.setItem(i, 5, pnl_item)
+
+            self.dash_positions_table.setItem(i, 6, QTableWidgetItem(f"{pnl_pct:+.2f}%"))
+
+            # Source column - different color for PAPER vs LIVE
+            source_item = QTableWidgetItem(source)
+            if is_paper:
+                source_item.setForeground(Qt.GlobalColor.yellow)
+            else:
+                source_item.setForeground(Qt.GlobalColor.green)
+            self.dash_positions_table.setItem(i, 7, source_item)
+
+            # Add close button
+            if is_paper:
+                close_btn = QPushButton("Close")
+                close_btn.clicked.connect(lambda checked, s=symbol, q=qty, a=action: self._close_paper_position(s, q, a))
+            else:
+                close_btn = QPushButton("Close")
+                close_btn.clicked.connect(lambda checked, s=symbol, q=qty: self._close_position(s, q))
+            self.dash_positions_table.setCellWidget(i, 8, close_btn)
 
     def _update_dashboard_positions_paper(self, positions: list):
         """Update dashboard positions table with paper trading positions"""

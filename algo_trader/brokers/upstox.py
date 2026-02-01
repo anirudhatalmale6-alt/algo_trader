@@ -448,3 +448,68 @@ class UpstoxBroker(BaseBroker):
         if result.get('success'):
             return {'success': True, 'message': 'GTT order cancelled'}
         return result
+
+    def get_option_ltp(self, symbol: str, strike: int, opt_type: str, expiry: str = None) -> float:
+        """
+        Get LTP for an option contract
+        symbol: NIFTY, BANKNIFTY, SENSEX, etc.
+        strike: Strike price (e.g., 25200)
+        opt_type: CE or PE
+        expiry: Optional expiry date (defaults to current week/month)
+        """
+        try:
+            # Build option instrument key for Upstox
+            # Format: NSE_FO|NIFTY24FEB25200CE or BFO|SENSEX24FEB81900PE
+            from datetime import datetime
+
+            # Determine exchange based on symbol
+            if symbol.upper() in ['SENSEX', 'BANKEX']:
+                exchange = 'BFO'  # BSE F&O
+            else:
+                exchange = 'NSE_FO'
+
+            # Get current month/week expiry if not provided
+            if not expiry:
+                now = datetime.now()
+                # Use format like 24FEB for Feb 2024
+                expiry = now.strftime('%y%b').upper()
+
+            # Build instrument key
+            instrument_key = f"{exchange}|{symbol.upper()}{expiry}{int(strike)}{opt_type.upper()}"
+
+            # Get quote
+            result = self._make_request("GET", f"/market-quote/ltp?instrument_key={instrument_key}")
+
+            if result.get('success') and result.get('data'):
+                quote_data = result['data'].get(instrument_key, {})
+                ltp = quote_data.get('last_price', 0)
+                if ltp and ltp > 0:
+                    return float(ltp)
+
+            # Try alternative format
+            instrument_key2 = f"{exchange}|{symbol.upper()}{int(strike)}{opt_type.upper()}"
+            result = self._make_request("GET", f"/market-quote/ltp?instrument_key={instrument_key2}")
+
+            if result.get('success') and result.get('data'):
+                quote_data = result['data'].get(instrument_key2, {})
+                ltp = quote_data.get('last_price', 0)
+                if ltp and ltp > 0:
+                    return float(ltp)
+
+            logger.debug(f"Could not fetch option LTP for {symbol} {strike} {opt_type}")
+            return 0
+
+        except Exception as e:
+            logger.error(f"Error fetching option LTP: {e}")
+            return 0
+
+    def get_ltp(self, symbol: str) -> float:
+        """Get LTP for any instrument by symbol"""
+        try:
+            quote = self.get_quote(symbol)
+            if quote:
+                return float(quote.get('last_price', 0))
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting LTP: {e}")
+            return 0

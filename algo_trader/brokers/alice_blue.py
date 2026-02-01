@@ -335,3 +335,84 @@ class AliceBlueBroker(BaseBroker):
         except Exception as e:
             logger.error(f"Failed to download master contract: {e}")
         return []
+
+    def get_option_ltp(self, symbol: str, strike: int, opt_type: str, expiry: str = None) -> float:
+        """
+        Get LTP for an option contract from AliceBlue
+        symbol: NIFTY, BANKNIFTY, SENSEX, etc.
+        strike: Strike price (e.g., 25200)
+        opt_type: CE or PE
+        """
+        try:
+            # Determine exchange
+            if symbol.upper() in ['SENSEX', 'BANKEX']:
+                exchange = 'BFO'  # BSE F&O
+            else:
+                exchange = 'NFO'  # NSE F&O
+
+            # Build trading symbol
+            # AliceBlue format: NIFTY24FEB25200CE
+            from datetime import datetime, timedelta
+
+            # Get nearest expiry (weekly for NIFTY/BANKNIFTY, monthly for others)
+            now = datetime.now()
+
+            # Find next Thursday for weekly expiry
+            days_until_thursday = (3 - now.weekday()) % 7
+            if days_until_thursday == 0 and now.hour >= 15:
+                days_until_thursday = 7
+            next_expiry = now + timedelta(days=days_until_thursday)
+
+            # Format expiry
+            expiry_str = next_expiry.strftime('%d%b%y').upper()  # e.g., 06FEB26
+
+            # Build trading symbol
+            trading_symbol = f"{symbol.upper()}{expiry_str}{int(strike)}{opt_type.upper()}"
+
+            # Get market data
+            payload = {
+                'exchange': exchange,
+                'tradingSymbol': trading_symbol
+            }
+
+            result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+
+            if result.get('success') and result.get('data'):
+                ltp = result['data'].get('ltp', 0)
+                if ltp and float(ltp) > 0:
+                    return float(ltp)
+
+            # Try with month format (for monthly expiry)
+            expiry_month = now.strftime('%b%y').upper()  # e.g., FEB26
+            trading_symbol2 = f"{symbol.upper()}{expiry_month}{int(strike)}{opt_type.upper()}"
+
+            payload['tradingSymbol'] = trading_symbol2
+            result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+
+            if result.get('success') and result.get('data'):
+                ltp = result['data'].get('ltp', 0)
+                if ltp and float(ltp) > 0:
+                    return float(ltp)
+
+            logger.debug(f"Could not fetch option LTP for {symbol} {strike} {opt_type}")
+            return 0
+
+        except Exception as e:
+            logger.error(f"Error fetching option LTP from AliceBlue: {e}")
+            return 0
+
+    def get_ltp(self, symbol: str, exchange: str = "NSE") -> float:
+        """Get LTP for any instrument"""
+        try:
+            payload = {
+                'exchange': exchange,
+                'tradingSymbol': symbol
+            }
+            result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+
+            if result.get('success') and result.get('data'):
+                return float(result['data'].get('ltp', 0))
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting LTP: {e}")
+            return 0

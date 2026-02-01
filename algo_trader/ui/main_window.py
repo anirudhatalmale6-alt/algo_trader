@@ -2903,41 +2903,40 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.debug(f"Error fetching LTP from broker: {e}")
 
-        # If no broker or broker fetch failed, simulate LTP based on spot price
-        if not any(leg.get('ltp') for leg in self.strategy_legs):
+        # If no broker connected, always simulate LTP
+        if not (hasattr(self, 'brokers') and self.brokers):
             self._simulate_option_ltp()
 
         self._refresh_legs_table()
         self._update_live_pnl()
 
     def _simulate_option_ltp(self):
-        """Simulate option LTP based on current spot price (for paper trading)"""
+        """Simulate option LTP with realistic price movements"""
         try:
-            spot = self.sb_current_spot.value()
-            if spot <= 0:
-                return
-
             import random
 
             for leg in self.strategy_legs:
-                strike = leg['strike']
-                opt_type = leg['type']
                 entry_premium = leg['premium']
+                current_ltp = leg.get('ltp', entry_premium)
 
-                # Simple simulation: option moves with spot
-                if opt_type == 'CE':
-                    # Call option - increases when spot goes up
-                    intrinsic = max(0, spot - strike)
-                    time_value = entry_premium * 0.5  # Rough approximation
-                    simulated_ltp = intrinsic + time_value + random.uniform(-2, 2)
-                else:
-                    # Put option - increases when spot goes down
-                    intrinsic = max(0, strike - spot)
-                    time_value = entry_premium * 0.5
-                    simulated_ltp = intrinsic + time_value + random.uniform(-2, 2)
+                # If LTP not set or same as premium, initialize with small random offset
+                if current_ltp == entry_premium or current_ltp <= 0:
+                    current_ltp = entry_premium * random.uniform(0.95, 1.05)
 
-                # Ensure LTP is positive
-                leg['ltp'] = max(0.05, simulated_ltp)
+                # Simulate realistic price movement (±1-3% per tick)
+                change_percent = random.uniform(-0.03, 0.03)
+                change_amount = current_ltp * change_percent
+
+                # Apply change
+                new_ltp = current_ltp + change_amount
+
+                # Ensure LTP stays within reasonable bounds (30% to 300% of entry)
+                min_ltp = max(0.05, entry_premium * 0.3)
+                max_ltp = entry_premium * 3.0
+                new_ltp = max(min_ltp, min(max_ltp, new_ltp))
+
+                # Update leg LTP
+                leg['ltp'] = round(new_ltp, 2)
 
         except Exception as e:
             logger.debug(f"Error simulating option LTP: {e}")

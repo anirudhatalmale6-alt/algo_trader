@@ -68,9 +68,8 @@ class MainWindow(QMainWindow):
         self._init_telegram()
         self._init_risk_manager()
 
-        # Initialize paper trading if enabled
-        if self.config.get('trading.paper_mode', False):
-            self._init_paper_trading()
+        # Always initialize paper trading (needed for test mode in CPR/Custom strategies)
+        self._init_paper_trading()
 
     def _init_ui(self):
         """Initialize the user interface"""
@@ -2405,6 +2404,10 @@ class MainWindow(QMainWindow):
         elif action == 'BEAR_CALL_SPREAD':
             self._auto_load_bear_call_spread(trade_details)
 
+        # Place paper trade if in test mode
+        if trade_details.get('test_mode', True) and hasattr(self, 'paper_simulator') and self.paper_simulator:
+            self._place_cpr_paper_trade(trade_details)
+
     def _auto_load_iron_condor_full(self, trade_details):
         """Auto-load Iron Condor in Strategy Builder from trade details"""
         try:
@@ -2486,6 +2489,56 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Failed to auto-load Bear Call Spread: {e}")
+
+    def _place_cpr_paper_trade(self, trade_details):
+        """Place simulated paper trade for CPR strategy"""
+        try:
+            symbol = trade_details.get('symbol', 'NIFTY')
+            action = trade_details.get('action', '')
+            current_price = trade_details.get('current_price', 100)
+
+            # Simulate option premium price based on action
+            if action == 'IRON_CONDOR':
+                # Net credit from Iron Condor
+                net_premium = 140  # Sell 2 options, buy 2 (100+100-30-30)
+                self.paper_simulator.place_order(
+                    symbol=f"{symbol}_IC",
+                    action="SELL",
+                    quantity=1,
+                    order_type="MARKET",
+                    price=net_premium,
+                    source="CPR Iron Condor"
+                )
+            elif action == 'BULL_PUT_SPREAD':
+                # Net credit from Bull Put Spread
+                net_premium = 100  # Sell PE - Buy PE (150-50)
+                self.paper_simulator.place_order(
+                    symbol=f"{symbol}_PE_{trade_details.get('sell_strike', current_price)}",
+                    action="SELL",
+                    quantity=1,
+                    order_type="MARKET",
+                    price=net_premium,
+                    source="CPR Bull Put Spread"
+                )
+            elif action == 'BEAR_CALL_SPREAD':
+                # Net credit from Bear Call Spread
+                net_premium = 100  # Sell CE - Buy CE (150-50)
+                self.paper_simulator.place_order(
+                    symbol=f"{symbol}_CE_{trade_details.get('sell_strike', current_price)}",
+                    action="SELL",
+                    quantity=1,
+                    order_type="MARKET",
+                    price=net_premium,
+                    source="CPR Bear Call Spread"
+                )
+
+            self._log_cpr(f"Paper trade placed: {action} for {symbol}")
+            # Refresh dashboard to show updated P&L
+            self._refresh_dashboard()
+
+        except Exception as e:
+            logger.error(f"Failed to place paper trade: {e}")
+            self._log_cpr(f"Paper trade error: {e}")
 
     def _switch_to_strategy_builder(self, symbol):
         """Switch to Strategy Builder tab and set symbol"""
@@ -5998,6 +6051,33 @@ For accurate Greeks, use live option data."""
                 self.dash_broker_status.setText("Not Connected")
                 self.dash_broker_status.setStyleSheet("color: red;")
 
+                # Show paper trading positions when no broker connected
+                if hasattr(self, 'paper_simulator') and self.paper_simulator:
+                    paper_positions = self.paper_simulator.get_all_positions()
+                    if paper_positions:
+                        self._update_dashboard_positions_paper(paper_positions)
+
+                    # Update paper trading P&L
+                    stats = self.paper_simulator.get_stats()
+                    self.dash_realized_pnl.setText(f"₹{stats['total_pnl']:+,.2f}")
+                    self.dash_realized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if stats['total_pnl'] >= 0 else '#F44336'};")
+
+                    self.dash_unrealized_pnl.setText(f"₹{stats['unrealized_pnl']:+,.2f}")
+                    self.dash_unrealized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if stats['unrealized_pnl'] >= 0 else '#F44336'};")
+
+                    total_pnl = stats['total_pnl'] + stats['unrealized_pnl']
+                    self.dash_total_pnl.setText(f"₹{total_pnl:+,.2f}")
+                    self.dash_total_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {'#4CAF50' if total_pnl >= 0 else '#F44336'};")
+
+                    self.dash_trades_today.setText(str(stats['total_trades']))
+                    self.dash_win_rate.setText(f"{stats['win_rate']:.1f}%")
+                    self.dash_open_positions.setText(str(stats['open_positions']))
+
+                    # Update margin display for paper trading
+                    self.dash_available_margin.setText(f"₹{stats['available_capital']:,.2f}")
+                    self.dash_used_margin.setText(f"₹{stats['used_capital']:,.2f}")
+                    self.dash_total_balance.setText(f"₹{stats['total_equity']:,.2f}")
+
             # Update quick stats
             if hasattr(self, 'chartink_scanner'):
                 active_scans = len(self.chartink_scanner.active_scans)
@@ -6055,6 +6135,59 @@ For accurate Greeks, use live option data."""
         self.dash_unrealized_pnl.setText(f"₹{total_unrealized:+,.2f}")
         color = "#4CAF50" if total_unrealized >= 0 else "#F44336"
         self.dash_unrealized_pnl.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+
+    def _update_dashboard_positions_paper(self, positions: list):
+        """Update dashboard positions table with paper trading positions"""
+        self.dash_positions_table.setRowCount(len(positions))
+        self.dash_open_positions.setText(str(len(positions)))
+
+        for i, pos in enumerate(positions):
+            symbol = pos.get('symbol', '')
+            qty = pos.get('quantity', 0)
+            action = pos.get('action', 'BUY')
+            avg_price = float(pos.get('avg_price', 0))
+            ltp = float(pos.get('current_price', avg_price))
+            pnl = float(pos.get('pnl', 0))
+            pnl_pct = float(pos.get('pnl_percent', 0))
+
+            self.dash_positions_table.setItem(i, 0, QTableWidgetItem(symbol))
+            self.dash_positions_table.setItem(i, 1, QTableWidgetItem("LONG" if action == "BUY" else "SHORT"))
+            self.dash_positions_table.setItem(i, 2, QTableWidgetItem(str(abs(qty))))
+            self.dash_positions_table.setItem(i, 3, QTableWidgetItem(f"₹{avg_price:.2f}"))
+            self.dash_positions_table.setItem(i, 4, QTableWidgetItem(f"₹{ltp:.2f}"))
+
+            pnl_item = QTableWidgetItem(f"₹{pnl:+,.2f}")
+            pnl_item.setForeground(Qt.GlobalColor.green if pnl >= 0 else Qt.GlobalColor.red)
+            self.dash_positions_table.setItem(i, 5, pnl_item)
+
+            self.dash_positions_table.setItem(i, 6, QTableWidgetItem(f"{pnl_pct:+.2f}%"))
+            self.dash_positions_table.setItem(i, 7, QTableWidgetItem("PAPER"))
+
+            # Add close button for paper positions
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(lambda checked, s=symbol, q=qty, a=action: self._close_paper_position(s, q, a))
+            self.dash_positions_table.setCellWidget(i, 8, close_btn)
+
+    def _close_paper_position(self, symbol: str, qty: int, action: str):
+        """Close a paper trading position"""
+        if not hasattr(self, 'paper_simulator') or not self.paper_simulator:
+            return
+
+        # Close by placing opposite order
+        close_action = "SELL" if action == "BUY" else "BUY"
+        pos = self.paper_simulator.get_position(symbol)
+        if pos:
+            result = self.paper_simulator.place_order(
+                symbol=symbol,
+                action=close_action,
+                quantity=qty,
+                order_type="MARKET",
+                price=pos.current_price if pos.current_price > 0 else pos.avg_price,
+                source="Manual Close"
+            )
+            if result['success']:
+                QMessageBox.information(self, "Position Closed", f"Closed {symbol} position")
+                self._refresh_dashboard()
 
     def _update_dashboard_pnl(self):
         """Update P&L summary from trade history"""

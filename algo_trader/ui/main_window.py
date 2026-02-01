@@ -2471,20 +2471,42 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.debug(f"Error fetching option LTP from broker: {e}")
 
-        # Estimate premium based on spot price and strike distance
-        spot = self.sb_current_spot.value() if hasattr(self, 'sb_current_spot') else 25000
+        # Get appropriate spot price for the symbol
+        spot_prices = {
+            "NIFTY": 25200,
+            "BANKNIFTY": 52000,
+            "FINNIFTY": 23000,
+            "MIDCPNIFTY": 12000,
+            "SENSEX": 82000,
+            "BANKEX": 58000,
+        }
 
-        # Base premium estimation
-        if 'BANK' in symbol.upper():
+        # Get spot price - use symbol-specific or from UI
+        sym_upper = symbol.upper()
+        if sym_upper in spot_prices:
+            spot = spot_prices[sym_upper]
+        elif hasattr(self, 'sb_current_spot') and self.sb_current_spot.value() > 0:
+            spot = self.sb_current_spot.value()
+        else:
+            # Use strike as approximate spot if nothing else available
+            spot = strike
+
+        # Base premium estimation (typical ATM premium)
+        if 'SENSEX' in sym_upper:
+            base_premium = 450  # SENSEX options are expensive
+        elif 'BANKEX' in sym_upper:
             base_premium = 400
-        elif 'SENSEX' in symbol.upper() or 'BANKEX' in symbol.upper():
-            base_premium = 350
+        elif 'BANK' in sym_upper:
+            base_premium = 400
         else:
             base_premium = 200
 
-        # Adjust for moneyness (ITM options cost more)
+        # Calculate distance from ATM
         strike_distance = abs(spot - strike)
-        moneyness_factor = max(0.2, 1 - (strike_distance / spot) * 3)
+        distance_percent = strike_distance / spot if spot > 0 else 0
+
+        # Moneyness factor - ATM options cost most, far OTM cost less
+        moneyness_factor = max(0.3, 1 - (distance_percent * 10))
 
         # ITM intrinsic value
         if opt_type == 'CE':
@@ -2492,7 +2514,10 @@ class MainWindow(QMainWindow):
         else:  # PE
             intrinsic = max(0, strike - spot)
 
-        estimated_premium = intrinsic + (base_premium * moneyness_factor)
+        # Final premium = intrinsic + time value (based on moneyness)
+        time_value = base_premium * moneyness_factor
+        estimated_premium = intrinsic + time_value
+
         return round(max(10, estimated_premium), 2)
 
     def _auto_load_bull_put_spread(self, trade_details):

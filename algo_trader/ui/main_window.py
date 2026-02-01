@@ -6112,12 +6112,56 @@ For accurate Greeks, use live option data."""
         self.refresh_timer.timeout.connect(self._refresh_data)
         self.refresh_timer.start(30000)
 
+        # Fast refresh for live prices (every 5 seconds)
+        self.ltp_timer = QTimer(self)
+        self.ltp_timer.timeout.connect(self._refresh_live_prices)
+        self.ltp_timer.start(5000)
+
     def _refresh_data(self):
         """Refresh all data"""
         self._load_orders()
         self._load_positions()
         self._refresh_dashboard()
         self.status_bar.showMessage("Data refreshed", 3000)
+
+    def _refresh_live_prices(self):
+        """Refresh live prices for Strategy Builder and Dashboard (every 5 seconds)"""
+        try:
+            # Refresh Strategy Builder LTP if there are legs
+            if hasattr(self, 'strategy_legs') and self.strategy_legs:
+                self._refresh_legs_ltp()
+
+            # Refresh Dashboard paper positions
+            if hasattr(self, 'paper_simulator') and self.paper_simulator:
+                # Update paper positions with simulated price movements
+                self._update_paper_positions_ltp()
+                self._refresh_dashboard()
+
+        except Exception as e:
+            logger.debug(f"Error refreshing live prices: {e}")
+
+    def _update_paper_positions_ltp(self):
+        """Update LTP for paper trading positions"""
+        if not hasattr(self, 'paper_simulator') or not self.paper_simulator:
+            return
+
+        import random
+
+        positions = self.paper_simulator.positions
+        for symbol, pos in positions.items():
+            # Simulate small price movement (±0.5%)
+            if pos.current_price > 0:
+                change = pos.current_price * random.uniform(-0.005, 0.005)
+                pos.current_price = max(0.05, pos.current_price + change)
+
+                # Update P&L
+                if pos.action == "BUY":
+                    pos.pnl = (pos.current_price - pos.avg_price) * pos.quantity
+                else:
+                    pos.pnl = (pos.avg_price - pos.current_price) * pos.quantity
+
+                if pos.avg_price > 0:
+                    pos.pnl_percent = (pos.pnl / (pos.avg_price * pos.quantity)) * 100
 
     def _refresh_dashboard(self):
         """Refresh dashboard with live data"""

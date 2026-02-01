@@ -2473,14 +2473,14 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.error(f"Error fetching option LTP from broker: {e}")
 
-        # Get appropriate spot price for the symbol
+        # Get appropriate spot price for the symbol (updated Feb 2026)
         spot_prices = {
-            "NIFTY": 25200,
-            "BANKNIFTY": 52000,
-            "FINNIFTY": 23000,
+            "NIFTY": 23000,
+            "BANKNIFTY": 48500,
+            "FINNIFTY": 22500,
             "MIDCPNIFTY": 12000,
-            "SENSEX": 82000,
-            "BANKEX": 58000,
+            "SENSEX": 76000,
+            "BANKEX": 54000,
         }
 
         # Get spot price - use symbol-specific or from UI
@@ -2984,10 +2984,14 @@ class MainWindow(QMainWindow):
             return
 
         symbol = self.sb_symbol.currentText().upper()
+        broker_fetch_success = False
 
         # Try to get LTP from broker if connected
         if hasattr(self, 'brokers') and self.brokers:
             broker = list(self.brokers.values())[0]
+            broker_name = getattr(broker, 'broker_name', 'unknown')
+            logger.info(f"Fetching LTP from broker: {broker_name}")
+
             try:
                 for leg in self.strategy_legs:
                     # Build option symbol (format varies by broker)
@@ -2997,21 +3001,31 @@ class MainWindow(QMainWindow):
 
                     # Try to get quote from broker
                     if hasattr(broker, 'get_option_ltp'):
+                        logger.info(f"Calling broker.get_option_ltp({leg_symbol}, {strike}, {opt_type})")
                         ltp = broker.get_option_ltp(leg_symbol, strike, opt_type)
-                        if ltp:
+                        logger.info(f"Broker returned LTP: {ltp}")
+                        if ltp and ltp > 0:
                             leg['ltp'] = ltp
+                            leg['ltp_source'] = 'broker'
+                            broker_fetch_success = True
+                        else:
+                            logger.warning(f"Broker returned no LTP for {leg_symbol} {strike} {opt_type}")
                     elif hasattr(broker, 'get_ltp'):
                         # Generic LTP method
                         option_symbol = f"{leg_symbol}{strike}{opt_type}"
                         ltp = broker.get_ltp(option_symbol)
-                        if ltp:
+                        if ltp and ltp > 0:
                             leg['ltp'] = ltp
+                            leg['ltp_source'] = 'broker'
+                            broker_fetch_success = True
 
             except Exception as e:
-                logger.debug(f"Error fetching LTP from broker: {e}")
+                logger.error(f"Error fetching LTP from broker: {e}")
 
-        # If no broker connected, always simulate LTP
-        if not (hasattr(self, 'brokers') and self.brokers):
+        # If no broker connected OR broker returned no data, simulate LTP
+        if not (hasattr(self, 'brokers') and self.brokers) or not broker_fetch_success:
+            if hasattr(self, 'brokers') and self.brokers and not broker_fetch_success:
+                logger.warning("Broker connected but returned no LTP data, falling back to simulation")
             self._simulate_option_ltp()
 
         self._refresh_legs_table()

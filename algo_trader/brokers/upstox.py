@@ -451,11 +451,11 @@ class UpstoxBroker(BaseBroker):
 
     def get_option_ltp(self, symbol: str, strike: int, opt_type: str, expiry: str = None) -> float:
         """
-        Get LTP for an option contract
+        Get LTP for an option contract using Upstox Option Chain API
         symbol: NIFTY, BANKNIFTY, SENSEX, etc.
         strike: Strike price (e.g., 25200)
         opt_type: CE or PE
-        expiry: Optional expiry date
+        expiry: Optional expiry date in YYYY-MM-DD format
         """
         try:
             from datetime import datetime, timedelta
@@ -463,57 +463,130 @@ class UpstoxBroker(BaseBroker):
 
             sym_upper = symbol.upper()
 
-            # Determine exchange based on symbol
-            if sym_upper in ['SENSEX', 'BANKEX']:
-                exchange = 'BFO'
-            else:
-                exchange = 'NSE_FO'
+            # Map symbol to Upstox instrument key format
+            symbol_map = {
+                'NIFTY': 'NSE_INDEX|Nifty 50',
+                'BANKNIFTY': 'NSE_INDEX|Nifty Bank',
+                'FINNIFTY': 'NSE_INDEX|Nifty Fin Service',
+                'MIDCPNIFTY': 'NSE_INDEX|NIFTY MID SELECT',
+                'SENSEX': 'BSE_INDEX|SENSEX',
+                'BANKEX': 'BSE_INDEX|BANKEX',
+            }
 
+            instrument_key = symbol_map.get(sym_upper)
+            if not instrument_key:
+                logger.warning(f"Unknown symbol for Upstox: {sym_upper}")
+                return 0
+
+            # Find expiry dates to try
             now = datetime.now()
+            expiry_dates = []
 
-            # Find next Thursday for weekly expiry
-            days_until_thursday = (3 - now.weekday()) % 7
-            if days_until_thursday == 0 and now.hour >= 15:
-                days_until_thursday = 7
-            next_thursday = now + timedelta(days=days_until_thursday)
+            if expiry:
+                expiry_dates.append(expiry)
+            else:
+                # Find next few Thursdays (weekly expiries)
+                for weeks_ahead in range(4):
+                    days_until_thursday = (3 - now.weekday()) % 7
+                    if days_until_thursday == 0 and now.hour >= 15 and weeks_ahead == 0:
+                        days_until_thursday = 7
+                    next_exp = now + timedelta(days=days_until_thursday + (weeks_ahead * 7))
+                    expiry_dates.append(next_exp.strftime('%Y-%m-%d'))
 
-            # Try multiple expiry date formats
-            expiry_formats = [
-                next_thursday.strftime('%y%m%d'),  # 260206
-                next_thursday.strftime('%y') + str(next_thursday.month) + next_thursday.strftime('%d'),  # 26206
-                next_thursday.strftime('%y%b%d').upper(),  # 26FEB06
-                now.strftime('%y%m'),  # 2602 (monthly)
-                now.strftime('%y%b').upper(),  # 26FEB (monthly)
-                next_thursday.strftime('%d%b%y').upper(),  # 06FEB26
-            ]
+            encoded_key = urllib.parse.quote(instrument_key, safe='')
 
-            for exp_fmt in expiry_formats:
-                instrument_key = f"{exchange}|{sym_upper}{exp_fmt}{int(strike)}{opt_type.upper()}"
-                encoded_key = urllib.parse.quote(instrument_key, safe='')
+            # Try each expiry date
+            for exp_date in expiry_dates:
+                url = f"/option/chain?instrument_key={encoded_key}&expiry_date={exp_date}"
+                logger.info(f"Upstox option chain request: {url}")
 
-                logger.debug(f"Trying Upstox key: {instrument_key}")
-
-                result = self._make_request("GET", f"/market-quote/ltp?instrument_key={encoded_key}")
+                result = self._make_request("GET", url)
+                logger.debug(f"Upstox option chain response: {result}")
 
                 if result.get('success') and result.get('data'):
-                    data = result['data']
-                    # Try to get quote from any key in response
-                    quote_data = data.get(instrument_key) or data.get(encoded_key)
-                    if not quote_data and data:
-                        quote_data = list(data.values())[0]
+                    chain_data = result['data']
+                    logger.info(f"Upstox: Got {len(chain_data)} strikes for expiry {exp_date}")
 
-                    if isinstance(quote_data, dict):
-                        ltp = quote_data.get('last_price', 0)
-                        if ltp and float(ltp) > 0:
-                            logger.info(f"Upstox LTP found: {ltp} for {instrument_key}")
-                            return float(ltp)
+                    # Search for matching strike and option type
+                    for item in chain_data:
+                        item_strike = item.get('strike_price', 0)
 
-            logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type}")
+                        # Check if strike matches
+                        if abs(float(item_strike) - float(strike)) < 0.01:
+                            logger.info(f"Found matching strike {item_strike}")
+                            # Get call or put data based on opt_type
+                            if opt_type.upper() == 'CE':
+                                option_data = item.get('call_options', {})
+                            else:
+                                option_data = item.get('put_options', {})
+
+                            if option_data:
+                                # Get market data
+                                market_data = option_data.get('market_data', {})
+                                ltp = market_data.get('ltp', 0)
+                                logger.info(f"Market data for {sym_upper} {strike} {opt_type}: ltp={ltp}")
+
+                                if ltp and float(ltp) > 0:
+                                    logger.info(f"Upstox LTP found: {ltp} for {sym_upper} {strike} {opt_type} exp:{exp_date}")
+                                    return float(ltp)
+                            else:
+                                logger.warning(f"No option_data for {opt_type} at strike {strike}")
+                else:
+                    # Log why it failed
+                    if not result.get('success'):
+                        logger.warning(f"Upstox API call failed: {result.get('message', 'Unknown error')}")
+                    elif not result.get('data'):
+                        logger.warning(f"Upstox API returned no data for expiry {exp_date}")
+
+            logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type} after trying {len(expiry_dates)} expiries")
             return 0
 
         except Exception as e:
             logger.error(f"Upstox get_option_ltp error: {e}")
             return 0
+
+    def get_option_expiries(self, symbol: str) -> List[str]:
+        """
+        Get available expiry dates for an option symbol
+        Returns list of dates in YYYY-MM-DD format
+        """
+        try:
+            import urllib.parse
+
+            sym_upper = symbol.upper()
+
+            # Map symbol to Upstox instrument key format
+            symbol_map = {
+                'NIFTY': 'NSE_INDEX|Nifty 50',
+                'BANKNIFTY': 'NSE_INDEX|Nifty Bank',
+                'FINNIFTY': 'NSE_INDEX|Nifty Fin Service',
+                'MIDCPNIFTY': 'NSE_INDEX|NIFTY MID SELECT',
+                'SENSEX': 'BSE_INDEX|SENSEX',
+                'BANKEX': 'BSE_INDEX|BANKEX',
+            }
+
+            instrument_key = symbol_map.get(sym_upper)
+            if not instrument_key:
+                return []
+
+            encoded_key = urllib.parse.quote(instrument_key, safe='')
+            url = f"/option/contract?instrument_key={encoded_key}"
+
+            result = self._make_request("GET", url)
+
+            if result.get('success') and result.get('data'):
+                expiries = set()
+                for contract in result['data']:
+                    expiry = contract.get('expiry')
+                    if expiry:
+                        expiries.add(expiry)
+                return sorted(list(expiries))
+
+            return []
+
+        except Exception as e:
+            logger.error(f"Error getting option expiries: {e}")
+            return []
 
     def get_ltp(self, symbol: str) -> float:
         """Get LTP for any instrument by symbol"""

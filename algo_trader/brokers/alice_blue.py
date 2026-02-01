@@ -342,6 +342,12 @@ class AliceBlueBroker(BaseBroker):
         symbol: NIFTY, BANKNIFTY, SENSEX, etc.
         strike: Strike price (e.g., 25200)
         opt_type: CE or PE
+
+        AliceBlue symbol format: BANKNIFTY26224 57700PE
+        - YY = 2-digit year
+        - M = single digit month (2 for Feb)
+        - DD = 2-digit day
+        Example: BANKNIFTY2622457700PE for BANKNIFTY 24-Feb-26 57700 PE
         """
         try:
             # Determine exchange
@@ -350,51 +356,70 @@ class AliceBlueBroker(BaseBroker):
             else:
                 exchange = 'NFO'  # NSE F&O
 
-            # Build trading symbol
-            # AliceBlue format: NIFTY24FEB25200CE
             from datetime import datetime, timedelta
 
-            # Get nearest expiry (weekly for NIFTY/BANKNIFTY, monthly for others)
             now = datetime.now()
+            sym_upper = symbol.upper()
 
-            # Find next Thursday for weekly expiry
-            days_until_thursday = (3 - now.weekday()) % 7
-            if days_until_thursday == 0 and now.hour >= 15:
-                days_until_thursday = 7
-            next_expiry = now + timedelta(days=days_until_thursday)
+            # Generate multiple expiry date candidates (next few Thursdays)
+            expiry_candidates = []
+            for weeks_ahead in range(5):
+                days_until_thursday = (3 - now.weekday()) % 7
+                if days_until_thursday == 0 and now.hour >= 15 and weeks_ahead == 0:
+                    days_until_thursday = 7
+                exp_date = now + timedelta(days=days_until_thursday + (weeks_ahead * 7))
+                expiry_candidates.append(exp_date)
 
-            # Format expiry
-            expiry_str = next_expiry.strftime('%d%b%y').upper()  # e.g., 06FEB26
+            # Try multiple symbol formats for each expiry
+            for exp_date in expiry_candidates:
+                # Format 1: BANKNIFTY26224 (YY + single digit month + DD)
+                # For Feb 24, 2026: 26 + 2 + 24 = 26224
+                format1 = f"{sym_upper}{exp_date.strftime('%y')}{exp_date.month}{exp_date.strftime('%d')}{int(strike)}{opt_type.upper()}"
 
-            # Build trading symbol
-            trading_symbol = f"{symbol.upper()}{expiry_str}{int(strike)}{opt_type.upper()}"
+                # Format 2: BANKNIFTY2602 24 (YY + MM + DD)
+                format2 = f"{sym_upper}{exp_date.strftime('%y%m%d')}{int(strike)}{opt_type.upper()}"
 
-            # Get market data
+                # Format 3: BANKNIFTY24FEB26 (DD + MMM + YY)
+                format3 = f"{sym_upper}{exp_date.strftime('%d%b%y').upper()}{int(strike)}{opt_type.upper()}"
+
+                # Format 4: BANKNIFTY26FEB24 (YY + MMM + DD)
+                format4 = f"{sym_upper}{exp_date.strftime('%y%b%d').upper()}{int(strike)}{opt_type.upper()}"
+
+                formats_to_try = [format1, format2, format3, format4]
+
+                for trading_symbol in formats_to_try:
+                    logger.debug(f"AliceBlue: Trying symbol {trading_symbol}")
+
+                    payload = {
+                        'exchange': exchange,
+                        'tradingSymbol': trading_symbol
+                    }
+
+                    result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+
+                    if result.get('success') and result.get('data'):
+                        ltp = result['data'].get('ltp', 0)
+                        if ltp and float(ltp) > 0:
+                            logger.info(f"AliceBlue LTP found: {ltp} for {trading_symbol}")
+                            return float(ltp)
+
+            # Try monthly expiry format
+            expiry_month = now.strftime('%y%b').upper()  # e.g., 26FEB
+            monthly_symbol = f"{sym_upper}{expiry_month}{int(strike)}{opt_type.upper()}"
+
             payload = {
                 'exchange': exchange,
-                'tradingSymbol': trading_symbol
+                'tradingSymbol': monthly_symbol
             }
-
             result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
 
             if result.get('success') and result.get('data'):
                 ltp = result['data'].get('ltp', 0)
                 if ltp and float(ltp) > 0:
+                    logger.info(f"AliceBlue LTP found (monthly): {ltp} for {monthly_symbol}")
                     return float(ltp)
 
-            # Try with month format (for monthly expiry)
-            expiry_month = now.strftime('%b%y').upper()  # e.g., FEB26
-            trading_symbol2 = f"{symbol.upper()}{expiry_month}{int(strike)}{opt_type.upper()}"
-
-            payload['tradingSymbol'] = trading_symbol2
-            result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
-
-            if result.get('success') and result.get('data'):
-                ltp = result['data'].get('ltp', 0)
-                if ltp and float(ltp) > 0:
-                    return float(ltp)
-
-            logger.debug(f"Could not fetch option LTP for {symbol} {strike} {opt_type}")
+            logger.warning(f"AliceBlue: Could not fetch option LTP for {symbol} {strike} {opt_type}")
             return 0
 
         except Exception as e:

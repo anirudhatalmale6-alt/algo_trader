@@ -451,8 +451,8 @@ class UpstoxBroker(BaseBroker):
 
     def get_option_ltp(self, symbol: str, strike: int, opt_type: str, expiry: str = None) -> float:
         """
-        Get LTP for an option contract using Upstox Option Chain API
-        symbol: NIFTY, BANKNIFTY, SENSEX, etc.
+        Get LTP for an option contract using Upstox API
+        symbol: NIFTY, BANKNIFTY, SENSEX, MIDCPNIFTY, etc.
         strike: Strike price (e.g., 25200)
         opt_type: CE or PE
         expiry: Optional expiry date in YYYY-MM-DD format
@@ -495,50 +495,64 @@ class UpstoxBroker(BaseBroker):
 
             encoded_key = urllib.parse.quote(instrument_key, safe='')
 
-            # Try each expiry date
+            # Method 1: Try Option Chain API first
             for exp_date in expiry_dates:
                 url = f"/option/chain?instrument_key={encoded_key}&expiry_date={exp_date}"
                 logger.info(f"Upstox option chain request: {url}")
 
                 result = self._make_request("GET", url)
-                logger.debug(f"Upstox option chain response: {result}")
 
                 if result.get('success') and result.get('data'):
                     chain_data = result['data']
                     logger.info(f"Upstox: Got {len(chain_data)} strikes for expiry {exp_date}")
 
-                    # Search for matching strike and option type
                     for item in chain_data:
                         item_strike = item.get('strike_price', 0)
 
-                        # Check if strike matches
                         if abs(float(item_strike) - float(strike)) < 0.01:
-                            logger.info(f"Found matching strike {item_strike}")
-                            # Get call or put data based on opt_type
                             if opt_type.upper() == 'CE':
                                 option_data = item.get('call_options', {})
                             else:
                                 option_data = item.get('put_options', {})
 
                             if option_data:
-                                # Get market data
                                 market_data = option_data.get('market_data', {})
                                 ltp = market_data.get('ltp', 0)
-                                logger.info(f"Market data for {sym_upper} {strike} {opt_type}: ltp={ltp}")
 
                                 if ltp and float(ltp) > 0:
-                                    logger.info(f"Upstox LTP found: {ltp} for {sym_upper} {strike} {opt_type} exp:{exp_date}")
+                                    logger.info(f"Upstox LTP found: {ltp} for {sym_upper} {strike} {opt_type}")
                                     return float(ltp)
-                            else:
-                                logger.warning(f"No option_data for {opt_type} at strike {strike}")
-                else:
-                    # Log why it failed
-                    if not result.get('success'):
-                        logger.warning(f"Upstox API call failed: {result.get('message', 'Unknown error')}")
-                    elif not result.get('data'):
-                        logger.warning(f"Upstox API returned no data for expiry {exp_date}")
 
-            logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type} after trying {len(expiry_dates)} expiries")
+            # Method 2: Try Option Contracts API to get instrument key, then LTP API
+            logger.info("Trying Option Contracts + LTP API method...")
+            for exp_date in expiry_dates:
+                contracts_url = f"/option/contract?instrument_key={encoded_key}&expiry_date={exp_date}"
+                contracts_result = self._make_request("GET", contracts_url)
+
+                if contracts_result.get('success') and contracts_result.get('data'):
+                    for contract in contracts_result['data']:
+                        contract_strike = contract.get('strike_price', 0)
+                        contract_type = contract.get('instrument_type', '')  # CE or PE
+
+                        if (abs(float(contract_strike) - float(strike)) < 0.01 and
+                            contract_type.upper() == opt_type.upper()):
+
+                            option_instrument_key = contract.get('instrument_key', '')
+                            if option_instrument_key:
+                                # Now get LTP using the instrument key
+                                encoded_opt_key = urllib.parse.quote(option_instrument_key, safe='')
+                                ltp_url = f"/market-quote/ltp?instrument_key={encoded_opt_key}"
+                                ltp_result = self._make_request("GET", ltp_url)
+
+                                if ltp_result.get('success') and ltp_result.get('data'):
+                                    # Response format: {"data": {"NSE_FO:NIFTY...": {"last_price": 123.45}}}
+                                    for key, quote_data in ltp_result['data'].items():
+                                        ltp = quote_data.get('last_price', 0)
+                                        if ltp and float(ltp) > 0:
+                                            logger.info(f"Upstox LTP via contracts API: {ltp} for {sym_upper} {strike} {opt_type}")
+                                            return float(ltp)
+
+            logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type}")
             return 0
 
         except Exception as e:

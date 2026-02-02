@@ -105,11 +105,13 @@ class UpstoxBroker(BaseBroker):
                 return {'success': False, 'message': f'Unknown method: {method}'}
 
             result = response.json()
+            logger.debug(f"Upstox API response for {endpoint}: status={response.status_code}, data_keys={list(result.keys()) if isinstance(result, dict) else 'not_dict'}")
 
             if response.status_code == 200:
                 result['success'] = True
                 return result
             else:
+                logger.warning(f"Upstox API non-200 response: {response.status_code} - {result}")
                 return self._handle_error(result, endpoint)
 
         except Exception as e:
@@ -501,6 +503,7 @@ class UpstoxBroker(BaseBroker):
                 logger.info(f"Upstox option chain request: {url}")
 
                 result = self._make_request("GET", url)
+                logger.debug(f"Option chain response: success={result.get('success')}, data_len={len(result.get('data', []))}, raw={str(result)[:500]}")
 
                 if result.get('success') and result.get('data'):
                     chain_data = result['data']
@@ -528,6 +531,7 @@ class UpstoxBroker(BaseBroker):
             for exp_date in expiry_dates:
                 contracts_url = f"/option/contract?instrument_key={encoded_key}&expiry_date={exp_date}"
                 contracts_result = self._make_request("GET", contracts_url)
+                logger.debug(f"Option contracts response: success={contracts_result.get('success')}, data_len={len(contracts_result.get('data', []))}")
 
                 if contracts_result.get('success') and contracts_result.get('data'):
                     for contract in contracts_result['data']:
@@ -551,6 +555,62 @@ class UpstoxBroker(BaseBroker):
                                         if ltp and float(ltp) > 0:
                                             logger.info(f"Upstox LTP via contracts API: {ltp} for {sym_upper} {strike} {opt_type}")
                                             return float(ltp)
+
+            # Method 3: Try Market Quote API with constructed instrument key
+            logger.info("Trying Market Quote API with constructed instrument key...")
+
+            # Map to NFO trading symbol format for options
+            # Format: SYMBOL + EXPIRY_FORMAT + STRIKE + OPTION_TYPE
+            # e.g., MIDCPNIFTY24FEB12800PE or NIFTY2460612800PE
+            nfo_symbol_map = {
+                'NIFTY': 'NIFTY',
+                'BANKNIFTY': 'BANKNIFTY',
+                'FINNIFTY': 'FINNIFTY',
+                'MIDCPNIFTY': 'MIDCPNIFTY',
+                'SENSEX': 'SENSEX',
+                'BANKEX': 'BANKEX',
+            }
+
+            base_symbol = nfo_symbol_map.get(sym_upper, sym_upper)
+
+            for exp_date in expiry_dates:
+                try:
+                    # Parse expiry date
+                    exp_dt = datetime.strptime(exp_date, '%Y-%m-%d')
+
+                    # Try different trading symbol formats
+                    # Format 1: MIDCPNIFTY24FEB12800PE (full month)
+                    exp_format1 = exp_dt.strftime('%d%b').upper()  # 24FEB
+                    trading_sym1 = f"{base_symbol}{exp_format1}{int(strike)}{opt_type.upper()}"
+
+                    # Format 2: MIDCPNIFTY2460612800PE (YYMDD)
+                    exp_format2 = exp_dt.strftime('%y%m%d')  # 240206
+                    trading_sym2 = f"{base_symbol}{exp_format2}{int(strike)}{opt_type.upper()}"
+
+                    # Format 3: MIDCPNIFTY24F0612800PE (YY + month code + DD)
+                    month_codes = {1: 'J', 2: 'F', 3: 'M', 4: 'A', 5: 'M', 6: 'J',
+                                   7: 'J', 8: 'A', 9: 'S', 10: 'O', 11: 'N', 12: 'D'}
+                    month_code = month_codes.get(exp_dt.month, 'X')
+                    exp_format3 = f"{exp_dt.strftime('%y')}{month_code}{exp_dt.strftime('%d')}"
+                    trading_sym3 = f"{base_symbol}{exp_format3}{int(strike)}{opt_type.upper()}"
+
+                    for trading_sym in [trading_sym1, trading_sym2, trading_sym3]:
+                        instrument_key = f"NSE_FO|{trading_sym}"
+                        encoded_key = urllib.parse.quote(instrument_key, safe='')
+                        ltp_url = f"/market-quote/ltp?instrument_key={encoded_key}"
+
+                        logger.debug(f"Trying market quote with key: {instrument_key}")
+                        ltp_result = self._make_request("GET", ltp_url)
+
+                        if ltp_result.get('success') and ltp_result.get('data'):
+                            for key, quote_data in ltp_result['data'].items():
+                                ltp = quote_data.get('last_price', 0)
+                                if ltp and float(ltp) > 0:
+                                    logger.info(f"Upstox LTP via market quote: {ltp} for {trading_sym}")
+                                    return float(ltp)
+                except Exception as e:
+                    logger.debug(f"Error trying market quote format: {e}")
+                    continue
 
             logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type}")
             return 0

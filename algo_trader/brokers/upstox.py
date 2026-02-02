@@ -4,12 +4,201 @@ API Documentation: https://upstox.com/developer/api-documentation/
 """
 import requests
 import json
-from typing import Dict, List, Optional
+import ssl
+import asyncio
+import threading
+from typing import Dict, List, Optional, Callable
 from urllib.parse import urlencode
-from datetime import datetime
+from datetime import datetime, timedelta
 from loguru import logger
 
+try:
+    import websockets
+    WEBSOCKETS_AVAILABLE = True
+except ImportError:
+    WEBSOCKETS_AVAILABLE = False
+    logger.warning("websockets package not installed - WebSocket features disabled")
+
 from .base import BaseBroker, BrokerOrder
+
+
+class UpstoxWebSocketManager:
+    """
+    WebSocket manager for real-time market data from Upstox
+    """
+
+    def __init__(self, access_token: str):
+        self.access_token = access_token
+        self.websocket = None
+        self.is_connected = False
+        self.ltp_cache: Dict[str, float] = {}  # instrument_key -> LTP
+        self._loop = None
+        self._thread = None
+        self._subscribed_instruments: List[str] = []
+        self._callbacks: List[Callable] = []
+
+    def get_websocket_url(self) -> Optional[str]:
+        """Get authorized WebSocket URL from Upstox API"""
+        try:
+            url = "https://api.upstox.com/v2/feed/market-data-feed/authorize"
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'Accept': 'application/json'
+            }
+            response = requests.get(url, headers=headers)
+            data = response.json()
+
+            if response.status_code == 200 and data.get('status') == 'success':
+                ws_url = data.get('data', {}).get('authorizedRedirectUri')
+                logger.info(f"Got WebSocket URL: {ws_url[:50]}...")
+                return ws_url
+            else:
+                logger.error(f"Failed to get WebSocket URL: {data}")
+                return None
+        except Exception as e:
+            logger.error(f"Error getting WebSocket URL: {e}")
+            return None
+
+    async def _connect_and_listen(self, ws_url: str):
+        """Connect to WebSocket and listen for messages"""
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        try:
+            async with websockets.connect(ws_url, ssl=ssl_context) as websocket:
+                self.websocket = websocket
+                self.is_connected = True
+                logger.info("Upstox WebSocket connected")
+
+                # Subscribe to instruments if any
+                if self._subscribed_instruments:
+                    await self._subscribe_instruments(self._subscribed_instruments)
+
+                # Listen for messages
+                while self.is_connected:
+                    try:
+                        message = await asyncio.wait_for(websocket.recv(), timeout=30)
+                        self._handle_message(message)
+                    except asyncio.TimeoutError:
+                        # Send ping to keep connection alive
+                        pass
+                    except websockets.exceptions.ConnectionClosed:
+                        logger.warning("WebSocket connection closed")
+                        self.is_connected = False
+                        break
+
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+            self.is_connected = False
+
+    async def _subscribe_instruments(self, instrument_keys: List[str]):
+        """Subscribe to instrument updates"""
+        if not self.websocket or not self.is_connected:
+            return
+
+        data = {
+            "guid": "algotrader_sub",
+            "method": "sub",
+            "data": {
+                "mode": "ltpc",  # LTP + Close price mode
+                "instrumentKeys": instrument_keys
+            }
+        }
+
+        binary_data = json.dumps(data).encode('utf-8')
+        await self.websocket.send(binary_data)
+        logger.info(f"Subscribed to {len(instrument_keys)} instruments")
+
+    def _handle_message(self, message):
+        """Handle incoming WebSocket message"""
+        try:
+            # Try to decode as JSON first (some messages may not be protobuf)
+            if isinstance(message, bytes):
+                try:
+                    data = json.loads(message.decode('utf-8'))
+                except:
+                    # If not JSON, try to parse as simple format
+                    # Upstox may send protobuf, but we'll try JSON first
+                    logger.debug(f"Received binary message, length={len(message)}")
+                    return
+            else:
+                data = json.loads(message)
+
+            # Extract LTP from the message
+            if 'feeds' in data:
+                for key, feed_data in data['feeds'].items():
+                    if 'ff' in feed_data and 'ltpc' in feed_data['ff']:
+                        ltpc = feed_data['ff']['ltpc']
+                        ltp = ltpc.get('ltp', 0)
+                        if ltp > 0:
+                            self.ltp_cache[key] = ltp
+                            logger.debug(f"WebSocket LTP update: {key} = {ltp}")
+
+                            # Call registered callbacks
+                            for callback in self._callbacks:
+                                try:
+                                    callback(key, ltp)
+                                except Exception as e:
+                                    logger.error(f"Callback error: {e}")
+
+        except Exception as e:
+            logger.debug(f"Message parse error: {e}")
+
+    def start(self):
+        """Start WebSocket connection in background thread"""
+        if not WEBSOCKETS_AVAILABLE:
+            logger.error("websockets package not installed")
+            return False
+
+        ws_url = self.get_websocket_url()
+        if not ws_url:
+            return False
+
+        def run_loop():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+            self._loop.run_until_complete(self._connect_and_listen(ws_url))
+
+        self._thread = threading.Thread(target=run_loop, daemon=True)
+        self._thread.start()
+
+        # Wait for connection
+        for _ in range(50):  # Wait up to 5 seconds
+            if self.is_connected:
+                return True
+            import time
+            time.sleep(0.1)
+
+        return self.is_connected
+
+    def stop(self):
+        """Stop WebSocket connection"""
+        self.is_connected = False
+        if self._loop:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+
+    def subscribe(self, instrument_keys: List[str]):
+        """Subscribe to instruments"""
+        self._subscribed_instruments.extend(instrument_keys)
+
+        if self.is_connected and self._loop:
+            future = asyncio.run_coroutine_threadsafe(
+                self._subscribe_instruments(instrument_keys),
+                self._loop
+            )
+            try:
+                future.result(timeout=5)
+            except Exception as e:
+                logger.error(f"Subscribe error: {e}")
+
+    def get_ltp(self, instrument_key: str) -> float:
+        """Get cached LTP for an instrument"""
+        return self.ltp_cache.get(instrument_key, 0)
+
+    def add_callback(self, callback: Callable):
+        """Add callback for LTP updates"""
+        self._callbacks.append(callback)
 
 
 class UpstoxBroker(BaseBroker):
@@ -26,6 +215,8 @@ class UpstoxBroker(BaseBroker):
         super().__init__(api_key, api_secret)
         self.broker_name = "upstox"
         self.redirect_uri = redirect_uri
+        self.ws_manager: Optional[UpstoxWebSocketManager] = None
+        self._instrument_key_cache: Dict[str, str] = {}  # Cache for option instrument keys
 
     def get_login_url(self) -> str:
         """Get Upstox OAuth login URL"""
@@ -41,8 +232,30 @@ class UpstoxBroker(BaseBroker):
         if access_token:
             self.access_token = access_token
             self.is_authenticated = True
+            # Try to start WebSocket for real-time data
+            self._start_websocket()
             return True
         return False
+
+    def _start_websocket(self):
+        """Start WebSocket connection for real-time market data"""
+        if not WEBSOCKETS_AVAILABLE:
+            logger.warning("WebSocket not available - using REST API for LTP")
+            return
+
+        try:
+            if self.ws_manager:
+                self.ws_manager.stop()
+
+            self.ws_manager = UpstoxWebSocketManager(self.access_token)
+            if self.ws_manager.start():
+                logger.info("Upstox WebSocket started successfully")
+            else:
+                logger.warning("Failed to start WebSocket - using REST API for LTP")
+                self.ws_manager = None
+        except Exception as e:
+            logger.error(f"Error starting WebSocket: {e}")
+            self.ws_manager = None
 
     def generate_session(self, auth_code: str) -> bool:
         """Generate access token from authorization code"""
@@ -480,6 +693,15 @@ class UpstoxBroker(BaseBroker):
                 logger.warning(f"Unknown symbol for Upstox: {sym_upper}")
                 return 0
 
+            # Check WebSocket cache first for instant real-time data
+            cache_key = f"{sym_upper}_{strike}_{opt_type}"
+            if cache_key in self._instrument_key_cache and self.ws_manager:
+                option_inst_key = self._instrument_key_cache[cache_key]
+                ws_ltp = self.ws_manager.get_ltp(option_inst_key)
+                if ws_ltp > 0:
+                    logger.info(f"WebSocket LTP (instant): {ws_ltp} for {sym_upper} {strike} {opt_type}")
+                    return ws_ltp
+
             # Find expiry dates to try
             now = datetime.now()
             expiry_dates = []
@@ -531,10 +753,25 @@ class UpstoxBroker(BaseBroker):
 
                             option_instrument_key = contract.get('instrument_key', '')
                             if option_instrument_key:
-                                # Get real-time LTP using the instrument key
+                                # Cache the instrument key for future WebSocket lookups
+                                cache_key = f"{sym_upper}_{strike}_{opt_type}"
+                                self._instrument_key_cache[cache_key] = option_instrument_key
+
+                                # Subscribe to WebSocket for real-time updates
+                                if self.ws_manager and self.ws_manager.is_connected:
+                                    self.ws_manager.subscribe([option_instrument_key])
+                                    # Wait briefly for WebSocket data
+                                    import time
+                                    time.sleep(0.3)  # Wait 300ms for WebSocket data
+                                    ws_ltp = self.ws_manager.get_ltp(option_instrument_key)
+                                    if ws_ltp > 0:
+                                        logger.info(f"WebSocket LTP (real-time): {ws_ltp} for {sym_upper} {strike} {opt_type}")
+                                        return ws_ltp
+
+                                # Fallback: Get LTP via REST API
                                 encoded_opt_key = urllib.parse.quote(option_instrument_key, safe='')
                                 ltp_url = f"/market-quote/ltp?instrument_key={encoded_opt_key}"
-                                logger.info(f"Fetching real-time LTP: {option_instrument_key}")
+                                logger.info(f"Fetching LTP via REST API: {option_instrument_key}")
                                 ltp_result = self._make_request("GET", ltp_url)
 
                                 if ltp_result.get('success') and ltp_result.get('data'):
@@ -542,7 +779,7 @@ class UpstoxBroker(BaseBroker):
                                     for key, quote_data in ltp_result['data'].items():
                                         ltp = quote_data.get('last_price', 0)
                                         if ltp and float(ltp) > 0:
-                                            logger.info(f"Upstox REAL-TIME LTP: {ltp} for {sym_upper} {strike} {opt_type}")
+                                            logger.info(f"REST API LTP: {ltp} for {sym_upper} {strike} {opt_type}")
                                             return float(ltp)
 
             # Method 2: Fallback to Option Chain API (may have slightly delayed data)

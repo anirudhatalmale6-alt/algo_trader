@@ -6221,9 +6221,11 @@ For accurate Greeks, use live option data."""
         """Disconnect a broker"""
         if broker_name in self.brokers:
             del self.brokers[broker_name]
+            # Unregister from order manager
+            self.order_manager.unregister_broker(broker_name)
             self._update_broker_settings_table()
             self._refresh_dashboard()
-            logger.info(f"Broker {broker_name} disconnected")
+            logger.info(f"Broker {broker_name} disconnected and unregistered from order_manager")
 
     def _setup_timers(self):
         """Setup refresh timers"""
@@ -6677,6 +6679,10 @@ For accurate Greeks, use live option data."""
                     self.brokers[broker_name] = dialog.broker_instance
                     self.active_broker = dialog.broker_instance
                     logger.info(f"Broker {broker_name} added to self.brokers")
+
+                    # Register broker with order manager for order execution
+                    self.order_manager.register_broker(broker_name, dialog.broker_instance)
+                    logger.info(f"Broker {broker_name} registered with order_manager")
 
                     # Set broker for chart widget
                     if hasattr(self, 'chart_widget') and self.chart_widget:

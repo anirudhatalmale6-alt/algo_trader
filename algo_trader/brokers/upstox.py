@@ -487,13 +487,29 @@ class UpstoxBroker(BaseBroker):
             if expiry:
                 expiry_dates.append(expiry)
             else:
-                # Find next few Thursdays (weekly expiries)
+                # Each index has a different expiry day:
+                # Monday (0): MIDCPNIFTY
+                # Tuesday (1): NIFTY, FINNIFTY
+                # Wednesday (2): BANKNIFTY
+                # Thursday (3): SENSEX, BANKEX (monthly for others)
+                expiry_day_map = {
+                    'NIFTY': 1,      # Tuesday
+                    'BANKNIFTY': 2,  # Wednesday
+                    'FINNIFTY': 1,   # Tuesday
+                    'MIDCPNIFTY': 0, # Monday
+                    'SENSEX': 3,     # Thursday
+                    'BANKEX': 3,     # Thursday
+                }
+                target_day = expiry_day_map.get(sym_upper, 3)  # Default Thursday
+
+                # Find next few expiry days for this symbol
                 for weeks_ahead in range(4):
-                    days_until_thursday = (3 - now.weekday()) % 7
-                    if days_until_thursday == 0 and now.hour >= 15 and weeks_ahead == 0:
-                        days_until_thursday = 7
-                    next_exp = now + timedelta(days=days_until_thursday + (weeks_ahead * 7))
+                    days_until_expiry = (target_day - now.weekday()) % 7
+                    if days_until_expiry == 0 and now.hour >= 15 and weeks_ahead == 0:
+                        days_until_expiry = 7
+                    next_exp = now + timedelta(days=days_until_expiry + (weeks_ahead * 7))
                     expiry_dates.append(next_exp.strftime('%Y-%m-%d'))
+                    logger.info(f"Calculated expiry for {sym_upper}: {next_exp.strftime('%Y-%m-%d')} ({next_exp.strftime('%A')})")
 
             encoded_key = urllib.parse.quote(instrument_key, safe='')
 

@@ -1369,8 +1369,9 @@ class MainWindow(QMainWindow):
         add_leg_layout.addWidget(self.sb_leg_action)
 
         self.sb_leg_type = QComboBox()
-        self.sb_leg_type.addItems(["CE", "PE"])
+        self.sb_leg_type.addItems(["CE", "PE", "FUT"])
         self.sb_leg_type.setMinimumHeight(28)
+        self.sb_leg_type.currentTextChanged.connect(self._on_leg_type_changed)
         add_leg_layout.addWidget(self.sb_leg_type)
 
         self.sb_leg_strike = QDoubleSpinBox()
@@ -2853,16 +2854,25 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'sb_entry_spot') and self.sb_entry_spot.value() > 0:
             self._update_live_pnl()
 
+    def _on_leg_type_changed(self, leg_type: str):
+        """Handle leg type change - hide strike for FUT"""
+        if leg_type == "FUT":
+            self.sb_leg_strike.setEnabled(False)
+            self.sb_leg_strike.setValue(0)
+        else:
+            self.sb_leg_strike.setEnabled(True)
+
     def _add_strategy_leg(self):
         """Add a leg to the strategy"""
         if len(self.strategy_legs) >= 4:
             QMessageBox.warning(self, "Limit", "Maximum 4 legs allowed")
             return
 
+        leg_type = self.sb_leg_type.currentText()
         leg = {
             'action': self.sb_leg_action.currentText(),
-            'type': self.sb_leg_type.currentText(),
-            'strike': self.sb_leg_strike.value(),
+            'type': leg_type,
+            'strike': 0 if leg_type == "FUT" else self.sb_leg_strike.value(),
             'qty': self.sb_leg_qty.value(),
             'premium': self.sb_leg_premium.value()
         }
@@ -2896,7 +2906,9 @@ class MainWindow(QMainWindow):
 
             self.sb_legs_table.setItem(i, 1, QTableWidgetItem(leg['action']))
             self.sb_legs_table.setItem(i, 2, QTableWidgetItem(leg['type']))
-            self.sb_legs_table.setItem(i, 3, QTableWidgetItem(f"₹{leg['strike']:.0f}"))
+            # For FUT, show N/A instead of strike
+            strike_text = "N/A" if leg['type'] == "FUT" else f"₹{leg['strike']:.0f}"
+            self.sb_legs_table.setItem(i, 3, QTableWidgetItem(strike_text))
             self.sb_legs_table.setItem(i, 4, QTableWidgetItem(str(leg['qty'])))
             self.sb_legs_table.setItem(i, 5, QTableWidgetItem(f"₹{leg['premium']:.2f}"))
 
@@ -2929,7 +2941,13 @@ class MainWindow(QMainWindow):
         qty = leg['qty']
         lot_size = 50 if "NIFTY" in self.sb_symbol.currentText().upper() else 25
 
-        if leg['type'] == 'CE':
+        if leg['type'] == 'FUT':
+            # Futures payoff - linear with spot price
+            # Buy future: profit when price goes up, loss when goes down
+            # Sell future: profit when price goes down, loss when goes up
+            entry_price = premium  # Premium field stores entry price for futures
+            intrinsic = spot_prices - entry_price
+        elif leg['type'] == 'CE':
             # Call option payoff
             intrinsic = np.maximum(spot_prices - strike, 0)
         else:
@@ -2996,28 +3014,50 @@ class MainWindow(QMainWindow):
                 for leg in self.strategy_legs:
                     # Build option symbol (format varies by broker)
                     leg_symbol = leg.get('symbol', symbol)
-                    strike = int(leg['strike'])
-                    opt_type = leg['type']  # CE or PE
+                    opt_type = leg['type']  # CE, PE, or FUT
 
-                    # Try to get quote from broker
-                    if hasattr(broker, 'get_option_ltp'):
-                        logger.info(f"Calling broker.get_option_ltp({leg_symbol}, {strike}, {opt_type})")
-                        ltp = broker.get_option_ltp(leg_symbol, strike, opt_type)
-                        logger.info(f"Broker returned LTP: {ltp}")
+                    if opt_type == 'FUT':
+                        # For futures, get futures LTP
+                        if hasattr(broker, 'get_futures_ltp'):
+                            logger.info(f"Calling broker.get_futures_ltp({leg_symbol})")
+                            ltp = broker.get_futures_ltp(leg_symbol)
+                        elif hasattr(broker, 'get_ltp'):
+                            # Generic LTP for futures symbol
+                            fut_symbol = f"{leg_symbol}FUT"  # e.g., NIFTYFUT
+                            ltp = broker.get_ltp(fut_symbol)
+                        else:
+                            ltp = 0
+
+                        logger.info(f"Broker returned FUT LTP: {ltp}")
                         if ltp and ltp > 0:
                             leg['ltp'] = ltp
                             leg['ltp_source'] = 'broker'
                             broker_fetch_success = True
                         else:
-                            logger.warning(f"Broker returned no LTP for {leg_symbol} {strike} {opt_type}")
-                    elif hasattr(broker, 'get_ltp'):
-                        # Generic LTP method
-                        option_symbol = f"{leg_symbol}{strike}{opt_type}"
-                        ltp = broker.get_ltp(option_symbol)
-                        if ltp and ltp > 0:
-                            leg['ltp'] = ltp
-                            leg['ltp_source'] = 'broker'
-                            broker_fetch_success = True
+                            logger.warning(f"Broker returned no FUT LTP for {leg_symbol}")
+                    else:
+                        # For options (CE/PE)
+                        strike = int(leg['strike'])
+
+                        # Try to get quote from broker
+                        if hasattr(broker, 'get_option_ltp'):
+                            logger.info(f"Calling broker.get_option_ltp({leg_symbol}, {strike}, {opt_type})")
+                            ltp = broker.get_option_ltp(leg_symbol, strike, opt_type)
+                            logger.info(f"Broker returned LTP: {ltp}")
+                            if ltp and ltp > 0:
+                                leg['ltp'] = ltp
+                                leg['ltp_source'] = 'broker'
+                                broker_fetch_success = True
+                            else:
+                                logger.warning(f"Broker returned no LTP for {leg_symbol} {strike} {opt_type}")
+                        elif hasattr(broker, 'get_ltp'):
+                            # Generic LTP method
+                            option_symbol = f"{leg_symbol}{strike}{opt_type}"
+                            ltp = broker.get_ltp(option_symbol)
+                            if ltp and ltp > 0:
+                                leg['ltp'] = ltp
+                                leg['ltp_source'] = 'broker'
+                                broker_fetch_success = True
 
             except Exception as e:
                 logger.error(f"Error fetching LTP from broker: {e}")

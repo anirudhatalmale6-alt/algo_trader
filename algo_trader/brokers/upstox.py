@@ -324,8 +324,15 @@ class UpstoxBroker(BaseBroker):
                 result['success'] = True
                 return result
             else:
-                logger.warning(f"Upstox API non-200 response: {response.status_code} - {result}")
-                return self._handle_error(result, endpoint)
+                # Extract error message from Upstox response format
+                error_msg = "Unknown error"
+                if result.get('errors') and isinstance(result['errors'], list):
+                    error_msg = result['errors'][0].get('message', 'Unknown error')
+                elif result.get('message'):
+                    error_msg = result['message']
+
+                logger.warning(f"Upstox API non-200 response: {response.status_code} - {error_msg} - Full: {result}")
+                return {'success': False, 'message': error_msg}
 
         except Exception as e:
             logger.error(f"Upstox API error: {e}")
@@ -387,7 +394,9 @@ class UpstoxBroker(BaseBroker):
             'is_amo': False
         }
 
+        logger.info(f"Upstox place_order payload: {payload}")
         result = self._make_request("POST", "/order/place", payload)
+        logger.info(f"Upstox place_order result: {result}")
 
         if result.get('success') and result.get('data'):
             return {
@@ -876,6 +885,90 @@ class UpstoxBroker(BaseBroker):
 
         except Exception as e:
             logger.error(f"Upstox get_option_ltp error: {e}")
+            return 0
+
+    def get_futures_ltp(self, symbol: str, expiry: str = None) -> float:
+        """
+        Get LTP for a futures contract
+        symbol: NIFTY, BANKNIFTY, SENSEX, MIDCPNIFTY, etc.
+        expiry: Optional expiry date in YYYY-MM-DD format
+        """
+        try:
+            import urllib.parse
+            from datetime import datetime, timedelta
+
+            sym_upper = symbol.upper()
+
+            # Map symbol to Upstox instrument key format for index
+            symbol_map = {
+                'NIFTY': 'NSE_INDEX|Nifty 50',
+                'BANKNIFTY': 'NSE_INDEX|Nifty Bank',
+                'FINNIFTY': 'NSE_INDEX|Nifty Fin Service',
+                'MIDCPNIFTY': 'NSE_INDEX|NIFTY MID SELECT',
+                'SENSEX': 'BSE_INDEX|SENSEX',
+                'BANKEX': 'BSE_INDEX|BANKEX',
+            }
+
+            instrument_key = symbol_map.get(sym_upper)
+            if not instrument_key:
+                logger.warning(f"Unknown symbol for Upstox futures: {sym_upper}")
+                return 0
+
+            # Find expiry date
+            now = datetime.now()
+            if expiry:
+                expiry_dates = [expiry]
+            else:
+                # Futures typically expire on last Thursday of month
+                # Try current and next month
+                expiry_dates = []
+                for months_ahead in range(3):
+                    # Find last Thursday of month
+                    if months_ahead == 0:
+                        year, month = now.year, now.month
+                    else:
+                        next_month = now.month + months_ahead
+                        year = now.year + (next_month - 1) // 12
+                        month = ((next_month - 1) % 12) + 1
+
+                    # Find last Thursday
+                    import calendar
+                    last_day = calendar.monthrange(year, month)[1]
+                    last_date = datetime(year, month, last_day)
+                    days_since_thursday = (last_date.weekday() - 3) % 7
+                    last_thursday = last_date - timedelta(days=days_since_thursday)
+                    expiry_dates.append(last_thursday.strftime('%Y-%m-%d'))
+
+            encoded_key = urllib.parse.quote(instrument_key, safe='')
+
+            # Try to get futures contract
+            for exp_date in expiry_dates:
+                contracts_url = f"/option/contract?instrument_key={encoded_key}&expiry_date={exp_date}"
+                contracts_result = self._make_request("GET", contracts_url)
+
+                if contracts_result.get('success') and contracts_result.get('data'):
+                    for contract in contracts_result['data']:
+                        contract_type = contract.get('instrument_type', '')
+                        if contract_type == 'FUT':
+                            fut_instrument_key = contract.get('instrument_key', '')
+                            if fut_instrument_key:
+                                # Get LTP using the instrument key
+                                encoded_fut_key = urllib.parse.quote(fut_instrument_key, safe='')
+                                ltp_url = f"/market-quote/ltp?instrument_key={encoded_fut_key}"
+                                ltp_result = self._make_request("GET", ltp_url)
+
+                                if ltp_result.get('success') and ltp_result.get('data'):
+                                    for key, quote_data in ltp_result['data'].items():
+                                        ltp = quote_data.get('last_price', 0)
+                                        if ltp and float(ltp) > 0:
+                                            logger.info(f"Upstox FUTURES LTP: {ltp} for {sym_upper}")
+                                            return float(ltp)
+
+            logger.warning(f"Upstox: Could not fetch FUT LTP for {symbol}")
+            return 0
+
+        except Exception as e:
+            logger.error(f"Upstox get_futures_ltp error: {e}")
             return 0
 
     def get_option_expiries(self, symbol: str) -> List[str]:

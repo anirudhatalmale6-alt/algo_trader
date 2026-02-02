@@ -579,22 +579,27 @@ class UpstoxBroker(BaseBroker):
                     exp_dt = datetime.strptime(exp_date, '%Y-%m-%d')
 
                     # Try different trading symbol formats
-                    # Format 1: MIDCPNIFTY24FEB12800PE (full month)
-                    exp_format1 = exp_dt.strftime('%d%b').upper()  # 24FEB
+                    # Format 1: MIDCPNIFTY24FEB2612750PE (DD + MON + YY + strike + type)
+                    # This is the correct Upstox format as per screenshot
+                    exp_format1 = exp_dt.strftime('%d%b%y').upper()  # 24FEB26
                     trading_sym1 = f"{base_symbol}{exp_format1}{int(strike)}{opt_type.upper()}"
 
                     # Format 2: MIDCPNIFTY2460612800PE (YYMDD)
-                    exp_format2 = exp_dt.strftime('%y%m%d')  # 240206
+                    exp_format2 = exp_dt.strftime('%y%m%d')  # 260206
                     trading_sym2 = f"{base_symbol}{exp_format2}{int(strike)}{opt_type.upper()}"
 
-                    # Format 3: MIDCPNIFTY24F0612800PE (YY + month code + DD)
+                    # Format 3: MIDCPNIFTY26F0612800PE (YY + month code + DD)
                     month_codes = {1: 'J', 2: 'F', 3: 'M', 4: 'A', 5: 'M', 6: 'J',
                                    7: 'J', 8: 'A', 9: 'S', 10: 'O', 11: 'N', 12: 'D'}
                     month_code = month_codes.get(exp_dt.month, 'X')
                     exp_format3 = f"{exp_dt.strftime('%y')}{month_code}{exp_dt.strftime('%d')}"
                     trading_sym3 = f"{base_symbol}{exp_format3}{int(strike)}{opt_type.upper()}"
 
-                    for trading_sym in [trading_sym1, trading_sym2, trading_sym3]:
+                    # Format 4: Try without year as well (legacy)
+                    exp_format4 = exp_dt.strftime('%d%b').upper()  # 24FEB
+                    trading_sym4 = f"{base_symbol}{exp_format4}{int(strike)}{opt_type.upper()}"
+
+                    for trading_sym in [trading_sym1, trading_sym2, trading_sym3, trading_sym4]:
                         instrument_key = f"NSE_FO|{trading_sym}"
                         encoded_key = urllib.parse.quote(instrument_key, safe='')
                         ltp_url = f"/market-quote/ltp?instrument_key={encoded_key}"

@@ -604,8 +604,9 @@ class UpstoxBroker(BaseBroker):
                         encoded_key = urllib.parse.quote(instrument_key, safe='')
                         ltp_url = f"/market-quote/ltp?instrument_key={encoded_key}"
 
-                        logger.debug(f"Trying market quote with key: {instrument_key}")
+                        logger.info(f"Trying market quote with key: {instrument_key}")
                         ltp_result = self._make_request("GET", ltp_url)
+                        logger.info(f"Market quote result: success={ltp_result.get('success')}, has_data={bool(ltp_result.get('data'))}, response={str(ltp_result)[:200]}")
 
                         if ltp_result.get('success') and ltp_result.get('data'):
                             for key, quote_data in ltp_result['data'].items():
@@ -614,7 +615,7 @@ class UpstoxBroker(BaseBroker):
                                     logger.info(f"Upstox LTP via market quote: {ltp} for {trading_sym}")
                                     return float(ltp)
                 except Exception as e:
-                    logger.debug(f"Error trying market quote format: {e}")
+                    logger.warning(f"Error trying market quote format: {e}")
                     continue
 
             logger.warning(f"Upstox: Could not fetch LTP for {symbol} {strike} {opt_type}")

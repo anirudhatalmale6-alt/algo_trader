@@ -513,17 +513,47 @@ class UpstoxBroker(BaseBroker):
 
             encoded_key = urllib.parse.quote(instrument_key, safe='')
 
-            # Method 1: Try Option Chain API first
+            # Method 1: Try Option Contracts API to get instrument key, then use real-time LTP API
+            # This is more accurate than Option Chain API which may have delayed data
+            logger.info("Trying Option Contracts + Real-time LTP API method...")
+            for exp_date in expiry_dates:
+                contracts_url = f"/option/contract?instrument_key={encoded_key}&expiry_date={exp_date}"
+                contracts_result = self._make_request("GET", contracts_url)
+                logger.info(f"Option contracts for {exp_date}: success={contracts_result.get('success')}, count={len(contracts_result.get('data', []))}")
+
+                if contracts_result.get('success') and contracts_result.get('data'):
+                    for contract in contracts_result['data']:
+                        contract_strike = contract.get('strike_price', 0)
+                        contract_type = contract.get('instrument_type', '')  # CE or PE
+
+                        if (abs(float(contract_strike) - float(strike)) < 0.01 and
+                            contract_type.upper() == opt_type.upper()):
+
+                            option_instrument_key = contract.get('instrument_key', '')
+                            if option_instrument_key:
+                                # Get real-time LTP using the instrument key
+                                encoded_opt_key = urllib.parse.quote(option_instrument_key, safe='')
+                                ltp_url = f"/market-quote/ltp?instrument_key={encoded_opt_key}"
+                                logger.info(f"Fetching real-time LTP: {option_instrument_key}")
+                                ltp_result = self._make_request("GET", ltp_url)
+
+                                if ltp_result.get('success') and ltp_result.get('data'):
+                                    # Response format: {"data": {"NSE_FO:NIFTY...": {"last_price": 123.45}}}
+                                    for key, quote_data in ltp_result['data'].items():
+                                        ltp = quote_data.get('last_price', 0)
+                                        if ltp and float(ltp) > 0:
+                                            logger.info(f"Upstox REAL-TIME LTP: {ltp} for {sym_upper} {strike} {opt_type}")
+                                            return float(ltp)
+
+            # Method 2: Fallback to Option Chain API (may have slightly delayed data)
+            logger.info("Falling back to Option Chain API...")
             for exp_date in expiry_dates:
                 url = f"/option/chain?instrument_key={encoded_key}&expiry_date={exp_date}"
-                logger.info(f"Upstox option chain request: {url}")
-
                 result = self._make_request("GET", url)
-                logger.debug(f"Option chain response: success={result.get('success')}, data_len={len(result.get('data', []))}, raw={str(result)[:500]}")
 
                 if result.get('success') and result.get('data'):
                     chain_data = result['data']
-                    logger.info(f"Upstox: Got {len(chain_data)} strikes for expiry {exp_date}")
+                    logger.info(f"Upstox Option Chain: Got {len(chain_data)} strikes for expiry {exp_date}")
 
                     for item in chain_data:
                         item_strike = item.get('strike_price', 0)
@@ -539,38 +569,8 @@ class UpstoxBroker(BaseBroker):
                                 ltp = market_data.get('ltp', 0)
 
                                 if ltp and float(ltp) > 0:
-                                    logger.info(f"Upstox LTP found: {ltp} for {sym_upper} {strike} {opt_type}")
+                                    logger.info(f"Upstox LTP (from chain): {ltp} for {sym_upper} {strike} {opt_type}")
                                     return float(ltp)
-
-            # Method 2: Try Option Contracts API to get instrument key, then LTP API
-            logger.info("Trying Option Contracts + LTP API method...")
-            for exp_date in expiry_dates:
-                contracts_url = f"/option/contract?instrument_key={encoded_key}&expiry_date={exp_date}"
-                contracts_result = self._make_request("GET", contracts_url)
-                logger.debug(f"Option contracts response: success={contracts_result.get('success')}, data_len={len(contracts_result.get('data', []))}")
-
-                if contracts_result.get('success') and contracts_result.get('data'):
-                    for contract in contracts_result['data']:
-                        contract_strike = contract.get('strike_price', 0)
-                        contract_type = contract.get('instrument_type', '')  # CE or PE
-
-                        if (abs(float(contract_strike) - float(strike)) < 0.01 and
-                            contract_type.upper() == opt_type.upper()):
-
-                            option_instrument_key = contract.get('instrument_key', '')
-                            if option_instrument_key:
-                                # Now get LTP using the instrument key
-                                encoded_opt_key = urllib.parse.quote(option_instrument_key, safe='')
-                                ltp_url = f"/market-quote/ltp?instrument_key={encoded_opt_key}"
-                                ltp_result = self._make_request("GET", ltp_url)
-
-                                if ltp_result.get('success') and ltp_result.get('data'):
-                                    # Response format: {"data": {"NSE_FO:NIFTY...": {"last_price": 123.45}}}
-                                    for key, quote_data in ltp_result['data'].items():
-                                        ltp = quote_data.get('last_price', 0)
-                                        if ltp and float(ltp) > 0:
-                                            logger.info(f"Upstox LTP via contracts API: {ltp} for {sym_upper} {strike} {opt_type}")
-                                            return float(ltp)
 
             # Method 3: Try Market Quote API with constructed instrument key
             logger.info("Trying Market Quote API with constructed instrument key...")

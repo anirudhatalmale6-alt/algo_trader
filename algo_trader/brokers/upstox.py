@@ -340,8 +340,15 @@ class UpstoxBroker(BaseBroker):
 
     def _format_symbol(self, symbol: str, exchange: str) -> str:
         """Format symbol for Upstox API"""
-        # Upstox uses format: NSE_EQ|RELIANCE for equity
+        # Upstox uses format: NSE_EQ|INE002A01018 for equity (ISIN required)
         # NSE_FO|NIFTY23JAN19500CE for F&O
+
+        # Try to get the correct instrument key from search API
+        instrument_key = self._get_instrument_key(symbol, exchange)
+        if instrument_key:
+            return instrument_key
+
+        # Fallback to basic format (may not work for all)
         exchange_map = {
             'NSE': 'NSE_EQ',
             'BSE': 'BSE_EQ',
@@ -350,6 +357,106 @@ class UpstoxBroker(BaseBroker):
         }
         ex = exchange_map.get(exchange, 'NSE_EQ')
         return f"{ex}|{symbol}"
+
+    def _get_instrument_key(self, symbol: str, exchange: str) -> Optional[str]:
+        """Get the correct instrument key for a symbol using search API"""
+        try:
+            import urllib.parse
+
+            # Use market quote search to find the instrument
+            # First try to search for the symbol
+            search_url = f"/market-quote/quotes?instrument_key=NSE_EQ%7C{symbol}"
+            result = self._make_request("GET", search_url)
+
+            # If direct search fails, try searching in instruments
+            if not result.get('success'):
+                # Try alternative: use the instrument search endpoint
+                # Upstox has an instruments master file we can download
+                pass
+
+            # Check if we have the instrument in cache
+            if hasattr(self, '_instrument_cache') and symbol in self._instrument_cache:
+                return self._instrument_cache[symbol]
+
+            # Try to fetch instrument details using holdings or positions
+            # as these return the correct instrument keys
+            holdings_result = self._make_request("GET", "/portfolio/long-term-holdings")
+            if holdings_result.get('success') and holdings_result.get('data'):
+                if not hasattr(self, '_instrument_cache'):
+                    self._instrument_cache = {}
+                for holding in holdings_result['data']:
+                    trading_symbol = holding.get('trading_symbol', '')
+                    inst_key = holding.get('instrument_token', '')
+                    if trading_symbol:
+                        self._instrument_cache[trading_symbol] = inst_key
+
+                if symbol in self._instrument_cache:
+                    return self._instrument_cache[symbol]
+
+            # Common NSE stocks - hardcoded ISIN mapping for popular stocks
+            # This is a fallback - ideally should be fetched from API
+            isin_map = {
+                'RELIANCE': 'NSE_EQ|INE002A01018',
+                'TCS': 'NSE_EQ|INE467B01029',
+                'HDFCBANK': 'NSE_EQ|INE040A01034',
+                'INFY': 'NSE_EQ|INE009A01021',
+                'ICICIBANK': 'NSE_EQ|INE090A01021',
+                'HDFC': 'NSE_EQ|INE001A01036',
+                'SBIN': 'NSE_EQ|INE062A01020',
+                'BHARTIARTL': 'NSE_EQ|INE397D01024',
+                'ITC': 'NSE_EQ|INE154A01025',
+                'KOTAKBANK': 'NSE_EQ|INE237A01028',
+                'LT': 'NSE_EQ|INE018A01030',
+                'AXISBANK': 'NSE_EQ|INE238A01034',
+                'ASIANPAINT': 'NSE_EQ|INE021A01026',
+                'MARUTI': 'NSE_EQ|INE585B01010',
+                'BAJFINANCE': 'NSE_EQ|INE296A01024',
+                'WIPRO': 'NSE_EQ|INE075A01022',
+                'HCLTECH': 'NSE_EQ|INE860A01027',
+                'TATASTEEL': 'NSE_EQ|INE081A01012',
+                'SUNPHARMA': 'NSE_EQ|INE044A01036',
+                'ULTRACEMCO': 'NSE_EQ|INE481G01011',
+                'TITAN': 'NSE_EQ|INE280A01028',
+                'NESTLEIND': 'NSE_EQ|INE239A01016',
+                'POWERGRID': 'NSE_EQ|INE752E01010',
+                'NTPC': 'NSE_EQ|INE733E01010',
+                'M&M': 'NSE_EQ|INE101A01026',
+                'TATAMOTORS': 'NSE_EQ|INE155A01022',
+                'ONGC': 'NSE_EQ|INE213A01029',
+                'JSWSTEEL': 'NSE_EQ|INE019A01038',
+                'COALINDIA': 'NSE_EQ|INE522F01014',
+                'ADANIENT': 'NSE_EQ|INE423A01024',
+                'ADANIPORTS': 'NSE_EQ|INE742F01042',
+                'BAJAJFINSV': 'NSE_EQ|INE918I01018',
+                'DIVISLAB': 'NSE_EQ|INE361B01024',
+                'DRREDDY': 'NSE_EQ|INE089A01023',
+                'EICHERMOT': 'NSE_EQ|INE066A01013',
+                'GRASIM': 'NSE_EQ|INE047A01021',
+                'HINDALCO': 'NSE_EQ|INE038A01020',
+                'HINDUNILVR': 'NSE_EQ|INE030A01027',
+                'INDUSINDBK': 'NSE_EQ|INE095A01012',
+                'TECHM': 'NSE_EQ|INE669C01036',
+                'BRITANNIA': 'NSE_EQ|INE216A01022',
+                'CIPLA': 'NSE_EQ|INE059A01026',
+                'APOLLOHOSP': 'NSE_EQ|INE437A01024',
+                'BPCL': 'NSE_EQ|INE029A01011',
+                'HEROMOTOCO': 'NSE_EQ|INE158A01026',
+                'TATACONSUM': 'NSE_EQ|INE192A01025',
+                'UPL': 'NSE_EQ|INE628A01036',
+                'SBILIFE': 'NSE_EQ|INE123W01016',
+                'BSE': 'NSE_EQ|INE118H01025',
+            }
+
+            sym_upper = symbol.upper()
+            if sym_upper in isin_map:
+                logger.info(f"Using hardcoded ISIN for {sym_upper}: {isin_map[sym_upper]}")
+                return isin_map[sym_upper]
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting instrument key: {e}")
+            return None
 
     def place_order(self, order) -> Dict:
         """Place an order on Upstox"""

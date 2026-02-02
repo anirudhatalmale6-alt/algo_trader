@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QLabel, QComboBox, QLineEdit, QTextEdit, QSplitter,
     QMessageBox, QStatusBar, QToolBar, QGroupBox, QFormLayout,
     QHeaderView, QDialog, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QScrollArea, QApplication, QSizePolicy
+    QScrollArea, QApplication, QSizePolicy, QCompleter
 )
 from PyQt6.QtCore import Qt, QTimer, QTime, pyqtSignal, QUrl
 from PyQt6.QtGui import QAction, QFont, QDesktopServices, QCursor
@@ -4421,7 +4421,13 @@ For accurate Greeks, use live option data."""
         order_layout = QFormLayout(order_group)
 
         self.order_symbol = QLineEdit()
-        self.order_symbol.setPlaceholderText("e.g., RELIANCE")
+        self.order_symbol.setPlaceholderText("e.g., RELIANCE (type to search)")
+        self.order_symbol.textChanged.connect(self._on_symbol_search)
+        # Add completer for autocomplete
+        self.symbol_completer = QCompleter([])
+        self.symbol_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.symbol_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.order_symbol.setCompleter(self.symbol_completer)
         order_layout.addRow("Symbol:", self.order_symbol)
 
         self.order_exchange = QComboBox()
@@ -6833,6 +6839,67 @@ For accurate Greeks, use live option data."""
             self._load_strategies()
         else:
             QMessageBox.warning(self, "Error", "Failed to activate strategy")
+
+    def _on_symbol_search(self, text: str):
+        """Search for symbols as user types - autocomplete feature"""
+        if len(text) < 2:
+            return
+
+        # Get current broker
+        if not hasattr(self, 'brokers') or not self.brokers:
+            # If no broker connected, use default stock list
+            self._update_symbol_completer_default(text)
+            return
+
+        broker = list(self.brokers.values())[0]
+
+        # Try to search symbols from broker
+        if hasattr(broker, 'search_instruments'):
+            try:
+                results = broker.search_instruments(text.upper())
+                if results:
+                    symbols = [r.get('trading_symbol', r.get('symbol', '')) for r in results]
+                    model = self.symbol_completer.model()
+                    if model:
+                        from PyQt6.QtCore import QStringListModel
+                        self.symbol_completer.setModel(QStringListModel(symbols))
+                    return
+            except Exception as e:
+                logger.debug(f"Symbol search error: {e}")
+
+        # Fallback to default list
+        self._update_symbol_completer_default(text)
+
+    def _update_symbol_completer_default(self, text: str):
+        """Update completer with default stock list filtered by text"""
+        from PyQt6.QtCore import QStringListModel
+
+        # Common NSE stocks list
+        all_symbols = [
+            "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HDFC", "SBIN",
+            "BHARTIARTL", "ITC", "KOTAKBANK", "LT", "AXISBANK", "ASIANPAINT",
+            "MARUTI", "BAJFINANCE", "WIPRO", "HCLTECH", "TATASTEEL", "SUNPHARMA",
+            "ULTRACEMCO", "TITAN", "NESTLEIND", "POWERGRID", "NTPC", "M&M",
+            "TATAMOTORS", "ONGC", "JSWSTEEL", "COALINDIA", "ADANIENT", "ADANIPORTS",
+            "BAJAJFINSV", "DIVISLAB", "DRREDDY", "EICHERMOT", "GRASIM", "HINDALCO",
+            "HINDUNILVR", "INDUSINDBK", "TECHM", "BRITANNIA", "CIPLA", "APOLLOHOSP",
+            "BPCL", "HEROMOTOCO", "TATACONSUM", "UPL", "SBILIFE", "BSE",
+            # Add more common stocks
+            "TATACHEM", "TATAELXSI", "TATAPOWER", "TATASTLLP", "PIDILITIND",
+            "BIOCON", "JUBLFOOD", "HAVELLS", "GODREJCP", "MARICO", "DABUR",
+            "COLPAL", "BERGEPAINT", "INDIGO", "MUTHOOTFIN", "BANDHANBNK",
+            "FEDERALBNK", "IDFCFIRSTB", "PNB", "BANKBARODA", "CANBK",
+            "NAUKRI", "IRCTC", "ZOMATO", "PAYTM", "POLICYBZR", "NYKAA",
+            # Nifty indices (for F&O)
+            "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
+        ]
+
+        # Filter symbols that contain the search text
+        text_upper = text.upper()
+        filtered = [s for s in all_symbols if text_upper in s]
+
+        # Update completer model
+        self.symbol_completer.setModel(QStringListModel(filtered))
 
     def _place_manual_order(self):
         """Place a manual order"""

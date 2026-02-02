@@ -458,6 +458,86 @@ class UpstoxBroker(BaseBroker):
             logger.error(f"Error getting instrument key: {e}")
             return None
 
+    def search_instruments(self, query: str, exchange: str = "NSE") -> List[Dict]:
+        """
+        Search for instruments matching the query
+        Returns list of matching instruments with symbol, name, instrument_key
+        """
+        try:
+            # Upstox doesn't have a direct search API, so we use a hardcoded list
+            # In production, this should download and cache the instruments master file
+
+            # Common NSE stocks with their details
+            all_instruments = [
+                {"symbol": "RELIANCE", "name": "Reliance Industries Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE002A01018"},
+                {"symbol": "TCS", "name": "Tata Consultancy Services", "exchange": "NSE", "instrument_key": "NSE_EQ|INE467B01029"},
+                {"symbol": "HDFCBANK", "name": "HDFC Bank Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE040A01034"},
+                {"symbol": "INFY", "name": "Infosys Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE009A01021"},
+                {"symbol": "ICICIBANK", "name": "ICICI Bank Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE090A01021"},
+                {"symbol": "SBIN", "name": "State Bank of India", "exchange": "NSE", "instrument_key": "NSE_EQ|INE062A01020"},
+                {"symbol": "BHARTIARTL", "name": "Bharti Airtel Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE397D01024"},
+                {"symbol": "ITC", "name": "ITC Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE154A01025"},
+                {"symbol": "KOTAKBANK", "name": "Kotak Mahindra Bank", "exchange": "NSE", "instrument_key": "NSE_EQ|INE237A01028"},
+                {"symbol": "LT", "name": "Larsen & Toubro Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE018A01030"},
+                {"symbol": "AXISBANK", "name": "Axis Bank Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE238A01034"},
+                {"symbol": "ASIANPAINT", "name": "Asian Paints Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE021A01026"},
+                {"symbol": "MARUTI", "name": "Maruti Suzuki India", "exchange": "NSE", "instrument_key": "NSE_EQ|INE585B01010"},
+                {"symbol": "BAJFINANCE", "name": "Bajaj Finance Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE296A01024"},
+                {"symbol": "WIPRO", "name": "Wipro Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE075A01022"},
+                {"symbol": "HCLTECH", "name": "HCL Technologies Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE860A01027"},
+                {"symbol": "TATASTEEL", "name": "Tata Steel Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE081A01012"},
+                {"symbol": "SUNPHARMA", "name": "Sun Pharmaceutical", "exchange": "NSE", "instrument_key": "NSE_EQ|INE044A01036"},
+                {"symbol": "ULTRACEMCO", "name": "UltraTech Cement Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE481G01011"},
+                {"symbol": "TITAN", "name": "Titan Company Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE280A01028"},
+                {"symbol": "NESTLEIND", "name": "Nestle India Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE239A01016"},
+                {"symbol": "POWERGRID", "name": "Power Grid Corp", "exchange": "NSE", "instrument_key": "NSE_EQ|INE752E01010"},
+                {"symbol": "NTPC", "name": "NTPC Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE733E01010"},
+                {"symbol": "M&M", "name": "Mahindra & Mahindra", "exchange": "NSE", "instrument_key": "NSE_EQ|INE101A01026"},
+                {"symbol": "TATAMOTORS", "name": "Tata Motors Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE155A01022"},
+                {"symbol": "ONGC", "name": "Oil & Natural Gas Corp", "exchange": "NSE", "instrument_key": "NSE_EQ|INE213A01029"},
+                {"symbol": "JSWSTEEL", "name": "JSW Steel Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE019A01038"},
+                {"symbol": "COALINDIA", "name": "Coal India Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE522F01014"},
+                {"symbol": "ADANIENT", "name": "Adani Enterprises", "exchange": "NSE", "instrument_key": "NSE_EQ|INE423A01024"},
+                {"symbol": "ADANIPORTS", "name": "Adani Ports & SEZ", "exchange": "NSE", "instrument_key": "NSE_EQ|INE742F01042"},
+                {"symbol": "BAJAJFINSV", "name": "Bajaj Finserv Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE918I01018"},
+                {"symbol": "DIVISLAB", "name": "Divi's Laboratories", "exchange": "NSE", "instrument_key": "NSE_EQ|INE361B01024"},
+                {"symbol": "DRREDDY", "name": "Dr. Reddy's Labs", "exchange": "NSE", "instrument_key": "NSE_EQ|INE089A01023"},
+                {"symbol": "EICHERMOT", "name": "Eicher Motors Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE066A01013"},
+                {"symbol": "GRASIM", "name": "Grasim Industries", "exchange": "NSE", "instrument_key": "NSE_EQ|INE047A01021"},
+                {"symbol": "HINDALCO", "name": "Hindalco Industries", "exchange": "NSE", "instrument_key": "NSE_EQ|INE038A01020"},
+                {"symbol": "HINDUNILVR", "name": "Hindustan Unilever", "exchange": "NSE", "instrument_key": "NSE_EQ|INE030A01027"},
+                {"symbol": "INDUSINDBK", "name": "IndusInd Bank Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE095A01012"},
+                {"symbol": "TECHM", "name": "Tech Mahindra Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE669C01036"},
+                {"symbol": "BRITANNIA", "name": "Britannia Industries", "exchange": "NSE", "instrument_key": "NSE_EQ|INE216A01022"},
+                {"symbol": "CIPLA", "name": "Cipla Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE059A01026"},
+                {"symbol": "APOLLOHOSP", "name": "Apollo Hospitals", "exchange": "NSE", "instrument_key": "NSE_EQ|INE437A01024"},
+                {"symbol": "BPCL", "name": "Bharat Petroleum", "exchange": "NSE", "instrument_key": "NSE_EQ|INE029A01011"},
+                {"symbol": "HEROMOTOCO", "name": "Hero MotoCorp Ltd", "exchange": "NSE", "instrument_key": "NSE_EQ|INE158A01026"},
+                {"symbol": "TATACONSUM", "name": "Tata Consumer Products", "exchange": "NSE", "instrument_key": "NSE_EQ|INE192A01025"},
+                {"symbol": "SBILIFE", "name": "SBI Life Insurance", "exchange": "NSE", "instrument_key": "NSE_EQ|INE123W01016"},
+                {"symbol": "MOUPHARM", "name": "Morepen Laboratories", "exchange": "NSE", "instrument_key": "NSE_EQ|INE083A01026"},
+                {"symbol": "MOREPENLAB", "name": "Morepen Laboratories", "exchange": "NSE", "instrument_key": "NSE_EQ|INE083A01026"},
+            ]
+
+            # Filter by query (case-insensitive, match start or contains)
+            query_upper = query.upper()
+            results = []
+            for inst in all_instruments:
+                if query_upper in inst["symbol"] or query_upper in inst["name"].upper():
+                    results.append({
+                        "trading_symbol": inst["symbol"],
+                        "symbol": inst["symbol"],
+                        "name": inst["name"],
+                        "exchange": inst["exchange"],
+                        "instrument_key": inst["instrument_key"]
+                    })
+
+            return results[:20]  # Limit to 20 results
+
+        except Exception as e:
+            logger.error(f"Error searching instruments: {e}")
+            return []
+
     def place_order(self, order) -> Dict:
         """Place an order on Upstox"""
         # Handle both BrokerOrder and Order objects

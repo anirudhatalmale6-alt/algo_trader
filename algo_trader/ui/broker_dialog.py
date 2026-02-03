@@ -187,8 +187,10 @@ class BrokerConfigDialog(QDialog):
         if broker == "Alice Blue":
             self.user_id.setEnabled(True)
             self.user_id.setPlaceholderText("User ID (required)")
-            self.api_secret.setPlaceholderText("Not required for Alice Blue")
-            self.api_secret.setEnabled(False)
+            self.api_key.setPlaceholderText("Secret Key (long key from API portal)")
+            self.api_secret.setPlaceholderText("App Code (short code, e.g. cabzLFoeRT)")
+            self.api_secret.setEnabled(True)
+            self.api_secret.setEchoMode(QLineEdit.EchoMode.Normal)  # App code is not secret
         elif broker == "Zerodha":
             self.user_id.setEnabled(True)
             self.user_id.setPlaceholderText("User ID (required)")
@@ -271,12 +273,16 @@ class BrokerConfigDialog(QDialog):
             self._connect_mt5()
             return
 
-        # Alice Blue doesn't need API Secret
-        if broker != "Alice Blue" and (not api_key or not api_secret):
+        # Alice Blue needs both Secret Key and App Code
+        if broker == "Alice Blue":
+            if not api_key:
+                QMessageBox.warning(self, "Error", "Please enter Secret Key")
+                return
+            if not api_secret:
+                QMessageBox.warning(self, "Error", "Please enter App Code")
+                return
+        elif not api_key or not api_secret:
             QMessageBox.warning(self, "Error", "Please enter API Key and Secret")
-            return
-        elif broker == "Alice Blue" and not api_key:
-            QMessageBox.warning(self, "Error", "Please enter API Key")
             return
 
         try:
@@ -284,10 +290,14 @@ class BrokerConfigDialog(QDialog):
                 self.broker_instance = UpstoxBroker(api_key, api_secret, redirect_uri)
             elif broker == "Alice Blue":
                 user_id = self.user_id.text().strip()
+                app_code = api_secret  # For Alice Blue, api_secret field contains App Code
                 if not user_id:
                     QMessageBox.warning(self, "Error", "User ID is required for Alice Blue")
                     return
-                self.broker_instance = AliceBlueBroker(api_key, "", user_id, redirect_uri)
+                if not app_code:
+                    QMessageBox.warning(self, "Error", "App Code is required for Alice Blue")
+                    return
+                self.broker_instance = AliceBlueBroker(api_key, app_code, user_id, redirect_uri)
             elif broker == "Zerodha":
                 user_id = self.user_id.text().strip()
                 if not user_id:
@@ -440,12 +450,16 @@ class BrokerConfigDialog(QDialog):
 
         broker = self.broker_combo.currentText().lower().replace(" ", "_")
 
-        # Alice Blue doesn't need API Secret
-        if broker != "alice_blue" and (not api_key or not api_secret):
+        # Alice Blue needs Secret Key and App Code
+        if broker == "alice_blue":
+            if not api_key:
+                QMessageBox.warning(self, "Error", "Please enter Secret Key")
+                return
+            if not api_secret:
+                QMessageBox.warning(self, "Error", "Please enter App Code")
+                return
+        elif not api_key or not api_secret:
             QMessageBox.warning(self, "Error", "Please enter API Key and Secret")
-            return
-        elif broker == "alice_blue" and not api_key:
-            QMessageBox.warning(self, "Error", "Please enter API Key")
             return
 
         kwargs = {}
@@ -455,7 +469,7 @@ class BrokerConfigDialog(QDialog):
                 QMessageBox.warning(self, "Error", "User ID is required for Alice Blue")
                 return
             kwargs['user_id'] = user_id
-            api_secret = ""  # Not needed for Alice Blue
+            # api_secret contains the App Code for Alice Blue
         elif broker == "zerodha":
             user_id = self.user_id.text().strip()
             if not user_id:

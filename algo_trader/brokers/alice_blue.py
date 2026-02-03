@@ -16,25 +16,29 @@ from .base import BaseBroker, BrokerOrder
 class AliceBlueBroker(BaseBroker):
     """
     Alice Blue ANT API Integration
-    Updated for v2 API
+    Updated for Open API v1 (2025)
     """
 
     BASE_URL = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api"
     AUTH_URL = "https://ant.aliceblueonline.com"
-    SESSION_URL = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/customer/getUserDetails"
+    # New Open API endpoint for getUserDetails
+    SESSION_URL = "https://ant.aliceblueonline.com/open-api/od/v1/vendor/getUserDetails"
 
-    def __init__(self, api_key: str, api_secret: str, user_id: str = None,
+    def __init__(self, api_key: str, app_code: str = None, user_id: str = None,
                  redirect_uri: str = "http://127.0.0.1:5000/callback"):
-        super().__init__(api_key, api_secret)
+        # api_key = Secret Key (long), app_code = App Code (short)
+        super().__init__(api_key, "")
         self.broker_name = "alice_blue"
         self.user_id = user_id
+        self.app_code = app_code  # Short code like "cabzLFoeRT" for login URL
+        self.secret_key = api_key  # Long key for checksum calculation
         self.redirect_uri = redirect_uri
         self.session_id = None
 
     def get_login_url(self) -> str:
         """Get Alice Blue OAuth login URL"""
-        # New format: https://ant.aliceblueonline.com/?appcode=YOUR_API_KEY
-        return f"{self.AUTH_URL}/?appcode={self.api_key}"
+        # Use App Code (short code) for login URL, not Secret Key
+        return f"{self.AUTH_URL}/?appcode={self.app_code}"
 
     def authenticate(self, access_token: str = None, session_id: str = None, **kwargs) -> bool:
         """Authenticate using existing access token or session"""
@@ -52,14 +56,13 @@ class AliceBlueBroker(BaseBroker):
         """Generate session using authorization code"""
         try:
             # Alice Blue uses SHA-256 hash for authentication
+            # Format: userId + authCode + secretKey
             checksum = hashlib.sha256(
-                (self.user_id + self.api_key + auth_code).encode()
+                (self.user_id + auth_code + self.secret_key).encode()
             ).hexdigest()
 
+            # New Open API format - just send checkSum
             payload = {
-                'userId': self.user_id,
-                'userData': auth_code,
-                'source': 'API',
                 'checkSum': checksum
             }
 
@@ -68,21 +71,30 @@ class AliceBlueBroker(BaseBroker):
                 'Accept': 'application/json'
             }
 
+            logger.info(f"Alice Blue auth attempt: user_id={self.user_id}, checksum={checksum[:20]}...")
+
             response = requests.post(
-                f"{self.BASE_URL}/customer/getUserDetails",
+                self.SESSION_URL,
                 json=payload,
                 headers=headers
             )
+
+            logger.info(f"Alice Blue response status: {response.status_code}")
+            logger.info(f"Alice Blue response body: {response.text[:500]}")
+
             data = response.json()
 
+            # New response format uses 'stat' and 'userSession'
             if response.status_code == 200 and data.get('stat') == 'Ok':
-                self.session_id = data.get('sessionId')
-                self.access_token = data.get('sessionId')
+                self.session_id = data.get('userSession')
+                self.access_token = data.get('userSession')
+                self.client_id = data.get('clientId')
                 self.is_authenticated = True
-                logger.info("Alice Blue authentication successful")
+                logger.info(f"Alice Blue authentication successful, clientId: {self.client_id}")
                 return True
             else:
-                logger.error(f"Alice Blue auth failed: {data}")
+                error_msg = data.get('emsg', data.get('message', 'Unknown error'))
+                logger.error(f"Alice Blue auth failed: stat={data.get('stat')}, error={error_msg}")
                 return False
 
         except Exception as e:
@@ -91,8 +103,10 @@ class AliceBlueBroker(BaseBroker):
 
     def _get_headers(self) -> Dict:
         """Get headers for authenticated requests"""
+        # Use JWT token from userSession for authorization
         return {
-            'Authorization': f'Bearer {self.user_id} {self.session_id}',
+            'Authorization': f'Bearer {self.session_id}',
+            'X-SAS-Version': '2.0',
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }

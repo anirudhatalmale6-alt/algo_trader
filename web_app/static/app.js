@@ -191,6 +191,56 @@ let wlCurrentPage = 1;
 const WL_PER_PAGE = 10;
 let wlActiveTab = 'watchlist';
 
+// Broker instruments (loaded from API after broker connection)
+let brokerInstruments = [];
+let instrumentsLoaded = false;
+let instrumentsLoading = false;
+
+// Fetch instruments from broker API (just triggers server-side download, doesn't load all to browser)
+function fetchBrokerInstruments() {
+    if (instrumentsLoading) return;
+    instrumentsLoading = true;
+
+    // Just trigger the server to download & cache instrument lists
+    // We don't load 50k+ instruments into browser memory
+    // Instead, search API will be used for lookups
+    fetch('/api/instruments?exchanges=NSE,NFO')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.count > 0) {
+                instrumentsLoaded = true;
+                console.log(`Server loaded ${data.count} instruments from broker (search via API)`);
+            } else {
+                console.log('No broker instruments available, using local database');
+            }
+            instrumentsLoading = false;
+            updateWlCount();
+        })
+        .catch(err => {
+            console.log('Instrument fetch error (using local database):', err);
+            instrumentsLoading = false;
+            updateWlCount();
+        });
+}
+
+// Local search fallback (when broker instruments not loaded)
+function searchInstrumentsLocal(query) {
+    query = query.toUpperCase();
+    let results = [];
+    for (let i = 0; i < stockDatabase.length && results.length < 15; i++) {
+        const s = stockDatabase[i];
+        if (s.symbol.includes(query) || s.name.toUpperCase().includes(query)) {
+            results.push({
+                symbol: s.symbol,
+                name: s.name,
+                exchange: s.exchange,
+                token: 0
+            });
+        }
+    }
+    return results.filter(r => !watchlistStocks.includes(r.symbol));
+}
+
 // ===== MARKET TICKER DATA WITH INDICES =====
 let tickerData = [
     { symbol: "NIFTY", price: 22450.75, change: 125.50, name: "NIFTY 50" },
@@ -328,7 +378,17 @@ function renderWatchlist() {
 
     let html = '';
     pageStocks.forEach(symbol => {
-        const stockInfo = stockDatabase.find(s => s.symbol === symbol) || { name: symbol, exchange: 'NSE', sector: '' };
+        // Look up from local database, determine exchange from symbol pattern
+        let stockInfo = stockDatabase.find(s => s.symbol === symbol);
+        if (!stockInfo) {
+            // Auto-detect exchange for broker instruments (F&O symbols from Alice Blue)
+            let exchange = 'NSE';
+            if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CP]\d+/) || symbol.includes('FUT') ||
+                symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/)) {
+                exchange = 'NFO';
+            }
+            stockInfo = { name: symbol, exchange: exchange, sector: '' };
+        }
         const priceData = stockPrices[symbol] || { price: 0, change: 0, changePct: 0 };
         const changeClass = priceData.change > 0 ? 'wl-positive' : priceData.change < 0 ? 'wl-negative' : 'wl-neutral';
         const changeSign = priceData.change > 0 ? '+' : '';
@@ -410,42 +470,52 @@ function initWatchlistSearch() {
     const resultsDiv = document.getElementById('wlSearchResults');
     if (!searchInput || !resultsDiv) return;
 
+    let searchTimeout = null;
     searchInput.addEventListener('input', function() {
-        const query = this.value.trim().toUpperCase();
-        if (query.length === 0) {
+        const query = this.value.trim();
+        if (query.length < 2) {
             resultsDiv.style.display = 'none';
             return;
         }
-        const matches = stockDatabase.filter(s =>
-            (s.symbol.includes(query) || s.name.toUpperCase().includes(query)) && !watchlistStocks.includes(s.symbol)
-        ).slice(0, 8);
 
-        if (matches.length === 0) {
-            resultsDiv.innerHTML = '<div style="padding: 10px; color: #666; font-size: 12px; text-align: center;">No results found</div>';
-            resultsDiv.style.display = 'block';
-            return;
-        }
-
-        resultsDiv.innerHTML = matches.map(s => `
-            <div class="wl-search-result-item" onclick="addToWatchlistFromSearch('${s.symbol}')">
-                <div>
-                    <span class="sr-symbol">${s.symbol}</span>
-                    <span class="sr-name">${s.name}</span>
-                </div>
-                <span class="sr-exchange">${s.exchange}</span>
-            </div>
-        `).join('');
-        resultsDiv.style.display = 'block';
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            if (instrumentsLoaded) {
+                // Server-side search (broker instruments loaded on server)
+                fetch('/api/instruments/search?q=' + encodeURIComponent(query))
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.results) {
+                            const matches = data.results.filter(s => !watchlistStocks.includes(s.symbol));
+                            renderSearchResults(matches, resultsDiv);
+                        }
+                    })
+                    .catch(() => {
+                        const matches = searchInstrumentsLocal(query);
+                        renderSearchResults(matches, resultsDiv);
+                    });
+            } else {
+                const matches = searchInstrumentsLocal(query);
+                renderSearchResults(matches, resultsDiv);
+            }
+        }, 200);
     });
 
     searchInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             const query = this.value.trim().toUpperCase();
-            const match = stockDatabase.find(s => s.symbol === query);
-            if (match && !watchlistStocks.includes(match.symbol)) {
-                addToWatchlistBySymbol(match.symbol);
-                this.value = '';
-                resultsDiv.style.display = 'none';
+            // Try adding the first visible search result
+            const firstResult = resultsDiv.querySelector('.wl-search-result-item');
+            if (firstResult) {
+                firstResult.click();
+            } else {
+                // Fallback to local search
+                const matches = searchInstrumentsLocal(query);
+                if (matches.length > 0) {
+                    addToWatchlistBySymbol(matches[0].symbol);
+                    this.value = '';
+                    resultsDiv.style.display = 'none';
+                }
             }
         }
         if (e.key === 'Escape') {
@@ -459,6 +529,31 @@ function initWatchlistSearch() {
             resultsDiv.style.display = 'none';
         }
     });
+}
+
+function renderSearchResults(matches, resultsDiv) {
+    if (matches.length === 0) {
+        resultsDiv.innerHTML = '<div style="padding: 10px; color: #666; font-size: 12px; text-align: center;">No results found</div>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+    resultsDiv.innerHTML = matches.map(s => {
+        const exchClass = (s.exchange || 'NSE').toLowerCase() === 'nfo' || (s.exchange || '').toLowerCase() === 'bfo' ? 'exchange-nfo' : '';
+        // Escape single quotes in symbol for onclick
+        const safeSymbol = (s.symbol || '').replace(/'/g, "\\'");
+        const expiry = s.expiry ? `<span style="color:#666;font-size:10px;margin-left:4px;">${s.expiry}</span>` : '';
+        return `
+            <div class="wl-search-result-item" onclick="addToWatchlistFromSearch('${safeSymbol}')">
+                <div>
+                    <span class="sr-symbol">${s.symbol}</span>
+                    <span class="sr-name">${s.name || s.symbol}</span>
+                    ${expiry}
+                </div>
+                <span class="sr-exchange ${exchClass}">${s.exchange || 'NSE'}</span>
+            </div>
+        `;
+    }).join('');
+    resultsDiv.style.display = 'block';
 }
 
 function addToWatchlistFromSearch(symbol) {
@@ -2129,6 +2224,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load watchlist
     loadWatchlist();
+
+    // Try to fetch broker instruments (will use local DB as fallback)
+    fetchBrokerInstruments();
 
     // Load positions
     loadPositions();

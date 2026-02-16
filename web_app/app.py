@@ -15,6 +15,7 @@ from loguru import logger
 import json
 import threading
 import time
+import requests as http_requests
 
 from algo_trader.brokers.upstox import UpstoxBroker
 from algo_trader.brokers.alice_blue import AliceBlueBroker
@@ -29,6 +30,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 active_broker = None
 broker_config = {}
 watchlist = []
+instruments_cache = {}  # exchange -> list of instruments
 
 # ===== PAGE ROUTES =====
 
@@ -105,6 +107,115 @@ def broker_status():
             'broker': active_broker.broker_name,
         })
     return jsonify({'success': True, 'connected': False, 'broker': None})
+
+
+@app.route('/api/instruments')
+def get_instruments():
+    """Fetch instruments from broker master contract. Returns F&O + equity list."""
+    global instruments_cache
+    try:
+        exchanges = request.args.get('exchanges', 'NSE,NFO').split(',')
+        result = []
+
+        for exchange in exchanges:
+            exchange = exchange.strip().upper()
+            # Check cache first
+            if exchange in instruments_cache and len(instruments_cache[exchange]) > 0:
+                result.extend(instruments_cache[exchange])
+                continue
+
+            # Download from Alice Blue master contract API
+            try:
+                url = f"https://v2api.aliceblueonline.com/restpy/contract_master?exch={exchange}"
+                logger.info(f"Downloading {exchange} master contract from {url}")
+                headers = {'Accept-Encoding': 'gzip, deflate', 'Accept': 'application/json'}
+                response = http_requests.get(url, timeout=120, headers=headers)
+                if response.status_code == 200:
+                    raw_data = response.json()
+                    # Response format: {"NFO": [...]} - data nested under exchange key
+                    data = raw_data.get(exchange, raw_data if isinstance(raw_data, list) else [])
+                    instruments = []
+                    from datetime import datetime as dt
+                    for item in data:
+                        trading_symbol = item.get('trading_symbol', '')
+                        formatted_name = item.get('formatted_ins_name', item.get('symbol', ''))
+                        token = item.get('token', 0)
+                        expiry_ts = item.get('expiry_date', 0)
+                        lot_size = item.get('lot_size', 1)
+                        inst_type = item.get('instrument_type', '')
+                        strike = item.get('strike_price', '')
+                        opt_type = item.get('option_type', '')
+
+                        # Convert expiry timestamp to readable date
+                        expiry_str = ''
+                        if expiry_ts and isinstance(expiry_ts, (int, float)) and expiry_ts > 0:
+                            try:
+                                expiry_str = dt.fromtimestamp(expiry_ts / 1000).strftime('%d %b %y')
+                            except:
+                                expiry_str = ''
+
+                        if trading_symbol:
+                            instruments.append({
+                                'symbol': trading_symbol,
+                                'name': formatted_name,
+                                'exchange': exchange,
+                                'token': str(token),
+                                'expiry': expiry_str,
+                                'lot_size': str(lot_size)
+                            })
+
+                    instruments_cache[exchange] = instruments
+                    result.extend(instruments)
+                    logger.info(f"Loaded {len(instruments)} instruments for {exchange}")
+                else:
+                    logger.warning(f"Failed to download {exchange} master: HTTP {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error downloading {exchange} master: {e}")
+
+        return jsonify({
+            'success': True,
+            'count': len(result),
+            'instruments': result
+        })
+    except Exception as e:
+        logger.error(f"Instruments error: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/instruments/search')
+def search_instruments():
+    """Search instruments by keyword. Returns max 20 results."""
+    global instruments_cache
+    try:
+        query = request.args.get('q', '').upper().strip()
+        exchange = request.args.get('exchange', '').upper().strip()
+
+        if len(query) < 2:
+            return jsonify({'success': True, 'results': []})
+
+        results = []
+        # Split query into words - ALL words must match in symbol or name
+        query_words = query.split()
+        exchanges_to_search = [exchange] if exchange else list(instruments_cache.keys())
+
+        for exch in exchanges_to_search:
+            if exch not in instruments_cache:
+                continue
+            for inst in instruments_cache[exch]:
+                sym = inst.get('symbol', '').upper()
+                name = inst.get('name', '').upper()
+                combined = sym + ' ' + name
+                # All words must be found in the combined symbol+name
+                if all(word in combined for word in query_words):
+                    results.append(inst)
+                    if len(results) >= 20:
+                        break
+            if len(results) >= 20:
+                break
+
+        return jsonify({'success': True, 'results': results})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 
 @app.route('/callback')

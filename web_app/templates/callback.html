@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Callback</title>
+    <style>
+        body { background: #0d0d0d; color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #141414; padding: 40px; border-radius: 10px; text-align: center; border: 1px solid #00ccff; }
+        .code { background: #222; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 18px; color: #00ff00; margin: 20px 0; word-break: break-all; }
+        h2 { color: #00ccff; }
+        p { color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Authentication Successful!</h2>
+        <p>This window will close automatically...</p>
+        <div class="code" id="authCode">{{ auth_code }}</div>
+        <p>If it doesn't close, copy the code above and paste it in the app.</p>
+    </div>
+    <script>
+        // Send auth code back to the main app
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'auth_callback',
+                authCode: '{{ auth_code }}',
+                userId: '{{ user_id }}'
+            }, '*');
+            setTimeout(() => window.close(), 3000);
+        }
+        // Also try to authenticate automatically via API
+        fetch('/api/broker/authenticate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({auth_code: '{{ auth_code }}'})
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                document.querySelector('h2').textContent = 'Connected!';
+                document.querySelector('p').textContent = 'Broker connected successfully. This window will close.';
+                if (window.opener) {
+                    window.opener.postMessage({type: 'broker_connected', broker: data.broker}, '*');
+                    setTimeout(() => window.close(), 2000);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

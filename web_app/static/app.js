@@ -63,7 +63,67 @@ const stockDatabase = [
     { symbol: "VEDL", name: "Vedanta Limited", exchange: "NSE", sector: "Metal" },
     { symbol: "TATAPOWER", name: "Tata Power Company", exchange: "NSE", sector: "Power" },
     { symbol: "BANKBARODA", name: "Bank of Baroda", exchange: "NSE", sector: "Banking" },
-    { symbol: "INDUSINDBK", name: "IndusInd Bank Ltd", exchange: "NSE", sector: "Banking" }
+    { symbol: "INDUSINDBK", name: "IndusInd Bank Ltd", exchange: "NSE", sector: "Banking" },
+    // ===== FUTURES =====
+    { symbol: "NIFTY FUT", name: "NIFTY 27 MAR FUT", exchange: "NFO", sector: "Index Futures" },
+    { symbol: "BANKNIFTY FUT", name: "BANKNIFTY 27 MAR FUT", exchange: "NFO", sector: "Index Futures" },
+    { symbol: "FINNIFTY FUT", name: "FINNIFTY 27 MAR FUT", exchange: "NFO", sector: "Index Futures" },
+    { symbol: "MIDCPNIFTY FUT", name: "MIDCPNIFTY 27 MAR FUT", exchange: "NFO", sector: "Index Futures" },
+    { symbol: "RELIANCE FUT", name: "RELIANCE 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "TCS FUT", name: "TCS 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "INFY FUT", name: "INFY 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "HDFCBANK FUT", name: "HDFCBANK 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "SBIN FUT", name: "SBIN 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "TATAMOTORS FUT", name: "TATAMOTORS 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "BAJFINANCE FUT", name: "BAJFINANCE 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    { symbol: "ITC FUT", name: "ITC 27 MAR FUT", exchange: "NFO", sector: "Stock Futures" },
+    // ===== NIFTY OPTIONS =====
+    { symbol: "NIFTY 22000 CE", name: "NIFTY 27 MAR 22000 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22000 PE", name: "NIFTY 27 MAR 22000 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22100 CE", name: "NIFTY 27 MAR 22100 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22100 PE", name: "NIFTY 27 MAR 22100 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22200 CE", name: "NIFTY 27 MAR 22200 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22200 PE", name: "NIFTY 27 MAR 22200 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22300 CE", name: "NIFTY 27 MAR 22300 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22300 PE", name: "NIFTY 27 MAR 22300 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22400 CE", name: "NIFTY 27 MAR 22400 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22400 PE", name: "NIFTY 27 MAR 22400 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22500 CE", name: "NIFTY 27 MAR 22500 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22500 PE", name: "NIFTY 27 MAR 22500 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22600 CE", name: "NIFTY 27 MAR 22600 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22600 PE", name: "NIFTY 27 MAR 22600 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22700 CE", name: "NIFTY 27 MAR 22700 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22700 PE", name: "NIFTY 27 MAR 22700 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22800 CE", name: "NIFTY 27 MAR 22800 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22800 PE", name: "NIFTY 27 MAR 22800 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22900 CE", name: "NIFTY 27 MAR 22900 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 22900 PE", name: "NIFTY 27 MAR 22900 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 23000 CE", name: "NIFTY 27 MAR 23000 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "NIFTY 23000 PE", name: "NIFTY 27 MAR 23000 PE", exchange: "NFO", sector: "Index Options" },
+    // ===== BANKNIFTY OPTIONS =====
+    { symbol: "BANKNIFTY 47000 CE", name: "BANKNIFTY 27 MAR 47000 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 47000 PE", name: "BANKNIFTY 27 MAR 47000 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 47500 CE", name: "BANKNIFTY 27 MAR 47500 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 47500 PE", name: "BANKNIFTY 27 MAR 47500 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 48000 CE", name: "BANKNIFTY 27 MAR 48000 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 48000 PE", name: "BANKNIFTY 27 MAR 48000 PE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 48500 CE", name: "BANKNIFTY 27 MAR 48500 CE", exchange: "NFO", sector: "Index Options" },
+    { symbol: "BANKNIFTY 48500 PE", name: "BANKNIFTY 27 MAR 48500 PE", exchange: "NFO", sector: "Index Options" },
+    // ===== STOCK OPTIONS =====
+    { symbol: "RELIANCE 3000 CE", name: "RELIANCE 27 MAR 3000 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "RELIANCE 3000 PE", name: "RELIANCE 27 MAR 3000 PE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "RELIANCE 2900 CE", name: "RELIANCE 27 MAR 2900 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "RELIANCE 2900 PE", name: "RELIANCE 27 MAR 2900 PE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "HDFCBANK 1650 CE", name: "HDFCBANK 27 MAR 1650 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "HDFCBANK 1650 PE", name: "HDFCBANK 27 MAR 1650 PE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "TCS 3800 CE", name: "TCS 27 MAR 3800 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "TCS 3800 PE", name: "TCS 27 MAR 3800 PE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "INFY 1550 CE", name: "INFY 27 MAR 1550 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "INFY 1550 PE", name: "INFY 27 MAR 1550 PE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "SBIN 630 CE", name: "SBIN 27 MAR 630 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "SBIN 630 PE", name: "SBIN 27 MAR 630 PE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "TATAMOTORS 750 CE", name: "TATAMOTORS 27 MAR 750 CE", exchange: "NFO", sector: "Stock Options" },
+    { symbol: "TATAMOTORS 750 PE", name: "TATAMOTORS 27 MAR 750 PE", exchange: "NFO", sector: "Stock Options" }
 ];
 
 // Simulated price data for watchlist stocks
@@ -82,7 +142,37 @@ function initStockPrices() {
         COALINDIA: 385.40, BPCL: 545.60, IOC: 142.80, GRASIM: 2280.40,
         BRITANNIA: 4980.30, HEROMOTOCO: 4245.60, PIDILITIND: 2680.40, SHREECEM: 25480.60,
         DABUR: 545.80, HAVELLS: 1480.30, VEDL: 285.40, TATAPOWER: 385.60,
-        BANKBARODA: 245.80, INDUSINDBK: 1045.30
+        BANKBARODA: 245.80, INDUSINDBK: 1045.30,
+        // Futures
+        "NIFTY FUT": 22465.50, "BANKNIFTY FUT": 47580.25, "FINNIFTY FUT": 21250.40,
+        "MIDCPNIFTY FUT": 9845.30, "RELIANCE FUT": 2990.80, "TCS FUT": 3852.40,
+        "INFY FUT": 1565.20, "HDFCBANK FUT": 1650.60, "SBIN FUT": 630.80,
+        "TATAMOTORS FUT": 748.50, "BAJFINANCE FUT": 6995.30, "ITC FUT": 447.60,
+        // NIFTY Options
+        "NIFTY 22000 CE": 485.30, "NIFTY 22000 PE": 35.20,
+        "NIFTY 22100 CE": 395.40, "NIFTY 22100 PE": 48.60,
+        "NIFTY 22200 CE": 310.80, "NIFTY 22200 PE": 65.40,
+        "NIFTY 22300 CE": 235.60, "NIFTY 22300 PE": 88.20,
+        "NIFTY 22400 CE": 168.40, "NIFTY 22400 PE": 118.50,
+        "NIFTY 22500 CE": 112.80, "NIFTY 22500 PE": 158.30,
+        "NIFTY 22600 CE": 72.40, "NIFTY 22600 PE": 210.60,
+        "NIFTY 22700 CE": 42.80, "NIFTY 22700 PE": 275.40,
+        "NIFTY 22800 CE": 22.60, "NIFTY 22800 PE": 348.20,
+        "NIFTY 22900 CE": 11.40, "NIFTY 22900 PE": 430.80,
+        "NIFTY 23000 CE": 5.80, "NIFTY 23000 PE": 520.40,
+        // BANKNIFTY Options
+        "BANKNIFTY 47000 CE": 680.50, "BANKNIFTY 47000 PE": 125.30,
+        "BANKNIFTY 47500 CE": 345.80, "BANKNIFTY 47500 PE": 280.60,
+        "BANKNIFTY 48000 CE": 142.30, "BANKNIFTY 48000 PE": 520.40,
+        "BANKNIFTY 48500 CE": 48.60, "BANKNIFTY 48500 PE": 845.20,
+        // Stock Options
+        "RELIANCE 3000 CE": 65.40, "RELIANCE 3000 PE": 78.20,
+        "RELIANCE 2900 CE": 125.80, "RELIANCE 2900 PE": 38.40,
+        "HDFCBANK 1650 CE": 42.60, "HDFCBANK 1650 PE": 45.80,
+        "TCS 3800 CE": 85.40, "TCS 3800 PE": 38.20,
+        "INFY 1550 CE": 35.60, "INFY 1550 PE": 22.80,
+        "SBIN 630 CE": 18.40, "SBIN 630 PE": 16.50,
+        "TATAMOTORS 750 CE": 22.80, "TATAMOTORS 750 PE": 25.40
     };
     stockDatabase.forEach(stock => {
         const base = basePrices[stock.symbol] || (Math.random() * 3000 + 100);
@@ -248,7 +338,7 @@ function renderWatchlist() {
             <div class="wl-item-left">
                 <div class="wl-item-symbol">
                     ${symbol}
-                    <span class="wl-item-exchange">${stockInfo.exchange}</span>
+                    <span class="wl-item-exchange exchange-${stockInfo.exchange.toLowerCase()}">${stockInfo.exchange}</span>
                 </div>
                 <div class="wl-item-name">${stockInfo.name}</div>
             </div>

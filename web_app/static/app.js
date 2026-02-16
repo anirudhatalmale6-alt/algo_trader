@@ -12,29 +12,94 @@ let enableOptions = {
     profitLock: false
 };
 
-// Stock database for search
+// Stock database for search (50 stocks)
 const stockDatabase = [
-    { symbol: "RELIANCE", name: "Reliance Industries Ltd", sector: "Oil & Gas" },
-    { symbol: "TCS", name: "Tata Consultancy Services", sector: "IT" },
-    { symbol: "INFY", name: "Infosys Limited", sector: "IT" },
-    { symbol: "HDFCBANK", name: "HDFC Bank Limited", sector: "Banking" },
-    { symbol: "ICICIBANK", name: "ICICI Bank Limited", sector: "Banking" },
-    { symbol: "HINDUNILVR", name: "Hindustan Unilever Ltd", sector: "FMCG" },
-    { symbol: "SBIN", name: "State Bank of India", sector: "Banking" },
-    { symbol: "BHARTIARTL", name: "Bharti Airtel Ltd", sector: "Telecom" },
-    { symbol: "ITC", name: "ITC Limited", sector: "FMCG" },
-    { symbol: "LT", name: "Larsen & Toubro Ltd", sector: "Construction" },
-    { symbol: "KOTAKBANK", name: "Kotak Mahindra Bank", sector: "Banking" },
-    { symbol: "AXISBANK", name: "Axis Bank Limited", sector: "Banking" },
-    { symbol: "WIPRO", name: "Wipro Limited", sector: "IT" },
-    { symbol: "SUNPHARMA", name: "Sun Pharmaceutical", sector: "Pharma" },
-    { symbol: "TITAN", name: "Titan Company Ltd", sector: "Consumer Goods" },
-    { symbol: "TATAMOTORS", name: "Tata Motors Ltd", sector: "Automobile" },
-    { symbol: "BAJFINANCE", name: "Bajaj Finance Ltd", sector: "Finance" },
-    { symbol: "HCLTECH", name: "HCL Technologies", sector: "IT" },
-    { symbol: "ASIANPAINT", name: "Asian Paints Ltd", sector: "Paints" },
-    { symbol: "MARUTI", name: "Maruti Suzuki India", sector: "Automobile" }
+    { symbol: "RELIANCE", name: "Reliance Industries Ltd", exchange: "NSE", sector: "Oil & Gas" },
+    { symbol: "TCS", name: "Tata Consultancy Services", exchange: "NSE", sector: "IT" },
+    { symbol: "INFY", name: "Infosys Limited", exchange: "NSE", sector: "IT" },
+    { symbol: "HDFCBANK", name: "HDFC Bank Limited", exchange: "NSE", sector: "Banking" },
+    { symbol: "ICICIBANK", name: "ICICI Bank Limited", exchange: "NSE", sector: "Banking" },
+    { symbol: "HINDUNILVR", name: "Hindustan Unilever Ltd", exchange: "NSE", sector: "FMCG" },
+    { symbol: "SBIN", name: "State Bank of India", exchange: "NSE", sector: "Banking" },
+    { symbol: "BHARTIARTL", name: "Bharti Airtel Ltd", exchange: "NSE", sector: "Telecom" },
+    { symbol: "ITC", name: "ITC Limited", exchange: "NSE", sector: "FMCG" },
+    { symbol: "LT", name: "Larsen & Toubro Ltd", exchange: "NSE", sector: "Construction" },
+    { symbol: "KOTAKBANK", name: "Kotak Mahindra Bank", exchange: "NSE", sector: "Banking" },
+    { symbol: "AXISBANK", name: "Axis Bank Limited", exchange: "NSE", sector: "Banking" },
+    { symbol: "WIPRO", name: "Wipro Limited", exchange: "NSE", sector: "IT" },
+    { symbol: "SUNPHARMA", name: "Sun Pharmaceutical", exchange: "NSE", sector: "Pharma" },
+    { symbol: "TITAN", name: "Titan Company Ltd", exchange: "NSE", sector: "Consumer Goods" },
+    { symbol: "TATAMOTORS", name: "Tata Motors Ltd", exchange: "NSE", sector: "Automobile" },
+    { symbol: "BAJFINANCE", name: "Bajaj Finance Ltd", exchange: "NSE", sector: "Finance" },
+    { symbol: "HCLTECH", name: "HCL Technologies", exchange: "NSE", sector: "IT" },
+    { symbol: "ASIANPAINT", name: "Asian Paints Ltd", exchange: "NSE", sector: "Paints" },
+    { symbol: "MARUTI", name: "Maruti Suzuki India", exchange: "NSE", sector: "Automobile" },
+    { symbol: "ONGC", name: "Oil & Natural Gas Corp", exchange: "NSE", sector: "Oil & Gas" },
+    { symbol: "NTPC", name: "NTPC Limited", exchange: "NSE", sector: "Power" },
+    { symbol: "POWERGRID", name: "Power Grid Corp", exchange: "NSE", sector: "Power" },
+    { symbol: "TATASTEEL", name: "Tata Steel Ltd", exchange: "NSE", sector: "Metal" },
+    { symbol: "JSWSTEEL", name: "JSW Steel Ltd", exchange: "NSE", sector: "Metal" },
+    { symbol: "ULTRACEMCO", name: "UltraTech Cement Ltd", exchange: "NSE", sector: "Cement" },
+    { symbol: "ADANIENT", name: "Adani Enterprises Ltd", exchange: "NSE", sector: "Conglomerate" },
+    { symbol: "ADANIPORTS", name: "Adani Ports & SEZ", exchange: "NSE", sector: "Infrastructure" },
+    { symbol: "TECHM", name: "Tech Mahindra Ltd", exchange: "NSE", sector: "IT" },
+    { symbol: "NESTLEIND", name: "Nestle India Ltd", exchange: "NSE", sector: "FMCG" },
+    { symbol: "BAJAJFINSV", name: "Bajaj Finserv Ltd", exchange: "NSE", sector: "Finance" },
+    { symbol: "DRREDDY", name: "Dr Reddy's Laboratories", exchange: "NSE", sector: "Pharma" },
+    { symbol: "CIPLA", name: "Cipla Limited", exchange: "NSE", sector: "Pharma" },
+    { symbol: "DIVISLAB", name: "Divi's Laboratories", exchange: "NSE", sector: "Pharma" },
+    { symbol: "APOLLOHOSP", name: "Apollo Hospitals", exchange: "NSE", sector: "Healthcare" },
+    { symbol: "EICHERMOT", name: "Eicher Motors Ltd", exchange: "NSE", sector: "Automobile" },
+    { symbol: "COALINDIA", name: "Coal India Limited", exchange: "NSE", sector: "Mining" },
+    { symbol: "BPCL", name: "Bharat Petroleum Corp", exchange: "NSE", sector: "Oil & Gas" },
+    { symbol: "IOC", name: "Indian Oil Corporation", exchange: "NSE", sector: "Oil & Gas" },
+    { symbol: "GRASIM", name: "Grasim Industries Ltd", exchange: "NSE", sector: "Cement" },
+    { symbol: "BRITANNIA", name: "Britannia Industries", exchange: "NSE", sector: "FMCG" },
+    { symbol: "HEROMOTOCO", name: "Hero MotoCorp Ltd", exchange: "NSE", sector: "Automobile" },
+    { symbol: "PIDILITIND", name: "Pidilite Industries", exchange: "NSE", sector: "Chemicals" },
+    { symbol: "SHREECEM", name: "Shree Cement Ltd", exchange: "NSE", sector: "Cement" },
+    { symbol: "DABUR", name: "Dabur India Ltd", exchange: "NSE", sector: "FMCG" },
+    { symbol: "HAVELLS", name: "Havells India Ltd", exchange: "NSE", sector: "Electricals" },
+    { symbol: "VEDL", name: "Vedanta Limited", exchange: "NSE", sector: "Metal" },
+    { symbol: "TATAPOWER", name: "Tata Power Company", exchange: "NSE", sector: "Power" },
+    { symbol: "BANKBARODA", name: "Bank of Baroda", exchange: "NSE", sector: "Banking" },
+    { symbol: "INDUSINDBK", name: "IndusInd Bank Ltd", exchange: "NSE", sector: "Banking" }
 ];
+
+// Simulated price data for watchlist stocks
+const stockPrices = {};
+function initStockPrices() {
+    const basePrices = {
+        RELIANCE: 2985.60, TCS: 3845.25, INFY: 1560.80, HDFCBANK: 1645.90,
+        ICICIBANK: 1085.40, HINDUNILVR: 2540.75, SBIN: 628.30, BHARTIARTL: 1425.60,
+        ITC: 445.20, LT: 3520.80, KOTAKBANK: 1780.50, AXISBANK: 1125.40,
+        WIPRO: 485.30, SUNPHARMA: 1245.60, TITAN: 3280.90, TATAMOTORS: 745.30,
+        BAJFINANCE: 6980.40, HCLTECH: 1580.25, ASIANPAINT: 2845.60, MARUTI: 10520.30,
+        ONGC: 265.40, NTPC: 345.80, POWERGRID: 285.60, TATASTEEL: 142.30,
+        JSWSTEEL: 865.40, ULTRACEMCO: 9845.20, ADANIENT: 2680.50, ADANIPORTS: 1245.30,
+        TECHM: 1320.60, NESTLEIND: 2480.90, BAJAJFINSV: 1645.80, DRREDDY: 5480.30,
+        CIPLA: 1425.60, DIVISLAB: 3680.40, APOLLOHOSP: 5845.20, EICHERMOT: 4520.80,
+        COALINDIA: 385.40, BPCL: 545.60, IOC: 142.80, GRASIM: 2280.40,
+        BRITANNIA: 4980.30, HEROMOTOCO: 4245.60, PIDILITIND: 2680.40, SHREECEM: 25480.60,
+        DABUR: 545.80, HAVELLS: 1480.30, VEDL: 285.40, TATAPOWER: 385.60,
+        BANKBARODA: 245.80, INDUSINDBK: 1045.30
+    };
+    stockDatabase.forEach(stock => {
+        const base = basePrices[stock.symbol] || (Math.random() * 3000 + 100);
+        const changeAmt = (Math.random() - 0.45) * base * 0.03;
+        stockPrices[stock.symbol] = {
+            price: base,
+            change: parseFloat(changeAmt.toFixed(2)),
+            changePct: parseFloat(((changeAmt / base) * 100).toFixed(2))
+        };
+    });
+}
+initStockPrices();
+
+// Watchlist pagination
+let wlCurrentPage = 1;
+const WL_PER_PAGE = 10;
+let wlActiveTab = 'watchlist';
 
 // ===== MARKET TICKER DATA WITH INDICES =====
 let tickerData = [
@@ -111,45 +176,27 @@ function loadWatchlist() {
     if (savedWatchlist) {
         watchlistStocks = JSON.parse(savedWatchlist);
     } else {
-        // Default watchlist
-        watchlistStocks = ["RELIANCE", "TCS", "INFY", "HDFCBANK"];
+        watchlistStocks = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "ITC", "BHARTIARTL", "WIPRO", "TITAN"];
         saveWatchlist();
     }
-
+    wlCurrentPage = 1;
     renderWatchlist();
+    initWatchlistSearch();
 }
 
 function saveWatchlist() {
     localStorage.setItem('mukeshAlgoWatchlist', JSON.stringify(watchlistStocks));
 }
 
-function addToWatchlist() {
-    const input = document.getElementById("watchlistSearch");
-    const symbol = input.value.trim().toUpperCase();
-
-    if (!symbol) {
-        alert("Please enter a stock symbol");
+function addToWatchlistBySymbol(symbol) {
+    if (watchlistStocks.includes(symbol)) return;
+    if (watchlistStocks.length >= 50) {
+        alert("Maximum 50 stocks allowed in watchlist!");
         return;
     }
-
-    // Check if stock exists in database
-    const stockInfo = stockDatabase.find(stock => stock.symbol === symbol);
-    if (!stockInfo) {
-        alert("Stock not found. Please enter a valid stock symbol.");
-        return;
-    }
-
-    // Check if already in watchlist
-    if (watchlistStocks.includes(symbol)) {
-        alert("Stock already in watchlist!");
-        return;
-    }
-
     watchlistStocks.push(symbol);
     saveWatchlist();
     renderWatchlist();
-    input.value = "";
-    input.focus();
 }
 
 function removeFromWatchlist(symbol) {
@@ -169,72 +216,178 @@ function clearWatchlist() {
     }
 }
 
+function updateWlCount() {
+    const countEl = document.getElementById('wlCount');
+    if (countEl) countEl.textContent = watchlistStocks.length + '/50';
+}
 
 function renderWatchlist() {
     const watchlistDiv = document.getElementById('watchlistStocks');
+    updateWlCount();
 
     if (watchlistStocks.length === 0) {
-        watchlistDiv.innerHTML = '<div class="no-watchlist-stocks">No stocks in watchlist. Add stocks using the search above.</div>';
+        watchlistDiv.innerHTML = '<div class="wl-empty">No stocks in watchlist.<br>Search and add stocks above.</div>';
+        renderWlPagination();
         return;
     }
 
+    const totalPages = Math.ceil(watchlistStocks.length / WL_PER_PAGE);
+    if (wlCurrentPage > totalPages) wlCurrentPage = totalPages;
+    const startIdx = (wlCurrentPage - 1) * WL_PER_PAGE;
+    const pageStocks = watchlistStocks.slice(startIdx, startIdx + WL_PER_PAGE);
+
     let html = '';
-    watchlistStocks.forEach((symbol, index) => {
-        const stockInfo = stockDatabase.find(stock => stock.symbol === symbol) || { name: symbol, sector: '' };
+    pageStocks.forEach(symbol => {
+        const stockInfo = stockDatabase.find(s => s.symbol === symbol) || { name: symbol, exchange: 'NSE', sector: '' };
+        const priceData = stockPrices[symbol] || { price: 0, change: 0, changePct: 0 };
+        const changeClass = priceData.change > 0 ? 'wl-positive' : priceData.change < 0 ? 'wl-negative' : 'wl-neutral';
+        const changeSign = priceData.change > 0 ? '+' : '';
+
         html += `
-        <div class="watchlist-item" data-symbol="${symbol}">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div class="watchlist-symbol" onclick="openAddPositionModalForSymbol('${symbol}')">
-                ${symbol}
-                <div class="watchlist-name">${stockInfo.name}</div>
-              </div>
-              <button class="delete-watchlist-btn" onclick="removeFromWatchlist('${symbol}')">
-                 ✖
-              </button>
+        <div class="wl-item ${changeClass}" data-symbol="${symbol}">
+            <div class="wl-item-left">
+                <div class="wl-item-symbol">
+                    ${symbol}
+                    <span class="wl-item-exchange">${stockInfo.exchange}</span>
+                </div>
+                <div class="wl-item-name">${stockInfo.name}</div>
             </div>
-            <div class="watchlist-buttons">
-               <button class="watchlist-btn watchlist-buy-btn" onclick="openAddPositionModalForSymbol('${symbol}', 'BUY')">BUY</button>
-               <button class="watchlist-btn watchlist-sell-btn" onclick="openAddPositionModalForSymbol('${symbol}', 'SELL')">SELL</button>
-               <button class="watchlist-btn watchlist-chart-btn" onclick="openChart('${symbol}')">CHART</button>
-               <button class="watchlist-btn watchlist-depth-btn" onclick="openDepth('${symbol}')">DEPTH</button>
-               <div class="watchlist-btn watchlist-more-btn">MORE
-                 <div class="watchlist-more-menu">
-                    <div onclick="openInfo('${symbol}')">INFO</div>
-                    <div onclick="openGTT('${symbol}')">GTT</div>
-                    <div onclick="openOptionChain('${symbol}')">OPTION CHAIN</div>
-                    <div onclick="setAlert('${symbol}')">ALERT</div>
-                 </div>
-               </div>
+            <div class="wl-item-right">
+                <div class="wl-item-price">${priceData.price.toFixed(2)}</div>
+                <div class="wl-item-change">
+                    <span class="change-abs">${changeSign}${priceData.change.toFixed(2)}</span>
+                    <span class="change-pct">(${changeSign}${priceData.changePct.toFixed(2)}%)</span>
+                </div>
             </div>
-          </div>`;
+            <div class="wl-item-actions">
+                <button class="wl-action-buy" onclick="event.stopPropagation(); openAddPositionModalForSymbol('${symbol}', 'BUY')">B</button>
+                <button class="wl-action-sell" onclick="event.stopPropagation(); openAddPositionModalForSymbol('${symbol}', 'SELL')">S</button>
+                <button class="wl-action-more" onclick="event.stopPropagation(); openChart('${symbol}')" title="Chart"><i class="fas fa-chart-line"></i></button>
+                <button class="wl-action-delete" onclick="event.stopPropagation(); removeFromWatchlist('${symbol}')" title="Remove"><i class="fas fa-times"></i></button>
+            </div>
+        </div>`;
     });
 
     watchlistDiv.innerHTML = html;
+    renderWlPagination();
 }
 
-// ===== NEW WATCHLIST QUICK ACTION FUNCTIONS =====
-function addMultipleStocks() {
-    const symbols = prompt("Enter multiple stock symbols separated by commas (e.g., RELIANCE, TCS, INFY):");
-    if (symbols) {
-        const symbolList = symbols.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
-        let addedCount = 0;
+function renderWlPagination() {
+    const paginationDiv = document.getElementById('wlPagination');
+    if (!paginationDiv) return;
+    const totalPages = Math.ceil(watchlistStocks.length / WL_PER_PAGE);
+    if (totalPages <= 1) {
+        paginationDiv.innerHTML = '';
+        return;
+    }
+    let html = '';
+    for (let i = 1; i <= totalPages; i++) {
+        html += `<button class="wl-page-btn ${i === wlCurrentPage ? 'active' : ''}" onclick="goToWlPage(${i})">${i}</button>`;
+    }
+    paginationDiv.innerHTML = html;
+}
 
-        symbolList.forEach(symbol => {
-            if (!watchlistStocks.includes(symbol)) {
-                watchlistStocks.push(symbol);
-                addedCount++;
-            }
-        });
+function goToWlPage(page) {
+    wlCurrentPage = page;
+    renderWatchlist();
+}
 
-        saveWatchlist();
+function switchWatchlistTab(tab) {
+    wlActiveTab = tab;
+    document.querySelectorAll('.wl-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.wl-tab[data-tab="${tab}"]`).classList.add('active');
+
+    if (tab === 'watchlist') {
         renderWatchlist();
-        alert(`Added ${addedCount} new stocks to watchlist.`);
+    } else if (tab === 'predefined') {
+        document.getElementById('watchlistStocks').innerHTML = '<div class="wl-empty">Predefined watchlists will be available after broker login.</div>';
+        document.getElementById('wlPagination').innerHTML = '';
+    } else if (tab === 'optionchain') {
+        document.getElementById('watchlistStocks').innerHTML = '<div class="wl-empty">Option Chain view will be available after broker login.</div>';
+        document.getElementById('wlPagination').innerHTML = '';
     }
 }
 
+function toggleWatchlistSettings() {
+    if (confirm("Clear all stocks from watchlist?")) {
+        clearWatchlist();
+    }
+}
 
-function importWatchlist() {
-    alert("Import watchlist from CSV file feature would open here.");
+// Watchlist search autocomplete
+function initWatchlistSearch() {
+    const searchInput = document.getElementById('watchlistSearch');
+    const resultsDiv = document.getElementById('wlSearchResults');
+    if (!searchInput || !resultsDiv) return;
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.trim().toUpperCase();
+        if (query.length === 0) {
+            resultsDiv.style.display = 'none';
+            return;
+        }
+        const matches = stockDatabase.filter(s =>
+            (s.symbol.includes(query) || s.name.toUpperCase().includes(query)) && !watchlistStocks.includes(s.symbol)
+        ).slice(0, 8);
+
+        if (matches.length === 0) {
+            resultsDiv.innerHTML = '<div style="padding: 10px; color: #666; font-size: 12px; text-align: center;">No results found</div>';
+            resultsDiv.style.display = 'block';
+            return;
+        }
+
+        resultsDiv.innerHTML = matches.map(s => `
+            <div class="wl-search-result-item" onclick="addToWatchlistFromSearch('${s.symbol}')">
+                <div>
+                    <span class="sr-symbol">${s.symbol}</span>
+                    <span class="sr-name">${s.name}</span>
+                </div>
+                <span class="sr-exchange">${s.exchange}</span>
+            </div>
+        `).join('');
+        resultsDiv.style.display = 'block';
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const query = this.value.trim().toUpperCase();
+            const match = stockDatabase.find(s => s.symbol === query);
+            if (match && !watchlistStocks.includes(match.symbol)) {
+                addToWatchlistBySymbol(match.symbol);
+                this.value = '';
+                resultsDiv.style.display = 'none';
+            }
+        }
+        if (e.key === 'Escape') {
+            resultsDiv.style.display = 'none';
+        }
+    });
+
+    // Close results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) {
+            resultsDiv.style.display = 'none';
+        }
+    });
+}
+
+function addToWatchlistFromSearch(symbol) {
+    addToWatchlistBySymbol(symbol);
+    document.getElementById('watchlistSearch').value = '';
+    document.getElementById('wlSearchResults').style.display = 'none';
+}
+
+function refreshWatchlist() {
+    // Simulate price updates
+    stockDatabase.forEach(stock => {
+        if (stockPrices[stock.symbol]) {
+            const p = stockPrices[stock.symbol];
+            const fluctuation = (Math.random() - 0.5) * p.price * 0.005;
+            p.change = parseFloat((p.change + fluctuation).toFixed(2));
+            p.changePct = parseFloat(((p.change / p.price) * 100).toFixed(2));
+        }
+    });
+    renderWatchlist();
 }
 
 function exportWatchlist() {
@@ -242,7 +395,6 @@ function exportWatchlist() {
         alert("Watchlist is empty!");
         return;
     }
-
     const csvContent = "data:text/csv;charset=utf-8," + watchlistStocks.join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -251,14 +403,27 @@ function exportWatchlist() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
-    alert("Watchlist exported as CSV!");
 }
 
-function refreshWatchlist() {
-    alert("Refreshing watchlist data...");
-    // In real app, this would fetch latest prices
+function importWatchlist() {
+    const symbols = prompt("Enter stock symbols separated by commas (e.g., RELIANCE, TCS, INFY):");
+    if (symbols) {
+        const symbolList = symbols.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+        let addedCount = 0;
+        symbolList.forEach(symbol => {
+            if (!watchlistStocks.includes(symbol) && watchlistStocks.length < 50) {
+                watchlistStocks.push(symbol);
+                addedCount++;
+            }
+        });
+        saveWatchlist();
+        renderWatchlist();
+        alert(`Added ${addedCount} new stocks to watchlist.`);
+    }
 }
+
+// Keep addMultipleStocks as alias
+function addMultipleStocks() { importWatchlist(); }
 
 
 // ===== ENABLE/DISABLE OPTIONS =====
@@ -1845,7 +2010,7 @@ function resetAllData() {
         localStorage.removeItem('mukeshAlgoWatchlist');
         localStorage.removeItem('mukeshAlgoBrokers');
         positions = [];
-        watchlistStocks = ["RELIANCE", "TCS", "INFY", "HDFCBANK"];
+        watchlistStocks = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "ITC", "BHARTIARTL", "WIPRO", "TITAN"];
         saveWatchlist();
         renderPositions();
         renderWatchlist();
@@ -1887,14 +2052,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Show open positions page by default
     showPage('openPositionsPage');
 
-    // Add event listeners for watchlist
-    document.getElementById('watchlistSearchBtn').addEventListener('click', addToWatchlist);
-    document.getElementById('watchlistSearch').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            addToWatchlist();
-        }
-    });
-    document.getElementById('clearWatchlistBtn').addEventListener('click', clearWatchlist);
+    // Watchlist price auto-refresh every 5 seconds
+    setInterval(function() {
+        if (wlActiveTab === 'watchlist') refreshWatchlist();
+    }, 5000);
 
     // Start market data updates
     setInterval(updateMarketData, 5000);

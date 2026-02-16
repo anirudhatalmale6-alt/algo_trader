@@ -401,250 +401,396 @@
                   transform: scaleY(1);
                 }
 
-                /* ===== SEPARATE WATCHLIST PANEL (RIGHT SIDE - ALWAYS VISIBLE) ===== */
+                /* ===== BROKER-STYLE WATCHLIST PANEL ===== */
                 .watchlist-panel {
-                  position: fixed;
-                  top: 160px;
-                  right: 0;
-                  width: 320px;
+                    position: fixed;
+                    top: 160px;
+                    right: 0;
+                    width: 320px;
                     height: calc(100vh - 160px);
-                    background: linear-gradient(180deg, #141414 0%, #1a1a1a 100%);
-                    border-left: 2px solid rgba(0, 204, 255, 0.5);
-                    padding: 15px;
-                    overflow-y: auto;
-                    overflow-x: hidden;
+                    background: #1a1a2e;
+                    border-left: 1px solid #2a2a3e;
                     z-index: 997;
-                    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: -2px 0 10px rgba(0,0,0,0.3);
                 }
 
-                .watchlist-panel-header {
-                  color: var(--accent-color);
-                  font-size: 18px;
-                  font-weight: bold;
-                  margin-bottom: 15px;
-                    padding-bottom: 10px;
-                    border-bottom: 2px solid rgba(0, 204, 255, 0.5);
-                    text-align: center;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
+                .wl-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
+                    padding: 10px 12px;
+                    border-bottom: 1px solid #2a2a3e;
+                    background: #141428;
                 }
 
-                .watchlist-panel .watchlist-container {
-                  margin: 0;
-                  background: transparent;
-                  border-radius: 0;
-                  padding: 0;
-                  border: none;
-                }
-
-                .watchlist-panel .watchlist-header {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  margin-bottom: 15px;
-                  padding-bottom: 10px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                }
-
-                .watchlist-panel .watchlist-header h3 {
-                    color: var(--accent-color);
-                    font-size: 16px;
-                    margin: 0;
+                .wl-header-left {
                     display: flex;
                     align-items: center;
                     gap: 8px;
-
                 }
 
-                .watchlist-panel .clear-watchlist-btn {
-                  background: none;
-                  border: none;
-                    color: #ff4444;
-                    cursor: pointer;
-                    font-size: 12px;
-                    padding: 4px 8px;
+                .wl-title {
+                    color: #fff;
+                    font-size: 13px;
+                    font-weight: 600;
+                    letter-spacing: 0.5px;
+                }
+
+                .wl-count {
+                    background: #2a2a3e;
+                    color: #888;
+                    font-size: 11px;
+                    padding: 2px 6px;
                     border-radius: 3px;
                 }
 
-                .watchlist-panel .clear-watchlist-btn:hover {
-                  background: rgba(255, 68, 68, 0.1);
+                .wl-header-right {
+                    display: flex;
+                    gap: 4px;
                 }
 
-                .watchlist-panel .search-container {
-                  display: flex;
-                  gap: 8px;
-                  margin-bottom: 15px;
-                }
-
-                .watchlist-panel .search-container input {
-                  flex: 1;
-                  padding: 10px;
-                  background: #333;
-                  border: none;
-                  color: #fff;
-                  border-radius: 5px;
-                    font-size: 13px;
-                }
-
-                .watchlist-panel .search-container button {
-                    padding: 10px 12px;
-                    background: #0077ff;
-                    color: #fff;
+                .wl-icon-btn {
+                    background: none;
                     border: none;
-                    border-radius: 5px;
+                    color: #666;
                     cursor: pointer;
-
+                    padding: 4px 6px;
+                    border-radius: 3px;
                     font-size: 13px;
-                    font-weight: bold;
+                    transition: all 0.2s;
                 }
 
-                .watchlist-panel .search-container button:hover {
-                    background: #0055cc;
-                }
-
-                .watchlist-panel .watchlist-stocks {
-                  max-height: calc(100vh - 320px);
-                  overflow-y: auto;
-                  overflow-x: hidden;
-                }
-
-                .watchlist-panel .watchlist-item {
-                  background: #2f2f2f;
-                  padding: 10px;
-                  margin-bottom: 8px;
-                  border-radius: 5px;
-                  border: 1px solid #3a3a3a;
-                  position: relative;
-                  transition: all 0.3s ease;
-                }
-
-
-                .watchlist-panel .watchlist-item:hover {
-                  background: #3a3a3a;
-                  border-color: #0077ff;
-                }
-
-
-                .watchlist-panel .watchlist-symbol {
-                  font-weight: bold;
-                  font-size: 14px;
-                  cursor: pointer;
-                    padding: 4px 0;
+                .wl-icon-btn:hover {
                     color: #fff;
+                    background: #2a2a3e;
+                }
+
+                .wl-search-container {
+                    position: relative;
+                    padding: 8px 12px;
+                    border-bottom: 1px solid #2a2a3e;
+                }
+
+                .wl-search-icon {
+                    position: absolute;
+                    left: 20px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    color: #555;
+                    font-size: 12px;
+                }
+
+                .wl-search-input {
+                    width: 100%;
+                    padding: 8px 10px 8px 30px;
+                    background: #222240;
+                    border: 1px solid #333;
+                    color: #fff;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    box-sizing: border-box;
+                    outline: none;
+                    transition: border-color 0.2s;
+                }
+
+                .wl-search-input:focus {
+                    border-color: var(--accent-color);
+                }
+
+                .wl-search-input::placeholder {
+                    color: #555;
+                    font-size: 11px;
+                }
+
+                .wl-search-results {
+                    position: absolute;
+                    top: 100%;
+                    left: 12px;
+                    right: 12px;
+                    background: #1e1e36;
+                    border: 1px solid #333;
+                    border-radius: 0 0 4px 4px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    z-index: 1000;
+                }
+
+                .wl-search-result-item {
+                    padding: 8px 12px;
+                    cursor: pointer;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                }
-
-                .watchlist-panel .watchlist-name {
-                  font-size: 12px;
-                  color: #aaa;
-                  margin-top: 2px;
-                }
-
-                .watchlist-panel .delete-watchlist-btn {
-                    background: rgba(255, 68, 68, 0.2);
-                    border: 1px solid #ff4444;
-                    color: #ff4444;
-                    cursor: pointer;
+                    border-bottom: 1px solid #2a2a3e;
                     font-size: 12px;
-                    width: 22px;
-                    height: 22px;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.3s ease;
                 }
 
-                .watchlist-panel .delete-watchlist-btn:hover {
-                  background: rgba(255, 68, 68, 0.4);
-                  transform: scale(1.1);
+                .wl-search-result-item:hover {
+                    background: #2a2a4e;
                 }
 
-                .watchlist-panel .no-watchlist-stocks {
-                  text-align: center;
-                    color: #888;
-                    padding: 20px 0;
-                    font-style: italic;
-                    font-size: 13px;
-                }
-
-                .watchlist-panel .watchlist-buttons {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-
-                    margin-top: 8px;
-                    padding-top: 8px;
-                    border-top: 1px solid #444;
-                }
-
-
-                .watchlist-panel .watchlist-btn {
-                  flex: 1;
-                  min-width: 45px;
-                    padding: 6px 8px;
-                    font-size: 11px;
-                    border: none;
-                    border-radius: 3px;
-                    cursor: pointer;
+                .wl-search-result-item .sr-symbol {
                     color: #fff;
+                    font-weight: 600;
+                }
+
+                .wl-search-result-item .sr-name {
+                    color: #888;
+                    font-size: 11px;
+                }
+
+                .wl-search-result-item .sr-exchange {
+                    background: #333;
+                    color: #aaa;
+                    padding: 1px 5px;
+                    border-radius: 2px;
+                    font-size: 10px;
+                }
+
+                .wl-tabs {
+                    display: flex;
+                    border-bottom: 1px solid #2a2a3e;
+                    background: #141428;
+                }
+
+                .wl-tab {
+                    flex: 1;
+                    padding: 8px 4px;
+                    background: none;
+                    border: none;
+                    border-bottom: 2px solid transparent;
+                    color: #666;
+                    cursor: pointer;
+                    font-size: 11px;
+                    font-weight: 500;
+                    transition: all 0.2s;
                     text-align: center;
-                    font-weight: bold;
                 }
 
-                .watchlist-panel .watchlist-buy-btn {
-                  background: #00aa66;
+                .wl-tab:hover {
+                    color: #aaa;
                 }
 
-                .watchlist-panel .watchlist-sell-btn {
-                  background: #ff4444;
+                .wl-tab.active {
+                    color: var(--accent-color);
+                    border-bottom-color: var(--accent-color);
                 }
 
-                .watchlist-panel .watchlist-chart-btn {
-                  background: #0077ff;
+                .wl-stocks-list {
+                    flex: 1;
+                    overflow-y: auto;
+                    overflow-x: hidden;
                 }
 
-
-                .watchlist-panel .watchlist-depth-btn {
-                  background: #888;
+                .wl-stocks-list::-webkit-scrollbar {
+                    width: 4px;
                 }
 
+                .wl-stocks-list::-webkit-scrollbar-thumb {
+                    background: #333;
+                    border-radius: 2px;
+                }
 
-                .watchlist-panel .watchlist-more-btn {
-                  background: #555;
+                .wl-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 12px;
+                    border-bottom: 1px solid #1e1e36;
+                    cursor: pointer;
+                    transition: background 0.15s;
                     position: relative;
                 }
 
-                .watchlist-panel .watchlist-more-menu {
-                  position: absolute;
-                  bottom: 100%;
-                  left: 0;
-                  background: #111;
+                .wl-item:hover {
+                    background: #222240;
+                }
+
+                .wl-item-left {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    min-width: 0;
+                    flex: 1;
+                }
+
+                .wl-item-symbol {
+                    color: #fff;
+                    font-size: 13px;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
+                .wl-item-exchange {
+                    background: #2a2a3e;
+                    color: #888;
+                    padding: 1px 4px;
+                    border-radius: 2px;
+                    font-size: 9px;
+                    font-weight: 400;
+                }
+
+                .wl-item-name {
+                    color: #666;
+                    font-size: 10px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .wl-item-right {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                    gap: 2px;
+                    min-width: 90px;
+                }
+
+                .wl-item-price {
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+
+                .wl-item-change {
+                    font-size: 11px;
+                    display: flex;
+                    gap: 6px;
+                }
+
+                .wl-item-change .change-abs {
+                    font-weight: 500;
+                }
+
+                .wl-item-change .change-pct {
+                    font-weight: 500;
+                }
+
+                .wl-positive .wl-item-price { color: #00cc66; }
+                .wl-positive .wl-item-change { color: #00cc66; }
+                .wl-negative .wl-item-price { color: #ff4444; }
+                .wl-negative .wl-item-change { color: #ff4444; }
+                .wl-neutral .wl-item-price { color: #fff; }
+                .wl-neutral .wl-item-change { color: #888; }
+
+                /* Hover action buttons overlay */
+                .wl-item-actions {
                     display: none;
-                    border-radius: 4px;
-                    z-index: 100;
-                    min-width: 120px;
+                    position: absolute;
+                    right: 8px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    gap: 4px;
+                    z-index: 10;
                 }
 
-
-                .watchlist-panel .watchlist-more-menu div {
-                  padding: 6px 10px;
-                  font-size: 11px;
-                  cursor: pointer;
-                  white-space: nowrap;
+                .wl-item:hover .wl-item-actions {
+                    display: flex;
                 }
 
-                .watchlist-panel .watchlist-more-menu div:hover {
-                  background: #444;
+                .wl-item:hover .wl-item-right {
+                    visibility: hidden;
                 }
 
-                .watchlist-panel .watchlist-more-btn:hover .watchlist-more-menu {
-                  display: block;
+                .wl-action-buy {
+                    background: #00cc66;
+                    color: #fff;
+                    border: none;
+                    padding: 4px 10px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: background 0.15s;
+                }
+
+                .wl-action-buy:hover { background: #00aa55; }
+
+                .wl-action-sell {
+                    background: #ff4444;
+                    color: #fff;
+                    border: none;
+                    padding: 4px 10px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: background 0.15s;
+                }
+
+                .wl-action-sell:hover { background: #dd3333; }
+
+                .wl-action-more {
+                    background: #333;
+                    color: #fff;
+                    border: none;
+                    padding: 4px 6px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    cursor: pointer;
+                    transition: background 0.15s;
+                }
+
+                .wl-action-more:hover { background: #444; }
+
+                .wl-action-delete {
+                    background: none;
+                    border: none;
+                    color: #ff4444;
+                    cursor: pointer;
+                    padding: 4px 6px;
+                    font-size: 12px;
+                    border-radius: 3px;
+                    transition: all 0.15s;
+                }
+
+                .wl-action-delete:hover { background: rgba(255,68,68,0.15); }
+
+                /* Pagination */
+                .wl-pagination {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 8px 12px;
+                    border-top: 1px solid #2a2a3e;
+                    background: #141428;
+                }
+
+                .wl-page-btn {
+                    background: none;
+                    border: 1px solid #333;
+                    color: #888;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    font-size: 11px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s;
+                }
+
+                .wl-page-btn:hover {
+                    border-color: var(--accent-color);
+                    color: #fff;
+                }
+
+                .wl-page-btn.active {
+                    background: var(--accent-color);
+                    border-color: var(--accent-color);
+                    color: #fff;
+                }
+
+                .wl-empty {
+                    text-align: center;
+                    color: #555;
+                    padding: 30px 15px;
+                    font-size: 12px;
                 }
 
                 /* ===== LARGER CONTENT (ADJUSTED FOR WATCHLIST PANEL) ===== */
@@ -1636,42 +1782,35 @@
 
     <!-- ===== SEPARATE WATCHLIST PANEL (RIGHT SIDE - ALWAYS VISIBLE) ===== -->
     <div class="watchlist-panel" id="watchlistPanel">
-        <div class="watchlist-panel-header">
-            <span><i class="fas fa-star"></i> WATCHLIST</span>
-            <button class="clear-watchlist-btn" id="clearWatchlistBtn" title="Clear All">Clear All</button>
-        </div>
-
-        <div class="watchlist-container">
-            <div class="search-container">
-                <input id="watchlistSearch" placeholder="Enter stock symbol (e.g., RELIANCE)">
-                <button id="watchlistSearchBtn">Add Stock</button>
+        <div class="wl-header">
+            <div class="wl-header-left">
+                <i class="fas fa-star" style="color: var(--accent-color);"></i>
+                <span class="wl-title">WATCHLIST</span>
+                <span class="wl-count" id="wlCount">0/50</span>
             </div>
-
-            <div class="watchlist-stocks" id="watchlistStocks">
-                <div class="no-watchlist-stocks">No stocks in watchlist. Search and add stocks above.</div>
+            <div class="wl-header-right">
+                <button class="wl-icon-btn" onclick="refreshWatchlist()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+                <button class="wl-icon-btn" onclick="toggleWatchlistSettings()" title="Settings"><i class="fas fa-cog"></i></button>
             </div>
         </div>
 
-        <!-- Quick Actions for Watchlist -->
-        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <h4 style="color: var(--accent-color); font-size: 14px; margin-bottom: 10px; text-transform: uppercase;">
-                <i class="fas fa-bolt"></i> QUICK ACTIONS
-            </h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <button onclick="addMultipleStocks()" style="padding: 8px; background: #0077ff; border: none; color: #fff; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                    <i class="fas fa-plus-circle"></i> Add Multiple
-                </button>
-                <button onclick="importWatchlist()" style="padding: 8px; background: #9d4edd; border: none; color: #fff; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                    <i class="fas fa-file-import"></i> Import
-                </button>
-                <button onclick="exportWatchlist()" style="padding: 8px; background: #00aa66; border: none; color: #fff; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                    <i class="fas fa-file-export"></i> Export
-                </button>
-                <button onclick="refreshWatchlist()" style="padding: 8px; background: #ff9900; border: none; color: #fff; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
-            </div>
+        <div class="wl-search-container">
+            <i class="fas fa-search wl-search-icon"></i>
+            <input id="watchlistSearch" class="wl-search-input" placeholder="Search eg: INFY, NIFTY FUT, NIFTY 25000 CE" autocomplete="off">
+            <div class="wl-search-results" id="wlSearchResults" style="display:none;"></div>
         </div>
+
+        <div class="wl-tabs">
+            <button class="wl-tab active" data-tab="watchlist" onclick="switchWatchlistTab('watchlist')">Watchlist</button>
+            <button class="wl-tab" data-tab="predefined" onclick="switchWatchlistTab('predefined')">Predefined</button>
+            <button class="wl-tab" data-tab="optionchain" onclick="switchWatchlistTab('optionchain')">Option Chain</button>
+        </div>
+
+        <div class="wl-stocks-list" id="watchlistStocks">
+            <div class="wl-empty">No stocks in watchlist. Search and add stocks above.</div>
+        </div>
+
+        <div class="wl-pagination" id="wlPagination"></div>
     </div>
 
     <!-- ===== MAIN CONTENT ===== -->

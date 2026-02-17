@@ -1891,72 +1891,84 @@
         <div class="content-page hidden" id="brokerPage">
             <h2><i class="fas fa-university"></i> Broker Management</h2>
 
-            <!-- Broker Form -->
+            <!-- Connection Status Banner -->
+            <div id="brokerStatusBanner" style="background: #1a1a2e; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; border: 1px solid #2a2a3e;">
+                <div id="brokerStatusDot" style="width: 12px; height: 12px; border-radius: 50%; background: #ff4444;"></div>
+                <div>
+                    <div id="brokerStatusText" style="color: #fff; font-weight: 600;">Not Connected</div>
+                    <div id="brokerStatusDetail" style="color: #888; font-size: 12px;">Configure and connect a broker below</div>
+                </div>
+            </div>
+
+            <!-- Alice Blue Connection -->
             <div style="background: #1a1a1a; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h3 style="color: var(--accent-color); margin-bottom: 20px;">
-                    <i class="fas fa-plus-circle"></i> Add/Edit Broker
+                    <i class="fas fa-plug"></i> Connect Alice Blue
                 </h3>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Broker Name</label>
+                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Broker</label>
                         <select id="brokerSelect" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
-                            <option value="">Select Broker</option>
-                            <option value="ZERODHA">Zerodha</option>
-                            <option value="ANGEL">Angel Broking</option>
-                            <option value="UPSTOX">Upstox</option>
-                            <option value="ICICI">ICICI Direct</option>
-                            <option value="HDFC">HDFC Securities</option>
-                            <option value="ALICE">Alice Blue</option>
-                            <option value="FIVE">5Paisa</option>
-                            <option value="CUSTOM">Custom Broker</option>
+                            <option value="alice_blue" selected>Alice Blue</option>
+                            <option value="upstox">Upstox</option>
                         </select>
                     </div>
 
                     <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Client ID</label>
-                        <input type="text" id="clientId" placeholder="Enter Client ID" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                        <label style="display: block; margin-bottom: 8px; color: #aaa;">User ID</label>
+                        <input type="text" id="clientId" placeholder="e.g. 515175" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
                     </div>
 
                     <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">API Key</label>
-                        <input type="password" id="apiKey" placeholder="Enter API Key" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Secret Key (long key)</label>
+                        <input type="password" id="apiKey" placeholder="Paste your Secret Key here" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
                     </div>
 
                     <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">API Secret</label>
-                        <input type="password" id="apiSecret" placeholder="Enter API Secret" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
-                    </div>
-
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Access Token</label>
-                        <input type="text" id="accessToken" placeholder="Enter Access Token" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
-                    </div>
-
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">PIN (Optional)</label>
-                        <input type="password" id="brokerPin" placeholder="Enter PIN" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                        <label style="display: block; margin-bottom: 8px; color: #aaa;">App Code (short code)</label>
+                        <input type="text" id="apiSecret" placeholder="e.g. cabzLFoeRT" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
                     </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
-                    <button onclick="addEditBroker()" style="flex:1; padding:12px; background:#00aa66; border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold;">
-                        <i class="fas fa-save"></i> Add/Update Broker
-                    </button>
-                    <button onclick="deleteBroker()" style="flex:1; padding:12px; background:#ff4444; border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold;">
-                        <i class="fas fa-trash"></i> Delete Broker
-                    </button>
-                    <button onclick="checkBrokerConnection()" style="flex:1; padding:12px; background:#0077ff; border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold;">
-                        <i class="fas fa-plug"></i> Check Connection
+                <!-- Step 1: Get Login URL -->
+                <div style="margin-top: 20px;">
+                    <button onclick="brokerGetLoginUrl()" id="btnGetLoginUrl" style="width:100%; padding:12px; background: linear-gradient(135deg, #0077ff, #0055cc); border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold; font-size: 14px;">
+                        <i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL
                     </button>
                 </div>
+
+                <!-- Login URL Display -->
+                <div id="loginUrlSection" style="display:none; margin-top: 15px; background: #222; padding: 15px; border-radius: 8px; border: 1px solid #333;">
+                    <label style="display: block; margin-bottom: 8px; color: #aaa;">Login URL (click to open in browser):</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="loginUrlDisplay" readonly style="flex:1; padding:10px; background:#1a1a1a; color:#00ccff; border:1px solid #333; border-radius:5px; font-size: 11px;">
+                        <button onclick="window.open(document.getElementById('loginUrlDisplay').value, '_blank')" style="padding:10px 15px; background:#00aa66; border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold; white-space:nowrap;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </button>
+                    </div>
+                    <p style="color:#888; font-size: 11px; margin-top: 8px;">Login → Authorize → Copy authCode from the URL after redirect</p>
+                </div>
+
+                <!-- Step 2: Authenticate with Auth Code -->
+                <div id="authCodeSection" style="display:none; margin-top: 15px;">
+                    <label style="display: block; margin-bottom: 8px; color: #aaa;">Authorization Code (from URL after login):</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="authCodeInput" placeholder="Paste authCode here" style="flex:1; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                        <button onclick="brokerAuthenticate()" id="btnAuthenticate" style="padding:10px 20px; background:#00aa66; border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold; white-space:nowrap;">
+                            <i class="fas fa-check-circle"></i> Step 2: Authenticate
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Auth Result -->
+                <div id="authResult" style="display:none; margin-top: 15px; padding: 12px; border-radius: 8px;"></div>
             </div>
 
             <!-- Saved Brokers List -->
             <div style="background: #1a1a1a; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h3 style="color: var(--accent-color); margin-bottom: 15px;">
-                    <i class="fas fa-list"></i> Saved Brokers
+                    <i class="fas fa-list"></i> Connection History
                 </h3>
                 <div id="brokerList" style="max-height: 300px; overflow-y: auto;">
                     <!-- Broker list will be loaded here -->

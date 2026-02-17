@@ -1946,170 +1946,246 @@ function shareStrategy() {
 }
 
 // ===== BROKER MANAGEMENT FUNCTIONS =====
+// ===== BROKER CONNECTION (REAL API) =====
+let brokerConnected = false;
+
 function loadBrokers() {
-    const savedBrokers = localStorage.getItem('mukeshAlgoBrokers');
     const brokerList = document.getElementById('brokerList');
+    const savedBrokers = localStorage.getItem('mukeshAlgoBrokers');
 
     if (!savedBrokers) {
-        brokerList.innerHTML = '<div style="text-align:center; color:#888; padding:20px;">No brokers configured. Add a broker to get started.</div>';
+        brokerList.innerHTML = '<div style="text-align:center; color:#888; padding:20px;">No connection history yet.</div>';
         return;
     }
 
     const brokers = JSON.parse(savedBrokers);
     let html = '';
-
-    brokers.forEach((broker, index) => {
+    brokers.slice(-5).reverse().forEach(broker => {
+        const statusColor = broker.status === 'connected' ? '#00ff88' : '#ff4444';
         html += `
-          <div style="background:#2a2a2a; padding:12px; margin-bottom:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="background:#2a2a2a; padding:10px 12px; margin-bottom:6px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-               <strong style="color:var(--accent-color);">${broker.name}</strong>
-               <div style="font-size:12px; color:#aaa;">Client ID: ${broker.clientId}</div>
-               <div style="font-size:11px; color:#${broker.status === 'connected' ? '00ff88' : 'ff4444'};">${broker.status.toUpperCase()}</div>
+               <strong style="color:var(--accent-color); font-size:13px;">${broker.name}</strong>
+               <span style="font-size:11px; color:#888; margin-left:8px;">ID: ${broker.clientId}</span>
             </div>
-            <div style="display:flex; gap:5px;">
-               <button onclick="editBroker(${index})" style="padding:5px 10px; background:#333; color:#fff; border:1px solid #555; border-radius:4px; cursor:pointer;">
-                 Edit
-               </button>
-               <button onclick="testBrokerConnection(${index})" style="padding:5px 10px; background:#333; color:#fff; border:1px solid #555; border-radius:4px; cursor:pointer;">
-                 Test
-               </button>
+            <div style="display:flex; align-items:center; gap:8px;">
+               <span style="font-size:10px; color:#888;">${broker.time || ''}</span>
+               <span style="font-size:11px; color:${statusColor}; font-weight:600;">${broker.status.toUpperCase()}</span>
             </div>
           </div>`;
     });
-
     brokerList.innerHTML = html;
 }
 
-function addEditBroker() {
-    const brokerSelect = document.getElementById('brokerSelect');
-    const clientId = document.getElementById('clientId').value;
-    const apiKey = document.getElementById('apiKey').value;
-    const apiSecret = document.getElementById('apiSecret').value;
-    const accessToken = document.getElementById('accessToken').value;
+function updateBrokerStatus(connected, brokerName) {
+    brokerConnected = connected;
+    const dot = document.getElementById('brokerStatusDot');
+    const text = document.getElementById('brokerStatusText');
+    const detail = document.getElementById('brokerStatusDetail');
 
-    if (!brokerSelect.value || !clientId) {
-        alert('Please select broker and enter Client ID');
-        return;
-    }
-
-    const brokerName = brokerSelect.options[brokerSelect.selectedIndex].text;
-
-    let brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
-
-    // Check if broker already exists
-    const existingIndex = brokers.findIndex(b => b.clientId === clientId);
-
-    const brokerData = {
-        name: brokerName,
-        clientId: clientId,
-        apiKey: apiKey,
-        apiSecret: apiSecret,
-        accessToken: accessToken,
-        status: 'pending',
-        lastUpdated: new Date().toISOString()
-    };
-
-    if (existingIndex >= 0) {
-        brokers[existingIndex] = brokerData;
-        alert('Broker updated successfully!');
+    if (connected) {
+        dot.style.background = '#00ff88';
+        text.textContent = `Connected to ${brokerName}`;
+        text.style.color = '#00ff88';
+        detail.textContent = 'Real-time data active. Watchlist prices updating.';
     } else {
-        brokers.push(brokerData);
-        alert('Broker added successfully!');
-    }
-
-    localStorage.setItem('mukeshAlgoBrokers', JSON.stringify(brokers));
-    loadBrokers();
-
-    // Clear form
-    document.getElementById('clientId').value = '';
-    document.getElementById('apiKey').value = '';
-    document.getElementById('apiSecret').value = '';
-    document.getElementById('accessToken').value = '';
-    brokerSelect.value = '';
-}
-
-
-function deleteBroker() {
-    const clientId = document.getElementById('clientId').value;
-
-    if (!clientId) {
-        alert('Please enter Client ID to delete');
-        return;
-    }
-
-    if (confirm('Are you sure you want to delete this broker?')) {
-        let brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
-        brokers = brokers.filter(b => b.clientId !== clientId);
-        localStorage.setItem('mukeshAlgoBrokers', JSON.stringify(brokers));
-        loadBrokers();
-
-        // Clear form
-        document.getElementById('clientId').value = '';
-        document.getElementById('apiKey').value = '';
-        document.getElementById('apiSecret').value = '';
-        document.getElementById('accessToken').value = '';
-        document.getElementById('brokerSelect').value = '';
-
-        alert('Broker deleted successfully!');
+        dot.style.background = '#ff4444';
+        text.textContent = 'Not Connected';
+        text.style.color = '#fff';
+        detail.textContent = 'Configure and connect a broker below';
     }
 }
 
-function checkBrokerConnection() {
-    const clientId = document.getElementById('clientId').value;
-
-    if (!clientId) {
-        alert('Please enter Client ID to check connection');
-        return;
-    }
-
-    // Simulate connection check
-    const status = Math.random() > 0.3 ? 'Connected' : 'Failed';
-    const message = status === 'Connected' ?
-        '✅ Broker connection successful!' :
-        '❌ Connection failed. Please check your credentials.';
-
-    alert(message);
+function checkBrokerStatusOnLoad() {
+    fetch('/api/broker/status')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.connected) {
+                updateBrokerStatus(true, data.broker);
+                startLtpUpdates();
+            }
+        })
+        .catch(() => {});
 }
 
-function editBroker(index) {
-    const brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
-    const broker = brokers[index];
+function brokerGetLoginUrl() {
+    const brokerType = document.getElementById('brokerSelect').value;
+    const userId = document.getElementById('clientId').value.trim();
+    const apiKey = document.getElementById('apiKey').value.trim();
+    const appCode = document.getElementById('apiSecret').value.trim();
 
-    if (broker) {
-        // Set form values
-        document.getElementById('brokerSelect').value = broker.name.replace(' ', '').toLowerCase();
-        document.getElementById('clientId').value = broker.clientId;
-        document.getElementById('apiKey').value = broker.apiKey;
-        document.getElementById('apiSecret').value = broker.apiSecret;
-        document.getElementById('accessToken').value = broker.accessToken;
+    if (!userId) { alert('User ID required'); return; }
+    if (!apiKey) { alert('Secret Key required'); return; }
+    if (!appCode && brokerType === 'alice_blue') { alert('App Code required'); return; }
 
-        alert('Broker details loaded. Update and click "Add/Update Broker" to save changes.');
-    }
+    const btn = document.getElementById('btnGetLoginUrl');
+    btn.textContent = 'Getting Login URL...';
+    btn.disabled = true;
+
+    fetch('/api/broker/login-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            broker_type: brokerType,
+            api_key: apiKey,
+            api_secret: appCode,
+            app_code: appCode,
+            user_id: userId,
+            redirect_uri: window.location.origin + '/callback'
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        btn.disabled = false;
+
+        if (data.success && data.login_url) {
+            document.getElementById('loginUrlDisplay').value = data.login_url;
+            document.getElementById('loginUrlSection').style.display = 'block';
+            document.getElementById('authCodeSection').style.display = 'block';
+
+            // Auto-open login URL in new tab
+            window.open(data.login_url, '_blank');
+        } else {
+            showAuthResult(false, data.message || 'Failed to get login URL');
+        }
+    })
+    .catch(err => {
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        btn.disabled = false;
+        showAuthResult(false, 'Network error: ' + err.message);
+    });
 }
 
-function testBrokerConnection(index) {
-    const brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
-    const broker = brokers[index];
+function brokerAuthenticate() {
+    const authCode = document.getElementById('authCodeInput').value.trim();
+    if (!authCode) { alert('Please paste the authorization code'); return; }
 
-    if (broker) {
-        // Simulate connection test
-        setTimeout(() => {
-            const status = Math.random() > 0.2 ? 'connected' : 'disconnected';
-            broker.status = status;
+    const btn = document.getElementById('btnAuthenticate');
+    btn.textContent = 'Authenticating...';
+    btn.disabled = true;
+
+    fetch('/api/broker/authenticate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_code: authCode })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.innerHTML = '<i class="fas fa-check-circle"></i> Step 2: Authenticate';
+        btn.disabled = false;
+
+        if (data.success) {
+            showAuthResult(true, 'Connected to ' + (data.broker || 'broker') + ' successfully!');
+            updateBrokerStatus(true, data.broker || 'Alice Blue');
+
+            // Save to history
+            const brokerName = document.getElementById('brokerSelect').options[document.getElementById('brokerSelect').selectedIndex].text;
+            const clientId = document.getElementById('clientId').value;
+            let brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
+            brokers.push({
+                name: brokerName,
+                clientId: clientId,
+                status: 'connected',
+                time: new Date().toLocaleString('en-IN')
+            });
             localStorage.setItem('mukeshAlgoBrokers', JSON.stringify(brokers));
             loadBrokers();
 
-            alert(status === 'connected' ?
-                '✅ Broker connection test successful!' :
-                '❌ Connection failed. Please check your credentials.');
-        }, 1000);
-    }
+            // Start real-time price updates
+            startLtpUpdates();
+        } else {
+            showAuthResult(false, data.message || 'Authentication failed');
+        }
+    })
+    .catch(err => {
+        btn.innerHTML = '<i class="fas fa-check-circle"></i> Step 2: Authenticate';
+        btn.disabled = false;
+        showAuthResult(false, 'Network error: ' + err.message);
+    });
 }
+
+function showAuthResult(success, message) {
+    const el = document.getElementById('authResult');
+    el.style.display = 'block';
+    el.style.background = success ? 'rgba(0,170,102,0.15)' : 'rgba(255,68,68,0.15)';
+    el.style.border = `1px solid ${success ? '#00aa66' : '#ff4444'}`;
+    el.style.color = success ? '#00ff88' : '#ff4444';
+    el.innerHTML = `<i class="fas fa-${success ? 'check-circle' : 'times-circle'}"></i> ${message}`;
+}
+
+// ===== REAL-TIME LTP UPDATES FOR WATCHLIST =====
+let ltpUpdateInterval = null;
+
+function startLtpUpdates() {
+    if (ltpUpdateInterval) clearInterval(ltpUpdateInterval);
+    // Update immediately then every 3 seconds
+    updateWatchlistLtp();
+    ltpUpdateInterval = setInterval(updateWatchlistLtp, 3000);
+}
+
+function updateWatchlistLtp() {
+    if (!brokerConnected) return;
+
+    // Get visible watchlist symbols
+    const visibleItems = document.querySelectorAll('.wl-item');
+    if (visibleItems.length === 0) return;
+
+    visibleItems.forEach(item => {
+        const symbol = item.dataset.symbol;
+        if (!symbol) return;
+
+        // Determine exchange from symbol pattern
+        let exchange = 'NSE';
+        if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CP]/) || symbol.match(/FUT$/)) {
+            exchange = 'NFO';
+        }
+
+        fetch(`/api/ltp/${encodeURIComponent(symbol)}?exchange=${exchange}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.ltp > 0) {
+                    const priceEl = item.querySelector('.wl-item-price');
+                    if (priceEl) {
+                        const oldPrice = parseFloat(priceEl.textContent) || 0;
+                        const newPrice = data.ltp;
+                        priceEl.textContent = newPrice.toFixed(2);
+
+                        // Update stored price data
+                        if (stockPrices[symbol]) {
+                            stockPrices[symbol].price = newPrice;
+                        } else {
+                            stockPrices[symbol] = { price: newPrice, change: 0, changePct: 0 };
+                        }
+
+                        // Flash effect on price change
+                        if (oldPrice !== 0 && oldPrice !== newPrice) {
+                            priceEl.style.transition = 'none';
+                            priceEl.style.background = newPrice > oldPrice ? 'rgba(0,204,102,0.3)' : 'rgba(255,68,68,0.3)';
+                            setTimeout(() => {
+                                priceEl.style.transition = 'background 0.5s';
+                                priceEl.style.background = 'transparent';
+                            }, 300);
+                        }
+                    }
+                }
+            })
+            .catch(() => {}); // Silent fail for individual symbols
+    });
+}
+
+// Keep old function names as no-ops for compatibility
+function addEditBroker() { brokerGetLoginUrl(); }
+function deleteBroker() {}
+function checkBrokerConnection() { checkBrokerStatusOnLoad(); }
+function editBroker() {}
+function testBrokerConnection() { checkBrokerStatusOnLoad(); }
 
 
 // Initialize brokers when page loads
 function initializeBrokerPage() {
     loadBrokers();
+    checkBrokerStatusOnLoad();
 }
 
 // ===== FULL SCREEN MODE =====

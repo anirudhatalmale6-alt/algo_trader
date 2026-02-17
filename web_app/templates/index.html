@@ -1900,45 +1900,83 @@
                 </div>
             </div>
 
-            <!-- Alice Blue Connection -->
+            <!-- Broker Connection -->
             <div style="background: #1a1a1a; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h3 style="color: var(--accent-color); margin-bottom: 20px;">
-                    <i class="fas fa-plug"></i> Connect Alice Blue
+                    <i class="fas fa-plug"></i> Connect Broker
                 </h3>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Broker</label>
-                        <select id="brokerSelect" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
-                            <option value="alice_blue" selected>Alice Blue</option>
-                            <option value="upstox">Upstox</option>
+                    <div style="grid-column: 1 / -1;">
+                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Select Broker</label>
+                        <select id="brokerSelect" onchange="onBrokerChange()" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px; font-size: 14px;">
+                            <option value="alice_blue" selected>Alice Blue (NSE/BSE/NFO)</option>
+                            <option value="upstox">Upstox (NSE/BSE/NFO)</option>
+                            <option value="exness">Exness - MT5 (Forex/Crypto/Commodities)</option>
                         </select>
                     </div>
 
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">User ID</label>
-                        <input type="text" id="clientId" placeholder="e.g. 515175" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                    <!-- Alice Blue Fields -->
+                    <div id="fieldsAliceBlue">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">User ID</label>
+                                <input type="text" id="clientId" placeholder="e.g. 515175" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">Secret Key (long key)</label>
+                                <input type="password" id="apiKey" placeholder="Paste your Secret Key" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">App Code (short code)</label>
+                                <input type="text" id="apiSecret" placeholder="e.g. cabzLFoeRT" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                        </div>
                     </div>
 
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">Secret Key (long key)</label>
-                        <input type="password" id="apiKey" placeholder="Paste your Secret Key here" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                    <!-- Upstox Fields -->
+                    <div id="fieldsUpstox" style="display:none; grid-column: 1 / -1;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">API Key</label>
+                                <input type="text" id="upstoxApiKey" placeholder="Your Upstox API Key" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">API Secret</label>
+                                <input type="password" id="upstoxApiSecret" placeholder="Your Upstox API Secret" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                        </div>
+                        <p style="color:#666; font-size: 11px; margin-top: 8px;">Get API Key & Secret from <a href="https://account.upstox.com/developer/apps" target="_blank" style="color:#00ccff;">Upstox Developer Console</a></p>
                     </div>
 
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #aaa;">App Code (short code)</label>
-                        <input type="text" id="apiSecret" placeholder="e.g. cabzLFoeRT" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                    <!-- Exness/MT5 Fields -->
+                    <div id="fieldsExness" style="display:none; grid-column: 1 / -1;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">MT5 Account Number</label>
+                                <input type="text" id="exnessLogin" placeholder="e.g. 12345678" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">MT5 Password</label>
+                                <input type="password" id="exnessPassword" placeholder="Your MT5 password" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; margin-bottom: 8px; color: #aaa;">Server Name</label>
+                                <input type="text" id="exnessServer" placeholder="e.g. Exness-MT5Real, Exness-MT5Real2" style="width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:5px;">
+                            </div>
+                        </div>
+                        <p style="color:#ff8800; font-size: 11px; margin-top: 8px;"><i class="fas fa-exclamation-triangle"></i> MetaTrader 5 terminal must be installed and running on your computer. <a href="https://download.mql5.com/cdn/web/exness.technologies.ltd/mt5/exness5setup.exe" target="_blank" style="color:#00ccff;">Download MT5</a></p>
                     </div>
                 </div>
 
-                <!-- Step 1: Get Login URL -->
+                <!-- Step 1: Get Login URL (OAuth brokers) / Connect (MT5) -->
                 <div style="margin-top: 20px;">
                     <button onclick="brokerGetLoginUrl()" id="btnGetLoginUrl" style="width:100%; padding:12px; background: linear-gradient(135deg, #0077ff, #0055cc); border:none; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold; font-size: 14px;">
                         <i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL
                     </button>
                 </div>
 
-                <!-- Login URL Display -->
+                <!-- Login URL Display (for OAuth brokers) -->
                 <div id="loginUrlSection" style="display:none; margin-top: 15px; background: #222; padding: 15px; border-radius: 8px; border: 1px solid #333;">
                     <label style="display: block; margin-bottom: 8px; color: #aaa;">Login URL (click to open in browser):</label>
                     <div style="display: flex; gap: 8px;">
@@ -1950,7 +1988,7 @@
                     <p style="color:#888; font-size: 11px; margin-top: 8px;">Login → Authorize → Copy authCode from the URL after redirect</p>
                 </div>
 
-                <!-- Step 2: Authenticate with Auth Code -->
+                <!-- Step 2: Authenticate with Auth Code (OAuth brokers) -->
                 <div id="authCodeSection" style="display:none; margin-top: 15px;">
                     <label style="display: block; margin-bottom: 8px; color: #aaa;">Authorization Code (from URL after login):</label>
                     <div style="display: flex; gap: 8px;">

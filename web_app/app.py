@@ -21,6 +21,14 @@ from algo_trader.brokers.upstox import UpstoxBroker
 from algo_trader.brokers.alice_blue import AliceBlueBroker
 from algo_trader.brokers.base import BrokerOrder
 
+# MT5 for Exness (optional - requires MetaTrader5 package on Windows)
+try:
+    from algo_trader.brokers.mt5_broker import MT5Broker
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    MT5Broker = None
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'mukesh-algo-secret-key'
 CORS(app)
@@ -58,6 +66,21 @@ def get_login_url():
             active_broker = UpstoxBroker(api_key, api_secret, redirect_uri)
         elif broker_type == 'alice_blue':
             active_broker = AliceBlueBroker(api_key, app_code, user_id, redirect_uri)
+        elif broker_type == 'exness':
+            # Exness uses MT5 direct login - no OAuth URL needed
+            if not MT5_AVAILABLE:
+                return jsonify({'success': False, 'message': 'MetaTrader5 package not installed. Run: pip install MetaTrader5 (Windows only)'})
+            # Store credentials for authenticate step
+            mt5_login = int(user_id) if user_id else 0
+            mt5_password = api_key  # Secret Key field = MT5 password
+            mt5_server = api_secret  # App Code / Server field = MT5 server
+            active_broker = MT5Broker(login=mt5_login, password=mt5_password, server=mt5_server)
+            return jsonify({
+                'success': True,
+                'login_url': '',
+                'direct_login': True,
+                'message': 'Exness uses direct MT5 login. Click Authenticate to connect.'
+            })
         else:
             return jsonify({'success': False, 'message': f'Unknown broker: {broker_type}'})
 
@@ -79,6 +102,19 @@ def authenticate():
         if not active_broker:
             return jsonify({'success': False, 'message': 'No broker initialized. Get login URL first.'})
 
+        # MT5/Exness uses direct login - no auth code needed
+        if isinstance(active_broker, MT5Broker) if MT5_AVAILABLE and MT5Broker else False:
+            result = active_broker.authenticate()
+            if result:
+                return jsonify({
+                    'success': True,
+                    'message': 'Connected to Exness MT5 successfully',
+                    'broker': 'Exness (MT5)',
+                    'is_authenticated': True
+                })
+            else:
+                return jsonify({'success': False, 'message': 'MT5 connection failed. Make sure MetaTrader 5 terminal is running and credentials are correct.'})
+
         if not auth_code:
             return jsonify({'success': False, 'message': 'Auth code is required'})
 
@@ -95,7 +131,7 @@ def authenticate():
                 })
             else:
                 error_msg = result.get('error', 'Authentication failed')
-                return jsonify({'success': False, 'message': f'Alice Blue: {error_msg}'})
+                return jsonify({'success': False, 'message': f'{active_broker.broker_name}: {error_msg}'})
         elif result:
             return jsonify({
                 'success': True,

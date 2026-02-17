@@ -2008,57 +2008,114 @@ function checkBrokerStatusOnLoad() {
         .catch(() => {});
 }
 
+// Switch broker form fields based on selection
+function onBrokerChange() {
+    const brokerType = document.getElementById('brokerSelect').value;
+    const fieldsAB = document.getElementById('fieldsAliceBlue');
+    const fieldsUp = document.getElementById('fieldsUpstox');
+    const fieldsEx = document.getElementById('fieldsExness');
+    const btn = document.getElementById('btnGetLoginUrl');
+
+    // Hide all field sections
+    fieldsAB.style.display = 'none';
+    fieldsUp.style.display = 'none';
+    fieldsEx.style.display = 'none';
+
+    // Reset sections
+    document.getElementById('loginUrlSection').style.display = 'none';
+    document.getElementById('authCodeSection').style.display = 'none';
+    document.getElementById('authResult').style.display = 'none';
+
+    if (brokerType === 'alice_blue') {
+        fieldsAB.style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+    } else if (brokerType === 'upstox') {
+        fieldsUp.style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+    } else if (brokerType === 'exness') {
+        fieldsEx.style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-plug"></i> Connect to Exness MT5';
+    }
+}
+
 function brokerGetLoginUrl() {
     const brokerType = document.getElementById('brokerSelect').value;
-    const userId = document.getElementById('clientId').value.trim();
-    const apiKey = document.getElementById('apiKey').value.trim();
-    const appCode = document.getElementById('apiSecret').value.trim();
+    let payload = { broker_type: brokerType, redirect_uri: window.location.origin + '/callback' };
 
-    if (!userId) { alert('User ID required'); return; }
-    if (!apiKey) { alert('Secret Key required'); return; }
-    if (!appCode && brokerType === 'alice_blue') { alert('App Code required'); return; }
+    // Collect fields based on broker type
+    if (brokerType === 'alice_blue') {
+        const userId = document.getElementById('clientId').value.trim();
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const appCode = document.getElementById('apiSecret').value.trim();
+        if (!userId) { alert('User ID required'); return; }
+        if (!apiKey) { alert('Secret Key required'); return; }
+        if (!appCode) { alert('App Code required'); return; }
+        payload.api_key = apiKey;
+        payload.api_secret = appCode;
+        payload.app_code = appCode;
+        payload.user_id = userId;
+    } else if (brokerType === 'upstox') {
+        const apiKey = document.getElementById('upstoxApiKey').value.trim();
+        const apiSecret = document.getElementById('upstoxApiSecret').value.trim();
+        if (!apiKey) { alert('API Key required'); return; }
+        if (!apiSecret) { alert('API Secret required'); return; }
+        payload.api_key = apiKey;
+        payload.api_secret = apiSecret;
+    } else if (brokerType === 'exness') {
+        const login = document.getElementById('exnessLogin').value.trim();
+        const password = document.getElementById('exnessPassword').value.trim();
+        const server = document.getElementById('exnessServer').value.trim();
+        if (!login) { alert('MT5 Account Number required'); return; }
+        if (!password) { alert('MT5 Password required'); return; }
+        if (!server) { alert('Server Name required'); return; }
+        payload.user_id = login;
+        payload.api_key = password;
+        payload.api_secret = server;
+    }
 
     const btn = document.getElementById('btnGetLoginUrl');
-    btn.textContent = 'Getting Login URL...';
+    btn.textContent = brokerType === 'exness' ? 'Connecting...' : 'Getting Login URL...';
     btn.disabled = true;
 
     fetch('/api/broker/login-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            broker_type: brokerType,
-            api_key: apiKey,
-            api_secret: appCode,
-            app_code: appCode,
-            user_id: userId,
-            redirect_uri: window.location.origin + '/callback'
-        })
+        body: JSON.stringify(payload)
     })
     .then(r => r.json())
     .then(data => {
-        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        btn.innerHTML = brokerType === 'exness'
+            ? '<i class="fas fa-plug"></i> Connect to Exness MT5'
+            : '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
         btn.disabled = false;
 
-        if (data.success && data.login_url) {
-            document.getElementById('loginUrlDisplay').value = data.login_url;
-            document.getElementById('loginUrlSection').style.display = 'block';
-            document.getElementById('authCodeSection').style.display = 'block';
-
-            // Auto-open login URL in new tab
-            window.open(data.login_url, '_blank');
+        if (data.success) {
+            if (data.direct_login) {
+                // Exness/MT5 - skip login URL, go straight to authenticate
+                showAuthResult(true, 'MT5 initialized. Authenticating...');
+                brokerAuthenticate();
+            } else if (data.login_url) {
+                document.getElementById('loginUrlDisplay').value = data.login_url;
+                document.getElementById('loginUrlSection').style.display = 'block';
+                document.getElementById('authCodeSection').style.display = 'block';
+                window.open(data.login_url, '_blank');
+            }
         } else {
             showAuthResult(false, data.message || 'Failed to get login URL');
         }
     })
     .catch(err => {
-        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        btn.innerHTML = brokerType === 'exness'
+            ? '<i class="fas fa-plug"></i> Connect to Exness MT5'
+            : '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
         btn.disabled = false;
         showAuthResult(false, 'Network error: ' + err.message);
     });
 }
 
 function brokerAuthenticate() {
-    const authCode = document.getElementById('authCodeInput').value.trim();
+    const brokerType = document.getElementById('brokerSelect').value;
+    const authCode = brokerType === 'exness' ? 'mt5_direct' : document.getElementById('authCodeInput').value.trim();
     if (!authCode) { alert('Please paste the authorization code'); return; }
 
     const btn = document.getElementById('btnAuthenticate');

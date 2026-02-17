@@ -1733,25 +1733,43 @@
             <i class="fas fa-bars"></i> NAVIGATION
         </div>
         <button onclick="showPage('openPositionsPage')">
-            <i class="fas fa-chart-line"></i> Dashboard
+            <i class="fas fa-chart-line"></i> Open Positions
         </button>
         <button onclick="showPage('orderbookPage')">
-            <i class="fas fa-book-open"></i> Order Management
+            <i class="fas fa-book"></i> Order Book
         </button>
         <button onclick="showPage('screenerPage')">
-            <i class="fas fa-crosshairs"></i> Scanner
-        </button>
-        <button onclick="showPage('marketplacePage')">
-            <i class="fas fa-store"></i> Marketplace
+            <i class="fas fa-search"></i> Screener
         </button>
         <button onclick="showPage('strategyCreationPage')">
-            <i class="fas fa-chess-board"></i> Strategy Builder
+            <i class="fas fa-chess-board"></i> Strategy Creation
+        </button>
+        <button onclick="showPage('reportPage')">
+            <i class="fas fa-chart-bar"></i> Reports
+        </button>
+        <button onclick="showPage('profilePage')">
+            <i class="fas fa-user"></i> Profile
         </button>
         <button onclick="showPage('brokerPage')">
             <i class="fas fa-university"></i> Broker
         </button>
+        <button onclick="showPage('marketplacePage')">
+            <i class="fas fa-store"></i> Market Place
+        </button>
+        <button onclick="showPage('paperTradingPage')">
+            <i class="fas fa-file-invoice-dollar"></i> Paper Trading
+        </button>
+        <button onclick="showPage('myPlanPage')">
+            <i class="fas fa-calendar-alt"></i> My Plan
+        </button>
+        <button onclick="showPage('backtestPage')">
+            <i class="fas fa-history"></i> Backtest
+        </button>
         <button onclick="showPage('settingsPage')">
             <i class="fas fa-cog"></i> Settings
+        </button>
+        <button onclick="showPage('alPage')">
+            <i class="fas fa-robot"></i> AL
         </button>
 
         <!-- Dashboard Controls -->
@@ -1850,6 +1868,11 @@
 
         <!-- Other Pages -->
         <div class="content-page hidden" id="orderbookPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
 <!-- ============================================================
      MUKESH ALGO - Order Management Page
      Inner HTML for: <div class="content-page hidden" id="orderbookPage">
@@ -3320,6 +3343,11 @@
         </div>
 
 <div class="content-page hidden" id="screenerPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
 
   <!-- Page Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
@@ -3861,138 +3889,285 @@
 </div>
 
         <div class="content-page hidden" id="strategyCreationPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
 
   <!-- Page Header -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
     <div>
       <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
-        <i class="fas fa-chess-board" style="color:#00ccff;margin-right:10px;"></i>Strategy Builder
+        <i class="fas fa-chess-board" style="color:#00ccff;margin-right:10px;"></i>Strategy Creation
       </h2>
-      <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Create custom trading strategies with visual rule builder</p>
+      <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Build, test, and deploy option & indicator strategies</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <select id="sb_savedStrategies" style="background:#111;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:12px;outline:none;min-width:180px;">
+        <option value="">-- Load Saved Strategy --</option>
+      </select>
+      <button onclick="loadSavedStrategy()" style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#aaa;font-size:12px;cursor:pointer;"><i class="fas fa-folder-open"></i></button>
     </div>
   </div>
 
-  <!-- Strategy Builder Form -->
-  <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
-    <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#fff;">
-      <i class="fas fa-cogs" style="color:#00ccff;margin-right:8px;"></i>Strategy Configuration
-    </h3>
+  <!-- ===== QUICK STRATEGY BUTTONS ===== -->
+  <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:16px;margin-bottom:20px;">
+    <h4 style="margin:0 0 12px 0;font-size:13px;color:#aa66ff;font-weight:600;">
+      <i class="fas fa-magic" style="margin-right:6px;"></i>Quick Strategies (One-Click)
+    </h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button onclick="applyQuickStrategy('iron_fly')" style="background:rgba(170,102,255,0.1);color:#aa66ff;border:1px solid rgba(170,102,255,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(170,102,255,0.2)'" onmouseleave="this.style.background='rgba(170,102,255,0.1)'">
+        <i class="fas fa-shield-alt" style="margin-right:4px;"></i>Iron Fly
+      </button>
+      <button onclick="applyQuickStrategy('iron_condor')" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'">
+        <i class="fas fa-layer-group" style="margin-right:4px;"></i>Iron Condor
+      </button>
+      <button onclick="applyQuickStrategy('straddle')" style="background:rgba(255,136,0,0.1);color:#ff8800;border:1px solid rgba(255,136,0,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,136,0,0.2)'" onmouseleave="this.style.background='rgba(255,136,0,0.1)'">
+        <i class="fas fa-arrows-alt-h" style="margin-right:4px;"></i>Straddle
+      </button>
+      <button onclick="applyQuickStrategy('strangle')" style="background:rgba(0,204,136,0.1);color:#00cc88;border:1px solid rgba(0,204,136,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,136,0.2)'" onmouseleave="this.style.background='rgba(0,204,136,0.1)'">
+        <i class="fas fa-expand-alt" style="margin-right:4px;"></i>Strangle
+      </button>
+      <button onclick="applyQuickStrategy('bull_call')" style="background:rgba(0,200,83,0.1);color:#00c853;border:1px solid rgba(0,200,83,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,200,83,0.2)'" onmouseleave="this.style.background='rgba(0,200,83,0.1)'">
+        <i class="fas fa-arrow-up" style="margin-right:4px;"></i>Bull Call
+      </button>
+      <button onclick="applyQuickStrategy('bear_put')" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'">
+        <i class="fas fa-arrow-down" style="margin-right:4px;"></i>Bear Put
+      </button>
+    </div>
+  </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-      <div>
-        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">Strategy Name</label>
-        <input type="text" id="sb_name" placeholder="My Custom Strategy" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+  <!-- ===== SYMBOL & CONFIG ROW ===== -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:20px;">
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;font-weight:500;">Strategy Name</label>
+      <input type="text" id="sb_name" placeholder="My Custom Strategy" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+    </div>
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;font-weight:500;">Symbol</label>
+      <select id="sb_instrument" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;">
+        <option value="NIFTY">NIFTY 50</option>
+        <option value="BANKNIFTY">BANK NIFTY</option>
+        <option value="FINNIFTY">FIN NIFTY</option>
+        <option value="MIDCPNIFTY">MIDCAP NIFTY</option>
+        <option value="SENSEX">SENSEX</option>
+      </select>
+    </div>
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;font-weight:500;">Spot Price</label>
+      <div style="display:flex;gap:6px;">
+        <input type="number" id="sb_spotPrice" placeholder="0.00" style="flex:1;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;" />
+        <button onclick="fetchSpotPrice()" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:8px;padding:8px 12px;font-size:11px;cursor:pointer;white-space:nowrap;"><i class="fas fa-sync-alt"></i></button>
       </div>
-      <div>
-        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">Instrument</label>
-        <select id="sb_instrument" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;">
-          <option value="nifty">NIFTY 50</option>
-          <option value="banknifty">BANK NIFTY</option>
-          <option value="finnifty">FIN NIFTY</option>
-          <option value="custom">Custom Symbol</option>
-        </select>
-      </div>
-      <div>
-        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">Timeframe</label>
-        <select id="sb_timeframe" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;">
-          <option value="1m">1 Minute</option>
-          <option value="5m" selected>5 Minutes</option>
-          <option value="15m">15 Minutes</option>
-          <option value="1h">1 Hour</option>
-          <option value="1d">Daily</option>
-        </select>
-      </div>
-      <div>
-        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">Trade Type</label>
-        <select id="sb_tradeType" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;">
-          <option value="both">Both (Buy & Sell)</option>
-          <option value="buy">Buy Only</option>
-          <option value="sell">Sell Only</option>
-        </select>
+    </div>
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;font-weight:500;">Expiry</label>
+      <select id="sb_expiry" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;">
+        <option value="current_week">Current Week</option>
+        <option value="next_week">Next Week</option>
+        <option value="current_month">Current Month</option>
+        <option value="next_month">Next Month</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ===== OPTION LEGS TABLE ===== -->
+  <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h3 style="margin:0;font-size:15px;font-weight:600;color:#fff;">
+        <i class="fas fa-list" style="color:#aa66ff;margin-right:8px;"></i>Strategy Legs <span id="legCountBadge" style="background:#333;color:#888;font-size:10px;padding:2px 8px;border-radius:10px;margin-left:6px;">0 / 4</span>
+      </h3>
+      <div style="display:flex;gap:6px;">
+        <button onclick="refreshLegLTP()" style="background:#111;border:1px solid #333;border-radius:6px;padding:6px 12px;color:#888;font-size:11px;cursor:pointer;"><i class="fas fa-sync-alt" style="margin-right:3px;"></i>Refresh LTP</button>
+        <button onclick="clearAllLegs()" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 12px;font-size:11px;cursor:pointer;"><i class="fas fa-trash" style="margin-right:3px;"></i>Clear All</button>
       </div>
     </div>
 
-    <!-- Entry Conditions -->
-    <div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:16px;margin-bottom:16px;">
-      <h4 style="margin:0 0 14px 0;font-size:13px;color:#00cc88;font-weight:600;">
-        <i class="fas fa-sign-in-alt" style="margin-right:6px;"></i>Entry Conditions
+    <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:700px;">
+        <thead>
+          <tr style="background:#111;">
+            <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Action</th>
+            <th style="padding:10px 12px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Type</th>
+            <th style="padding:10px 12px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Strike</th>
+            <th style="padding:10px 12px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Lots</th>
+            <th style="padding:10px 12px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Premium</th>
+            <th style="padding:10px 12px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">LTP</th>
+            <th style="padding:10px 12px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Remove</th>
+          </tr>
+        </thead>
+        <tbody id="sb_legsBody">
+          <!-- Legs populated dynamically -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Add Leg Controls -->
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;padding:12px;background:#111;border-radius:8px;border:1px solid #2a2a2a;">
+      <select id="sb_legAction" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
+        <option value="BUY" style="color:#00c853;">BUY</option>
+        <option value="SELL" style="color:#ff4444;">SELL</option>
+      </select>
+      <select id="sb_legType" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
+        <option value="CE">CE (Call)</option>
+        <option value="PE">PE (Put)</option>
+        <option value="FUT">FUT (Future)</option>
+      </select>
+      <select id="sb_legStrikeMode" onchange="toggleManualStrike()" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
+        <option value="ATM">ATM</option>
+        <option value="OTM+1">OTM +1</option>
+        <option value="OTM+2">OTM +2</option>
+        <option value="OTM+3">OTM +3</option>
+        <option value="ITM-1">ITM -1</option>
+        <option value="ITM-2">ITM -2</option>
+        <option value="manual">Manual</option>
+      </select>
+      <input type="number" id="sb_legStrike" placeholder="Strike ₹" step="50" style="display:none;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;width:100px;" />
+      <input type="number" id="sb_legLots" value="1" min="1" max="100" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;width:60px;" placeholder="Lots" />
+      <input type="number" id="sb_legPremium" placeholder="Premium ₹" step="0.05" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;width:100px;" />
+      <button onclick="addOptionLeg()" style="background:linear-gradient(135deg,#00cc88,#009966);color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
+        <i class="fas fa-plus"></i> Add Leg
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== P&L SUMMARY + EXIT CONDITIONS ===== -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+
+    <!-- P&L Summary -->
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;">
+      <h4 style="margin:0 0 14px 0;font-size:13px;color:#00ccff;font-weight:600;">
+        <i class="fas fa-calculator" style="margin-right:6px;"></i>Strategy Summary
       </h4>
-      <div id="sb_entryConditions" style="display:flex;flex-direction:column;gap:10px;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <select style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
-            <option>RSI (14)</option>
-            <option>EMA (9)</option>
-            <option>EMA (21)</option>
-            <option>MACD</option>
-            <option>Supertrend</option>
-            <option>VWAP</option>
-            <option>Bollinger Bands</option>
-            <option>Volume</option>
-          </select>
-          <select style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
-            <option>crosses above</option>
-            <option>crosses below</option>
-            <option>is above</option>
-            <option>is below</option>
-            <option>equals</option>
-          </select>
-          <input type="text" placeholder="Value or Indicator" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;width:150px;" />
-          <button style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;"><i class="fas fa-times"></i></button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#111;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;margin-bottom:4px;">Max Profit</div>
+          <div id="sb_maxProfit" style="font-size:18px;font-weight:700;color:#00c853;">&#8377;0.00</div>
+        </div>
+        <div style="background:#111;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;margin-bottom:4px;">Max Loss</div>
+          <div id="sb_maxLoss" style="font-size:18px;font-weight:700;color:#ff4444;">&#8377;0.00</div>
+        </div>
+        <div style="background:#111;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;margin-bottom:4px;">Breakeven</div>
+          <div id="sb_breakeven" style="font-size:18px;font-weight:700;color:#fff;">--</div>
+        </div>
+        <div style="background:#111;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;margin-bottom:4px;">Net Premium</div>
+          <div id="sb_netPremium" style="font-size:18px;font-weight:700;color:#00ccff;">&#8377;0.00</div>
+        </div>
+        <div style="background:#111;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;margin-bottom:4px;">Risk : Reward</div>
+          <div id="sb_riskReward" style="font-size:18px;font-weight:700;color:#ff8800;">--</div>
+        </div>
+        <div style="background:#111;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;margin-bottom:4px;">Total Lots</div>
+          <div id="sb_totalLots" style="font-size:18px;font-weight:700;color:#aa66ff;">0</div>
         </div>
       </div>
-      <button onclick="addEntryCondition()" style="margin-top:10px;background:rgba(0,204,136,0.1);color:#00cc88;border:1px solid rgba(0,204,136,0.3);border-radius:6px;padding:6px 14px;font-size:11px;cursor:pointer;">
-        <i class="fas fa-plus" style="margin-right:4px;"></i>Add Condition
-      </button>
     </div>
 
     <!-- Exit Conditions -->
-    <div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:16px;margin-bottom:16px;">
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;">
       <h4 style="margin:0 0 14px 0;font-size:13px;color:#ff4444;font-weight:600;">
-        <i class="fas fa-sign-out-alt" style="margin-right:6px;"></i>Exit Conditions
+        <i class="fas fa-sign-out-alt" style="margin-right:6px;"></i>Exit Configuration
       </h4>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
         <div>
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Stop Loss (%)</label>
-          <input type="number" id="sb_sl" value="1.5" step="0.1" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff4444;font-size:13px;font-weight:600;outline:none;" />
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Exit Type</label>
+          <select id="sb_exitType" style="width:100%;background:#111;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
+            <option value="manual">Manual</option>
+            <option value="sl_price">SL Price (per leg)</option>
+            <option value="sl_percent">SL % (per leg)</option>
+            <option value="tsl_percent">Trailing SL %</option>
+            <option value="tsl_points">Trailing SL Points</option>
+            <option value="target_price">Target Price</option>
+            <option value="target_percent">Target %</option>
+            <option value="pnl_based">P&L Based (combined)</option>
+          </select>
         </div>
-        <div>
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Target (%)</label>
-          <input type="number" id="sb_target" value="3.0" step="0.1" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#00cc88;font-size:13px;font-weight:600;outline:none;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Trailing SL (%)</label>
-          <input type="number" id="sb_tsl" value="0.5" step="0.1" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff8800;font-size:13px;font-weight:600;outline:none;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Max Trades/Day</label>
-          <input type="number" id="sb_maxTrades" value="5" min="1" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#00ccff;font-size:13px;font-weight:600;outline:none;" />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Stop Loss</label>
+            <input type="number" id="sb_sl" value="1.5" step="0.1" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff4444;font-size:13px;font-weight:600;outline:none;" />
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Target</label>
+            <input type="number" id="sb_target" value="3.0" step="0.1" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#00cc88;font-size:13px;font-weight:600;outline:none;" />
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Trailing SL</label>
+            <input type="number" id="sb_tsl" value="0.5" step="0.1" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff8800;font-size:13px;font-weight:600;outline:none;" />
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Max Trades/Day</label>
+            <input type="number" id="sb_maxTrades" value="5" min="1" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#00ccff;font-size:13px;font-weight:600;outline:none;" />
+          </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Action Buttons -->
-    <div style="display:flex;gap:12px;flex-wrap:wrap;">
-      <button onclick="saveStrategyToMarketplace()" style="flex:1;min-width:200px;background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 15px rgba(0,204,136,0.3);">
-        <i class="fas fa-save"></i> Save to Marketplace
-      </button>
-      <button onclick="deployCustomStrategy()" style="flex:1;min-width:200px;background:linear-gradient(135deg,#00ccff 0%,#0088cc 100%);color:#fff;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 15px rgba(0,204,255,0.3);">
-        <i class="fas fa-rocket"></i> Save & Deploy Now
-      </button>
-      <button onclick="backtestStrategy()" style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:12px 20px;color:#aaa;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
-        <i class="fas fa-history"></i> Backtest
-      </button>
+  <!-- ===== INDICATOR-BASED ENTRY CONDITIONS ===== -->
+  <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+    <h4 style="margin:0 0 14px 0;font-size:13px;color:#00cc88;font-weight:600;">
+      <i class="fas fa-chart-area" style="margin-right:6px;"></i>Entry Conditions (Indicator Based) <span style="font-weight:400;color:#555;font-size:11px;">- Optional, for auto-entry signals</span>
+    </h4>
+    <div id="sb_entryConditions" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
+          <option>RSI (14)</option><option>EMA (9)</option><option>EMA (21)</option><option>MACD</option><option>Supertrend</option><option>VWAP</option><option>Bollinger Bands</option><option>Volume</option><option>CPR Level</option><option>Pivot Points</option>
+        </select>
+        <select style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">
+          <option>crosses above</option><option>crosses below</option><option>is above</option><option>is below</option><option>equals</option>
+        </select>
+        <input type="text" placeholder="Value or Indicator" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;width:150px;" />
+        <button style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;"><i class="fas fa-times"></i></button>
+      </div>
     </div>
+    <button onclick="addEntryCondition()" style="margin-top:10px;background:rgba(0,204,136,0.1);color:#00cc88;border:1px solid rgba(0,204,136,0.3);border-radius:6px;padding:6px 14px;font-size:11px;cursor:pointer;">
+      <i class="fas fa-plus" style="margin-right:4px;"></i>Add Condition
+    </button>
+  </div>
+
+  <!-- ===== ACTION BUTTONS ===== -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+    <button onclick="saveStrategyToMarketplace()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:10px;padding:14px 24px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 15px rgba(0,204,136,0.3);">
+      <i class="fas fa-save"></i> Save to Marketplace
+    </button>
+    <button onclick="deployCustomStrategy()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#00ccff 0%,#0088cc 100%);color:#fff;border:none;border-radius:10px;padding:14px 24px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 15px rgba(0,204,255,0.3);">
+      <i class="fas fa-rocket"></i> Save & Deploy Now
+    </button>
+    <button onclick="executeStrategy()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#ff8800 0%,#cc6600 100%);color:#fff;border:none;border-radius:10px;padding:14px 24px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 15px rgba(255,136,0,0.3);">
+      <i class="fas fa-play"></i> Execute Now
+    </button>
+    <button onclick="backtestStrategy()" style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:14px 20px;color:#aaa;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+      <i class="fas fa-history"></i> Backtest
+    </button>
+    <button onclick="deleteCurrentStrategy()" style="background:rgba(255,68,68,0.1);border:1px solid rgba(255,68,68,0.3);border-radius:10px;padding:14px 20px;color:#ff4444;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+      <i class="fas fa-trash"></i> Delete
+    </button>
   </div>
 
         </div>
 
         <div class="content-page hidden" id="reportPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-chart-bar"></i> Reports</h2>
             <p>This page shows trading reports and analytics.</p>
         </div>
 
         <!-- ===== ENHANCED BROKER PAGE ===== -->
         <div class="content-page hidden" id="brokerPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-university"></i> Broker Management</h2>
 
             <!-- Connection Status Banner -->
@@ -4120,11 +4295,21 @@
         </div>
 
         <div class="content-page hidden" id="profilePage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-user"></i> Profile</h2>
             <p>User profile content will be displayed here.</p>
         </div>
 
         <div class="content-page hidden" id="marketplacePage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
 
   <!-- Page Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
@@ -4175,9 +4360,13 @@
           <div><span style="font-size:10px;color:#555;">Win Rate</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">68%</span></div>
           <div><span style="font-size:10px;color:#555;">Avg Return</span><br><span style="font-size:14px;font-weight:700;color:#00ccff;">2.4%</span></div>
         </div>
-        <button onclick="deployStrategy('cpr')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('cpr')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('cpr')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('cpr')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4202,9 +4391,13 @@
           <div><span style="font-size:10px;color:#555;">Supported</span><br><span style="font-size:14px;font-weight:700;color:#ff6699;">Pine v5</span></div>
           <div><span style="font-size:10px;color:#555;">Indicators</span><br><span style="font-size:14px;font-weight:700;color:#00ccff;">50+</span></div>
         </div>
-        <button onclick="deployStrategy('tradingview')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('tradingview')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('tradingview')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('tradingview')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4229,9 +4422,13 @@
           <div><span style="font-size:10px;color:#555;">Risk</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">Low</span></div>
           <div><span style="font-size:10px;color:#555;">Strategies</span><br><span style="font-size:14px;font-weight:700;color:#aa66ff;">6+</span></div>
         </div>
-        <button onclick="deployStrategy('option_hedge')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('option_hedge')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('option_hedge')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('option_hedge')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4255,9 +4452,13 @@
           <div><span style="font-size:10px;color:#555;">Win Rate</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">62%</span></div>
           <div><span style="font-size:10px;color:#555;">Drawdown</span><br><span style="font-size:14px;font-weight:700;color:#ff4444;">-3.2%</span></div>
         </div>
-        <button onclick="deployStrategy('rsi_reversal')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('rsi_reversal')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('rsi_reversal')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('rsi_reversal')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4281,9 +4482,13 @@
           <div><span style="font-size:10px;color:#555;">Win Rate</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">58%</span></div>
           <div><span style="font-size:10px;color:#555;">Avg Profit</span><br><span style="font-size:14px;font-weight:700;color:#00ccff;">4.1%</span></div>
         </div>
-        <button onclick="deployStrategy('supertrend')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('supertrend')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('supertrend')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('supertrend')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4307,9 +4512,13 @@
           <div><span style="font-size:10px;color:#555;">Win Rate</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">55%</span></div>
           <div><span style="font-size:10px;color:#555;">Avg Profit</span><br><span style="font-size:14px;font-weight:700;color:#00ccff;">3.5%</span></div>
         </div>
-        <button onclick="deployStrategy('ma_crossover')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('ma_crossover')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('ma_crossover')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('ma_crossover')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4333,9 +4542,13 @@
           <div><span style="font-size:10px;color:#555;">Win Rate</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">72%</span></div>
           <div><span style="font-size:10px;color:#555;">Risk</span><br><span style="font-size:14px;font-weight:700;color:#ff8800;">Medium</span></div>
         </div>
-        <button onclick="deployStrategy('straddle')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('straddle')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('straddle')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('straddle')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4359,9 +4572,13 @@
           <div><span style="font-size:10px;color:#555;">Win Rate</span><br><span style="font-size:14px;font-weight:700;color:#00cc88;">65%</span></div>
           <div><span style="font-size:10px;color:#555;">Trades/Day</span><br><span style="font-size:14px;font-weight:700;color:#00ccff;">8-15</span></div>
         </div>
-        <button onclick="deployStrategy('vwap_scalp')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
-          <i class="fas fa-rocket"></i> Deploy
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="editStrategy('vwap_scalp')" title="Edit" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.2)'" onmouseleave="this.style.background='rgba(0,204,255,0.1)'"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteStrategy('vwap_scalp')" title="Delete" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:8px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'"><i class="fas fa-trash"></i></button>
+          <button onclick="deployStrategy('vwap_scalp')" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,204,136,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+            <i class="fas fa-rocket"></i> Deploy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -4417,11 +4634,21 @@
         </div>
 
         <div class="content-page hidden" id="paperTradingPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-file-invoice-dollar"></i> Paper Trading</h2>
             <p>Paper trading content will be displayed here.</p>
         </div>
 
         <div class="content-page hidden" id="myPlanPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-calendar-alt"></i> My Plan</h2>
             <p>Plan details will be displayed here.</p>
         </div>
@@ -4432,11 +4659,21 @@
         </div>
 
         <div class="content-page hidden" id="settingsPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-cog"></i> Settings</h2>
             <p>Settings content will be displayed here.</p>
         </div>
 
         <div class="content-page hidden" id="alPage">
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
             <h2><i class="fas fa-robot"></i> AL</h2>
             <p>AI trading tools will be displayed here.</p>
         </div>

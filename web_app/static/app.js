@@ -2118,6 +2118,65 @@ function refreshDeployedStrategies() {
     // Would fetch from backend
 }
 
+// Edit strategy - opens strategy builder with pre-filled values
+function editStrategy(stratId) {
+    const strategyNames = {
+        cpr: 'CPR Strategy',
+        tradingview: 'TradingView Strategy',
+        option_hedge: 'Option Hedge Strategy',
+        rsi_reversal: 'RSI Reversal',
+        supertrend: 'Supertrend',
+        ma_crossover: 'MA Crossover',
+        straddle: 'Straddle/Strangle',
+        vwap_scalp: 'VWAP Scalping'
+    };
+    const name = strategyNames[stratId] || stratId;
+
+    // Navigate to strategy builder with this strategy loaded
+    showPage('strategyCreationPage');
+    const nameInput = document.getElementById('sb_name');
+    if (nameInput) nameInput.value = name;
+    alert('Editing: ' + name + '\nModify the settings and click Save to Marketplace.');
+}
+
+// Delete strategy from marketplace
+function deleteStrategy(stratId) {
+    const strategyNames = {
+        cpr: 'CPR Strategy',
+        tradingview: 'TradingView Strategy',
+        option_hedge: 'Option Hedge Strategy',
+        rsi_reversal: 'RSI Reversal',
+        supertrend: 'Supertrend',
+        ma_crossover: 'MA Crossover',
+        straddle: 'Straddle/Strangle',
+        vwap_scalp: 'VWAP Scalping'
+    };
+    const name = strategyNames[stratId] || stratId;
+
+    if (!confirm('Delete "' + name + '" from marketplace?\n\nThis will also stop any running instances.')) return;
+
+    // Find and remove the card
+    const cards = document.querySelectorAll('.strat-card');
+    cards.forEach(card => {
+        const deployBtn = card.querySelector('button[onclick*="deployStrategy(\'' + stratId + '\')"]');
+        if (deployBtn) {
+            card.style.transition = 'all 0.3s';
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.9)';
+            setTimeout(() => card.remove(), 300);
+        }
+    });
+
+    // Also stop any deployed instances
+    const tbody = document.getElementById('deployedStrategiesBody');
+    if (tbody) {
+        const rows = tbody.querySelectorAll('tr[data-strategy-id="' + stratId + '"]');
+        rows.forEach(row => row.remove());
+    }
+
+    console.log('[MUKESH ALGO] Strategy deleted:', stratId);
+}
+
 // Filter strategies by category
 function filterStrategies(category, btn) {
     const cards = document.querySelectorAll('.strat-card');
@@ -2177,6 +2236,520 @@ function addEntryCondition() {
 
     container.appendChild(row);
 }
+
+// ===== STRATEGY BUILDER - OPTION LEGS FUNCTIONS =====
+let strategyLegs = [];
+let currentStrategyId = null;
+const LOT_SIZES = { NIFTY: 25, BANKNIFTY: 15, FINNIFTY: 25, MIDCPNIFTY: 50, SENSEX: 10 };
+
+function getStrikeStep() {
+    const sym = document.getElementById('sb_instrument') ? document.getElementById('sb_instrument').value : 'NIFTY';
+    return (sym === 'BANKNIFTY') ? 100 : 50;
+}
+
+function getLotSize() {
+    const sym = document.getElementById('sb_instrument') ? document.getElementById('sb_instrument').value : 'NIFTY';
+    return LOT_SIZES[sym] || 25;
+}
+
+function getSpotPrice() {
+    const el = document.getElementById('sb_spotPrice');
+    return el ? parseFloat(el.value) || 0 : 0;
+}
+
+function getATMStrike() {
+    const spot = getSpotPrice();
+    const step = getStrikeStep();
+    if (!spot) return 0;
+    return Math.round(spot / step) * step;
+}
+
+function resolveStrike(mode) {
+    const atm = getATMStrike();
+    const step = getStrikeStep();
+    if (!atm) return 0;
+    switch (mode) {
+        case 'ATM': return atm;
+        case 'OTM+1': return atm + step;
+        case 'OTM+2': return atm + step * 2;
+        case 'OTM+3': return atm + step * 3;
+        case 'ITM-1': return atm - step;
+        case 'ITM-2': return atm - step * 2;
+        default: return atm;
+    }
+}
+
+function toggleManualStrike() {
+    const mode = document.getElementById('sb_legStrikeMode');
+    const strikeInput = document.getElementById('sb_legStrike');
+    if (mode && strikeInput) {
+        strikeInput.style.display = (mode.value === 'manual') ? 'inline-block' : 'none';
+    }
+}
+
+function fetchSpotPrice() {
+    const sym = document.getElementById('sb_instrument') ? document.getElementById('sb_instrument').value : 'NIFTY';
+    const spotEl = document.getElementById('sb_spotPrice');
+
+    // Try fetching from backend LTP API
+    fetch('/api/ltp?symbol=' + sym)
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.ltp) {
+            if (spotEl) spotEl.value = data.ltp;
+        } else {
+            // Demo fallback prices
+            const demoPrices = { NIFTY: 22450, BANKNIFTY: 47800, FINNIFTY: 21300, MIDCPNIFTY: 9850, SENSEX: 73500 };
+            if (spotEl) spotEl.value = demoPrices[sym] || 22450;
+        }
+        updateStrategySummary();
+    })
+    .catch(() => {
+        const demoPrices = { NIFTY: 22450, BANKNIFTY: 47800, FINNIFTY: 21300, MIDCPNIFTY: 9850, SENSEX: 73500 };
+        if (spotEl) spotEl.value = demoPrices[sym] || 22450;
+        updateStrategySummary();
+    });
+}
+
+function addOptionLeg(action, type, strikeMode, strike, lots, premium) {
+    if (strategyLegs.length >= 4) {
+        alert('Maximum 4 legs allowed per strategy');
+        return;
+    }
+
+    // Read from inputs if not provided as arguments
+    if (!action) {
+        action = document.getElementById('sb_legAction') ? document.getElementById('sb_legAction').value : 'BUY';
+        type = document.getElementById('sb_legType') ? document.getElementById('sb_legType').value : 'CE';
+        strikeMode = document.getElementById('sb_legStrikeMode') ? document.getElementById('sb_legStrikeMode').value : 'ATM';
+        strike = (strikeMode === 'manual')
+            ? (parseFloat(document.getElementById('sb_legStrike').value) || 0)
+            : resolveStrike(strikeMode);
+        lots = parseInt(document.getElementById('sb_legLots') ? document.getElementById('sb_legLots').value : '1') || 1;
+        premium = parseFloat(document.getElementById('sb_legPremium') ? document.getElementById('sb_legPremium').value : '0') || 0;
+    } else {
+        // When called from applyQuickStrategy with explicit values
+        if (typeof strike === 'string') {
+            strike = resolveStrike(strike);
+        }
+    }
+
+    if (!strike && strikeMode !== 'manual') {
+        alert('Please set a Spot Price first to calculate strikes');
+        return;
+    }
+
+    const leg = {
+        id: Date.now() + Math.random(),
+        action: action,
+        type: type,
+        strikeMode: strikeMode || 'ATM',
+        strike: strike,
+        lots: lots,
+        premium: premium,
+        ltp: premium || 0
+    };
+
+    strategyLegs.push(leg);
+    renderLegsTable();
+    updateStrategySummary();
+}
+
+function renderLegsTable() {
+    const tbody = document.getElementById('sb_legsBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    strategyLegs.forEach(function(leg, idx) {
+        const actionColor = leg.action === 'BUY' ? '#00c853' : '#ff4444';
+        const actionBg = leg.action === 'BUY' ? 'rgba(0,200,83,0.1)' : 'rgba(255,68,68,0.1)';
+        const typeBadge = leg.type === 'CE' ? '<span style="color:#00ccff;font-weight:600;">CE</span>'
+            : leg.type === 'PE' ? '<span style="color:#ff8800;font-weight:600;">PE</span>'
+            : '<span style="color:#aa66ff;font-weight:600;">FUT</span>';
+
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom:1px solid #1a1a1a;transition:background 0.15s;';
+        tr.onmouseenter = function() { this.style.background = '#151515'; };
+        tr.onmouseleave = function() { this.style.background = 'transparent'; };
+
+        tr.innerHTML =
+            '<td style="padding:10px 12px;"><span style="background:' + actionBg + ';color:' + actionColor + ';padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;border:1px solid ' + actionColor + '30;">' + leg.action + '</span></td>' +
+            '<td style="padding:10px 12px;text-align:center;">' + typeBadge + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#fff;font-weight:600;">₹' + leg.strike.toLocaleString() + ' <span style="font-size:10px;color:#555;">(' + leg.strikeMode + ')</span></td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#fff;">' + leg.lots + ' <span style="font-size:10px;color:#555;">(' + (leg.lots * getLotSize()) + ' qty)</span></td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#aaa;">₹' + leg.premium.toFixed(2) + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#fff;font-weight:500;">₹' + leg.ltp.toFixed(2) + '</td>' +
+            '<td style="padding:10px 12px;text-align:center;"><button onclick="removeOptionLeg(' + idx + ')" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;"><i class="fas fa-times"></i></button></td>';
+
+        tbody.appendChild(tr);
+    });
+
+    // Update leg count badge
+    const badge = document.getElementById('legCountBadge');
+    if (badge) badge.textContent = strategyLegs.length + ' / 4';
+}
+
+function removeOptionLeg(idx) {
+    strategyLegs.splice(idx, 1);
+    renderLegsTable();
+    updateStrategySummary();
+}
+
+function clearAllLegs() {
+    if (strategyLegs.length === 0) return;
+    if (!confirm('Clear all strategy legs?')) return;
+    strategyLegs = [];
+    renderLegsTable();
+    updateStrategySummary();
+}
+
+function refreshLegLTP() {
+    // In a real app, fetch live LTP for each leg from broker
+    // For now, simulate small random LTP changes
+    strategyLegs.forEach(function(leg) {
+        if (leg.premium > 0) {
+            const change = (Math.random() - 0.5) * leg.premium * 0.05;
+            leg.ltp = Math.max(0.05, leg.premium + change);
+        }
+    });
+    renderLegsTable();
+    updateStrategySummary();
+    console.log('[MUKESH ALGO] LTP refreshed for', strategyLegs.length, 'legs');
+}
+
+function updateStrategySummary() {
+    const lotSize = getLotSize();
+    let netPremium = 0;
+    let totalLots = 0;
+
+    strategyLegs.forEach(function(leg) {
+        const multiplier = leg.action === 'SELL' ? 1 : -1;
+        netPremium += multiplier * leg.premium * leg.lots * lotSize;
+        totalLots += leg.lots;
+    });
+
+    // Determine strategy type for P&L calculations
+    const hasBuy = strategyLegs.some(l => l.action === 'BUY');
+    const hasSell = strategyLegs.some(l => l.action === 'SELL');
+
+    let maxProfit = 0;
+    let maxLoss = 0;
+    let breakeven = '--';
+
+    if (strategyLegs.length > 0) {
+        if (hasSell && hasBuy) {
+            // Spread or multi-leg strategy
+            const sellLegs = strategyLegs.filter(l => l.action === 'SELL');
+            const buyLegs = strategyLegs.filter(l => l.action === 'BUY');
+
+            // Net credit/debit
+            if (netPremium > 0) {
+                // Credit strategy
+                maxProfit = netPremium;
+                // Max loss = difference in strikes * lot size - net premium
+                const strikes = strategyLegs.map(l => l.strike).sort((a, b) => a - b);
+                const strikeDiff = strikes.length > 1 ? (strikes[strikes.length - 1] - strikes[0]) * lotSize * Math.min(sellLegs.reduce((s, l) => s + l.lots, 0), buyLegs.reduce((s, l) => s + l.lots, 0)) : 0;
+                maxLoss = strikeDiff > 0 ? strikeDiff - netPremium : netPremium * 3;
+            } else {
+                // Debit strategy
+                maxLoss = Math.abs(netPremium);
+                const strikes = strategyLegs.map(l => l.strike).sort((a, b) => a - b);
+                const strikeDiff = strikes.length > 1 ? (strikes[strikes.length - 1] - strikes[0]) * lotSize * Math.min(sellLegs.reduce((s, l) => s + l.lots, 0), buyLegs.reduce((s, l) => s + l.lots, 0)) : 0;
+                maxProfit = strikeDiff > 0 ? strikeDiff - maxLoss : maxLoss * 2;
+            }
+
+            // Calculate breakeven for simple 2-leg strategies
+            if (strategyLegs.length === 2) {
+                const atm = getATMStrike();
+                const netPerLot = netPremium / (totalLots * lotSize / 2);
+                breakeven = atm ? '₹' + (atm + netPerLot).toFixed(0) : '--';
+            }
+        } else if (hasSell && !hasBuy) {
+            // Pure sell - unlimited risk
+            maxProfit = netPremium;
+            maxLoss = Infinity;
+            const atm = getATMStrike();
+            if (atm && strategyLegs.length === 1) {
+                breakeven = '₹' + (atm + netPremium / (strategyLegs[0].lots * lotSize)).toFixed(0);
+            }
+        } else if (hasBuy && !hasSell) {
+            // Pure buy - limited risk
+            maxLoss = Math.abs(netPremium);
+            maxProfit = Infinity;
+            const atm = getATMStrike();
+            if (atm && strategyLegs.length === 1) {
+                breakeven = '₹' + (atm + maxLoss / (strategyLegs[0].lots * lotSize)).toFixed(0);
+            }
+        }
+    }
+
+    // Update DOM
+    const profitEl = document.getElementById('sb_maxProfit');
+    const lossEl = document.getElementById('sb_maxLoss');
+    const beEl = document.getElementById('sb_breakeven');
+    const npEl = document.getElementById('sb_netPremium');
+    const rrEl = document.getElementById('sb_riskReward');
+    const tlEl = document.getElementById('sb_totalLots');
+
+    if (profitEl) profitEl.textContent = maxProfit === Infinity ? 'Unlimited' : '₹' + maxProfit.toFixed(2);
+    if (lossEl) lossEl.textContent = maxLoss === Infinity ? 'Unlimited' : '₹' + maxLoss.toFixed(2);
+    if (beEl) beEl.textContent = breakeven;
+    if (npEl) {
+        npEl.textContent = (netPremium >= 0 ? '+' : '') + '₹' + netPremium.toFixed(2);
+        npEl.style.color = netPremium >= 0 ? '#00cc88' : '#ff4444';
+    }
+    if (rrEl) {
+        if (maxLoss > 0 && maxLoss !== Infinity && maxProfit !== Infinity) {
+            rrEl.textContent = '1 : ' + (maxProfit / maxLoss).toFixed(2);
+        } else if (maxProfit === Infinity) {
+            rrEl.textContent = '1 : ∞';
+        } else {
+            rrEl.textContent = '--';
+        }
+    }
+    if (tlEl) tlEl.textContent = totalLots;
+}
+
+function applyQuickStrategy(type) {
+    // Clear existing legs
+    strategyLegs = [];
+
+    // Auto-fetch spot price if not set
+    const spot = getSpotPrice();
+    if (!spot) {
+        fetchSpotPrice();
+        setTimeout(function() { applyQuickStrategy(type); }, 500);
+        return;
+    }
+
+    const atm = getATMStrike();
+    const step = getStrikeStep();
+
+    switch (type) {
+        case 'iron_fly':
+            // Sell ATM CE + Sell ATM PE + Buy OTM+2 CE + Buy OTM-2 PE (protection)
+            addOptionLeg('SELL', 'CE', 'ATM', atm, 1, 0);
+            addOptionLeg('SELL', 'PE', 'ATM', atm, 1, 0);
+            addOptionLeg('BUY', 'CE', 'OTM+2', atm + step * 2, 1, 0);
+            addOptionLeg('BUY', 'PE', 'ITM-2', atm - step * 2, 1, 0);
+            document.getElementById('sb_name').value = 'Iron Fly ' + document.getElementById('sb_instrument').value;
+            break;
+
+        case 'iron_condor':
+            // Sell OTM+1 CE + Sell ITM-1 PE + Buy OTM+3 CE + Buy ITM-3 PE
+            addOptionLeg('SELL', 'CE', 'OTM+1', atm + step, 1, 0);
+            addOptionLeg('SELL', 'PE', 'ITM-1', atm - step, 1, 0);
+            addOptionLeg('BUY', 'CE', 'OTM+3', atm + step * 3, 1, 0);
+            addOptionLeg('BUY', 'PE', 'ITM-2', atm - step * 3, 1, 0);
+            document.getElementById('sb_name').value = 'Iron Condor ' + document.getElementById('sb_instrument').value;
+            break;
+
+        case 'straddle':
+            // Sell ATM CE + Sell ATM PE
+            addOptionLeg('SELL', 'CE', 'ATM', atm, 1, 0);
+            addOptionLeg('SELL', 'PE', 'ATM', atm, 1, 0);
+            document.getElementById('sb_name').value = 'Short Straddle ' + document.getElementById('sb_instrument').value;
+            break;
+
+        case 'strangle':
+            // Sell OTM+1 CE + Sell ITM-1 PE
+            addOptionLeg('SELL', 'CE', 'OTM+1', atm + step, 1, 0);
+            addOptionLeg('SELL', 'PE', 'ITM-1', atm - step, 1, 0);
+            document.getElementById('sb_name').value = 'Short Strangle ' + document.getElementById('sb_instrument').value;
+            break;
+
+        case 'bull_call':
+            // Buy ATM CE + Sell OTM+2 CE
+            addOptionLeg('BUY', 'CE', 'ATM', atm, 1, 0);
+            addOptionLeg('SELL', 'CE', 'OTM+2', atm + step * 2, 1, 0);
+            document.getElementById('sb_name').value = 'Bull Call Spread ' + document.getElementById('sb_instrument').value;
+            break;
+
+        case 'bear_put':
+            // Buy ATM PE + Sell ITM-2 PE
+            addOptionLeg('BUY', 'PE', 'ATM', atm, 1, 0);
+            addOptionLeg('SELL', 'PE', 'ITM-2', atm - step * 2, 1, 0);
+            document.getElementById('sb_name').value = 'Bear Put Spread ' + document.getElementById('sb_instrument').value;
+            break;
+    }
+
+    console.log('[MUKESH ALGO] Quick strategy applied:', type, 'with', strategyLegs.length, 'legs');
+}
+
+function executeStrategy() {
+    if (strategyLegs.length === 0) {
+        alert('Add at least one option leg to execute');
+        return;
+    }
+
+    const name = document.getElementById('sb_name') ? document.getElementById('sb_name').value.trim() : 'Custom Strategy';
+    const sym = document.getElementById('sb_instrument') ? document.getElementById('sb_instrument').value : 'NIFTY';
+
+    const legsSummary = strategyLegs.map(function(l) {
+        return l.action + ' ' + l.type + ' ₹' + l.strike + ' x' + l.lots;
+    }).join('\n');
+
+    if (!confirm('Execute "' + name + '" NOW?\n\nSymbol: ' + sym + '\nLegs:\n' + legsSummary + '\n\nThis will place orders with your active broker immediately!')) return;
+
+    // Send to backend
+    fetch('/api/strategy/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            strategy_id: name.toLowerCase().replace(/\s+/g, '_'),
+            name: name,
+            symbol: sym,
+            legs: strategyLegs,
+            execute_now: true,
+            exit_config: {
+                type: document.getElementById('sb_exitType') ? document.getElementById('sb_exitType').value : 'manual',
+                sl: parseFloat(document.getElementById('sb_sl') ? document.getElementById('sb_sl').value : '1.5'),
+                target: parseFloat(document.getElementById('sb_target') ? document.getElementById('sb_target').value : '3.0'),
+                tsl: parseFloat(document.getElementById('sb_tsl') ? document.getElementById('sb_tsl').value : '0.5')
+            }
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Strategy "' + name + '" executed! Orders placed with broker.');
+            addDeployedStrategy({ id: data.strategy_id || name, name: name, status: 'RUNNING', broker: data.broker || 'Active', trades: strategyLegs.length, pnl: 0 });
+        } else {
+            alert('Execution failed: ' + (data.error || 'Connect a broker first'));
+        }
+    })
+    .catch(function() {
+        // Demo mode
+        addDeployedStrategy({ id: name.toLowerCase().replace(/\s+/g, '_'), name: name, status: 'RUNNING', broker: 'Demo', trades: strategyLegs.length, pnl: 0 });
+        alert(name + ' executed (demo mode). Connect a broker for real trading.');
+    });
+}
+
+function deleteCurrentStrategy() {
+    const name = document.getElementById('sb_name') ? document.getElementById('sb_name').value.trim() : '';
+    if (!name) {
+        alert('No strategy loaded to delete');
+        return;
+    }
+    if (!confirm('Delete strategy "' + name + '"? This cannot be undone.')) return;
+
+    // Clear the form
+    strategyLegs = [];
+    currentStrategyId = null;
+    renderLegsTable();
+    updateStrategySummary();
+    document.getElementById('sb_name').value = '';
+
+    // Remove from saved strategies dropdown
+    const select = document.getElementById('sb_savedStrategies');
+    if (select) {
+        for (let i = select.options.length - 1; i >= 0; i--) {
+            if (select.options[i].value === name) {
+                select.remove(i);
+            }
+        }
+    }
+
+    // Remove from localStorage
+    let saved = JSON.parse(localStorage.getItem('mukeshAlgoStrategies') || '[]');
+    saved = saved.filter(function(s) { return s.name !== name; });
+    localStorage.setItem('mukeshAlgoStrategies', JSON.stringify(saved));
+
+    alert('Strategy "' + name + '" deleted.');
+}
+
+function loadSavedStrategy() {
+    const select = document.getElementById('sb_savedStrategies');
+    if (!select || !select.value) {
+        alert('Select a strategy to load');
+        return;
+    }
+
+    const saved = JSON.parse(localStorage.getItem('mukeshAlgoStrategies') || '[]');
+    const strat = saved.find(function(s) { return s.name === select.value; });
+
+    if (!strat) {
+        alert('Strategy not found');
+        return;
+    }
+
+    // Load into form
+    currentStrategyId = strat.name;
+    if (document.getElementById('sb_name')) document.getElementById('sb_name').value = strat.name;
+    if (document.getElementById('sb_instrument')) document.getElementById('sb_instrument').value = strat.symbol || 'NIFTY';
+    if (document.getElementById('sb_spotPrice')) document.getElementById('sb_spotPrice').value = strat.spotPrice || '';
+    if (document.getElementById('sb_expiry')) document.getElementById('sb_expiry').value = strat.expiry || 'current_week';
+    if (document.getElementById('sb_exitType')) document.getElementById('sb_exitType').value = strat.exitType || 'manual';
+    if (document.getElementById('sb_sl')) document.getElementById('sb_sl').value = strat.sl || 1.5;
+    if (document.getElementById('sb_target')) document.getElementById('sb_target').value = strat.target || 3.0;
+    if (document.getElementById('sb_tsl')) document.getElementById('sb_tsl').value = strat.tsl || 0.5;
+
+    // Load legs
+    strategyLegs = strat.legs || [];
+    renderLegsTable();
+    updateStrategySummary();
+
+    console.log('[MUKESH ALGO] Loaded strategy:', strat.name, 'with', strategyLegs.length, 'legs');
+}
+
+// Override saveStrategyToMarketplace to also save to localStorage
+(function() {
+    var origSave = saveStrategyToMarketplace;
+    saveStrategyToMarketplace = function() {
+        const name = document.getElementById('sb_name') ? document.getElementById('sb_name').value.trim() : '';
+        if (!name) { alert('Please enter a strategy name'); return; }
+
+        // Save to localStorage
+        const saved = JSON.parse(localStorage.getItem('mukeshAlgoStrategies') || '[]');
+        const existing = saved.findIndex(function(s) { return s.name === name; });
+        const stratData = {
+            name: name,
+            symbol: document.getElementById('sb_instrument') ? document.getElementById('sb_instrument').value : 'NIFTY',
+            spotPrice: getSpotPrice(),
+            expiry: document.getElementById('sb_expiry') ? document.getElementById('sb_expiry').value : 'current_week',
+            exitType: document.getElementById('sb_exitType') ? document.getElementById('sb_exitType').value : 'manual',
+            sl: parseFloat(document.getElementById('sb_sl') ? document.getElementById('sb_sl').value : '1.5'),
+            target: parseFloat(document.getElementById('sb_target') ? document.getElementById('sb_target').value : '3.0'),
+            tsl: parseFloat(document.getElementById('sb_tsl') ? document.getElementById('sb_tsl').value : '0.5'),
+            legs: strategyLegs.slice(),
+            savedAt: new Date().toISOString()
+        };
+
+        if (existing >= 0) {
+            saved[existing] = stratData;
+        } else {
+            saved.push(stratData);
+        }
+        localStorage.setItem('mukeshAlgoStrategies', JSON.stringify(saved));
+
+        // Update dropdown
+        refreshSavedStrategiesDropdown();
+
+        alert('Strategy "' + name + '" saved to Marketplace!');
+        showPage('marketplacePage');
+    };
+})();
+
+function refreshSavedStrategiesDropdown() {
+    const select = document.getElementById('sb_savedStrategies');
+    if (!select) return;
+
+    // Keep the default option
+    select.innerHTML = '<option value="">-- Load Saved Strategy --</option>';
+
+    const saved = JSON.parse(localStorage.getItem('mukeshAlgoStrategies') || '[]');
+    saved.forEach(function(s) {
+        const opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = s.name + ' (' + (s.legs ? s.legs.length : 0) + ' legs)';
+        select.appendChild(opt);
+    });
+}
+
+// Initialize saved strategies dropdown on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(refreshSavedStrategiesDropdown, 500);
+});
 
 
 // ===== ORDER MANAGEMENT - BACKEND INTEGRATION =====

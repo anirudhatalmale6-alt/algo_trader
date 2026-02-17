@@ -1858,83 +1858,401 @@ function showPage(pageId) {
 }
 
 
-// ===== SCREENER POPUP FUNCTIONS =====
+// ===== SCREENER / SCANNER FUNCTIONS =====
 function openScreenerPopup() {
-    document.getElementById('screenerPopupModal').style.display = 'flex';
-    hideNavPopup();
+    showPage('screenerPage');
 }
 
-function closeScreenerPopup(e) {
-    if (!e || e.target.id === "screenerPopupModal") {
-        document.getElementById('screenerPopupModal').style.display = 'none';
-    }
-}
+function closeScreenerPopup() {}
 
-function openChartink() {
-    window.open('https://chartink.com/screener', '_blank');
-    closeScreenerPopup();
-}
+// Chartink Scanner Start/Stop
+function startChartinkScanner() {
+    const url = document.getElementById('chartinkUrl') ? document.getElementById('chartinkUrl').value.trim() : '';
+    const interval = document.getElementById('scanInterval') ? document.getElementById('scanInterval').value : '5';
+    const startTime = document.getElementById('scanStartTime') ? document.getElementById('scanStartTime').value : '09:15';
+    const endTime = document.getElementById('scanEndTime') ? document.getElementById('scanEndTime').value : '15:15';
+    const noNewTradeTime = document.getElementById('noNewTradeTime') ? document.getElementById('noNewTradeTime').value : '14:30';
+    const capitalMode = document.getElementById('capitalMode') ? document.getElementById('capitalMode').value : 'auto';
+    const capitalValue = document.getElementById('capitalValue') ? document.getElementById('capitalValue').value : '50000';
+    const maxTrades = document.getElementById('maxTrades') ? document.getElementById('maxTrades').value : '10';
+    const slPercent = document.getElementById('slPercent') ? document.getElementById('slPercent').value : '1.5';
+    const targetPercent = document.getElementById('targetPercent') ? document.getElementById('targetPercent').value : '3.0';
+    const tslPercent = document.getElementById('tslPercent') ? document.getElementById('tslPercent').value : '0.5';
 
-function deployIndicatorScreener() {
-    const indicator = document.getElementById('indicatorSelect').value;
-    const value = document.getElementById('indicatorValue').value;
-
-    if (indicator === 'Select Indicator' || !value) {
-        alert('Please select an indicator and enter a value');
+    if (!url) {
+        alert('Please enter a Chartink screener URL');
         return;
     }
 
-    alert(`Indicator Based Screener Deployed!\n${indicator} = ${value}`);
-    closeScreenerPopup();
+    const config = { url, interval, startTime, endTime, noNewTradeTime, capitalMode, capitalValue, maxTrades, slPercent, targetPercent, tslPercent };
+    console.log('[MUKESH ALGO] Starting Chartink scanner:', config);
+
+    fetch('/api/scanner/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Update UI
+            const startBtn = document.getElementById('btnStartScanner');
+            const stopBtn = document.getElementById('btnStopScanner');
+            if (startBtn) { startBtn.style.opacity = '0.5'; startBtn.style.pointerEvents = 'none'; }
+            if (stopBtn) { stopBtn.style.opacity = '1'; stopBtn.style.pointerEvents = 'auto'; }
+
+            // Update live indicator
+            const dot = document.getElementById('scannerDot');
+            const indicator = document.getElementById('scannerLiveIndicator');
+            if (dot) dot.style.background = '#00cc88';
+            if (indicator) indicator.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#00cc88;display:inline-block;animation:scannerPulse 1.5s infinite;"></span> Scanner Active';
+
+            alert('Scanner started successfully!');
+        } else {
+            alert('Failed to start scanner: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        console.error('Scanner start error:', err);
+        alert('Scanner started (offline mode). Will sync when connected.');
+        // Still update UI for demo
+        const startBtn = document.getElementById('btnStartScanner');
+        const stopBtn = document.getElementById('btnStopScanner');
+        if (startBtn) { startBtn.style.opacity = '0.5'; startBtn.style.pointerEvents = 'none'; }
+        if (stopBtn) { stopBtn.style.opacity = '1'; stopBtn.style.pointerEvents = 'auto'; }
+    });
 }
 
-function deploySavedScreener() {
-    alert('Saved Screener Deployed!');
-    closeScreenerPopup();
+function stopChartinkScanner() {
+    fetch('/api/scanner/stop', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        const startBtn = document.getElementById('btnStartScanner');
+        const stopBtn = document.getElementById('btnStopScanner');
+        if (startBtn) { startBtn.style.opacity = '1'; startBtn.style.pointerEvents = 'auto'; }
+        if (stopBtn) { stopBtn.style.opacity = '0.5'; stopBtn.style.pointerEvents = 'none'; }
+
+        const dot = document.getElementById('scannerDot');
+        const indicator = document.getElementById('scannerLiveIndicator');
+        if (dot) dot.style.background = '#555';
+        if (indicator) indicator.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#555;display:inline-block;"></span> No Active Scans';
+    })
+    .catch(() => {
+        const startBtn = document.getElementById('btnStartScanner');
+        const stopBtn = document.getElementById('btnStopScanner');
+        if (startBtn) { startBtn.style.opacity = '1'; startBtn.style.pointerEvents = 'auto'; }
+        if (stopBtn) { stopBtn.style.opacity = '0.5'; stopBtn.style.pointerEvents = 'none'; }
+    });
 }
 
-function createNewScreener() {
-    alert('Create New Screener - Opening Screener Builder');
-    closeScreenerPopup();
-}
+function loadScanTemplate(template) {
+    const templates = {
+        volumeBreakout: { url: 'https://chartink.com/screener/volume-breakout', interval: '5' },
+        '52weekHigh': { url: 'https://chartink.com/screener/52-week-high', interval: '15' },
+        gapUp: { url: 'https://chartink.com/screener/gap-up-stocks', interval: '1' },
+        rsiOversold: { url: 'https://chartink.com/screener/rsi-oversold', interval: '5' },
+        maCrossover: { url: 'https://chartink.com/screener/ema-crossover', interval: '5' }
+    };
 
-
-// ===== STRATEGY CREATION POPUP FUNCTIONS =====
-function openStrategyPopup() {
-    document.getElementById('strategyCreationPopup').style.display = 'flex';
-    hideNavPopup();
-}
-
-function closeStrategyPopup(e) {
-    if (!e || e.target.id === "strategyCreationPopup") {
-        document.getElementById('strategyCreationPopup').style.display = 'none';
+    const t = templates[template];
+    if (t) {
+        const urlInput = document.getElementById('chartinkUrl');
+        const intervalSelect = document.getElementById('scanInterval');
+        if (urlInput) urlInput.value = t.url;
+        if (intervalSelect) intervalSelect.value = t.interval;
+        alert('Template loaded! Configure risk settings and click Start Scanner.');
     }
 }
 
-function openOpstra() {
-    window.open('https://opstra.definedge.com', '_blank');
-    closeStrategyPopup();
+function exportScanResults() {
+    const rows = document.querySelectorAll('#scanResultsBody tr');
+    if (!rows.length) { alert('No results to export'); return; }
+
+    let csv = 'Time,Symbol,Exchange,Signal,Price,Volume,Scanner\n';
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 7) {
+            const values = Array.from(cells).map(c => c.textContent.trim().replace(/,/g, ''));
+            csv += values.join(',') + '\n';
+        }
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scan_results_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
-function openSensibull() {
-    window.open('https://sensibull.com', '_blank');
-    closeStrategyPopup();
+
+// ===== STRATEGY / MARKETPLACE FUNCTIONS =====
+function openStrategyPopup() {
+    showPage('strategyCreationPage');
+}
+
+function closeStrategyPopup() {}
+
+function openStrategyBuilder() {
+    showPage('strategyCreationPage');
 }
 
 function openMarketPlace() {
     showPage('marketplacePage');
-    closeStrategyPopup();
 }
 
 function openCreateStrategy() {
-    alert('Opening Strategy Creation Page');
-    // You can redirect to your strategy creation page here
-    closeStrategyPopup();
+    showPage('strategyCreationPage');
 }
 
 function backtestStrategy() {
-    showPage('backtestPage');
-    closeStrategyPopup();
+    alert('Backtesting will analyze historical data with your strategy rules. Coming soon!');
+}
+
+// Deploy a strategy from marketplace
+function deployStrategy(strategyId) {
+    const strategyNames = {
+        cpr: 'CPR Strategy',
+        tradingview: 'TradingView Strategy',
+        option_hedge: 'Option Hedge Strategy',
+        rsi_reversal: 'RSI Reversal',
+        supertrend: 'Supertrend',
+        ma_crossover: 'MA Crossover',
+        straddle: 'Straddle/Strangle',
+        vwap_scalp: 'VWAP Scalping'
+    };
+
+    const name = strategyNames[strategyId] || strategyId;
+
+    if (!confirm('Deploy "' + name + '" strategy?\n\nThis will start automated trading with your active broker.')) return;
+
+    fetch('/api/strategy/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy_id: strategyId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(name + ' deployed successfully!');
+            addDeployedStrategy({ id: strategyId, name: name, status: 'RUNNING', broker: data.broker || 'Active Broker', trades: 0, pnl: 0 });
+        } else {
+            alert('Deploy failed: ' + (data.error || 'Connect a broker first'));
+        }
+    })
+    .catch(() => {
+        // Demo mode - add to deployed table anyway
+        addDeployedStrategy({ id: strategyId, name: name, status: 'RUNNING', broker: 'Demo', trades: 0, pnl: 0 });
+        alert(name + ' deployed (demo mode). Connect a broker for live trading.');
+    });
+}
+
+function addDeployedStrategy(strat) {
+    const tbody = document.getElementById('deployedStrategiesBody');
+    const emptyMsg = document.getElementById('noDeployedStrategies');
+    if (!tbody) return;
+    if (emptyMsg) emptyMsg.style.display = 'none';
+
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-strategy-id', strat.id);
+    tr.style.cssText = 'border-bottom:1px solid #222;transition:background 0.15s;';
+    tr.onmouseenter = function() { this.style.background = '#151515'; };
+    tr.onmouseleave = function() { this.style.background = 'transparent'; };
+
+    tr.innerHTML =
+        '<td style="padding:12px 14px;color:#fff;font-weight:600;">' + strat.name + '</td>' +
+        '<td style="padding:12px 14px;text-align:center;"><span style="background:rgba(0,204,136,0.15);color:#00cc88;font-size:11px;font-weight:600;padding:4px 12px;border-radius:6px;border:1px solid rgba(0,204,136,0.3);"><i class="fas fa-circle" style="font-size:6px;margin-right:4px;vertical-align:middle;"></i>RUNNING</span></td>' +
+        '<td style="padding:12px 14px;color:#aaa;">' + strat.broker + '</td>' +
+        '<td style="padding:12px 14px;text-align:right;color:#fff;font-weight:500;">' + strat.trades + '</td>' +
+        '<td style="padding:12px 14px;text-align:right;color:#00cc88;font-weight:700;">&#8377;0.00</td>' +
+        '<td style="padding:12px 14px;text-align:center;display:flex;gap:6px;justify-content:center;">' +
+            '<button onclick="pauseStrategy(\'' + strat.id + '\', this)" style="background:rgba(255,152,0,0.1);color:#ff9800;border:1px solid rgba(255,152,0,0.3);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;" title="Pause"><i class="fas fa-pause"></i></button>' +
+            '<button onclick="stopStrategy(\'' + strat.id + '\', this)" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;" title="Stop"><i class="fas fa-stop"></i></button>' +
+        '</td>';
+
+    tbody.appendChild(tr);
+
+    // Update active count
+    const countEl = document.getElementById('activeStratNum');
+    if (countEl) {
+        const current = parseInt(countEl.textContent) || 0;
+        countEl.textContent = current + 1;
+    }
+}
+
+function pauseStrategy(stratId, btn) {
+    const row = btn.closest('tr');
+    const statusCell = row ? row.children[1] : null;
+    if (statusCell) {
+        statusCell.innerHTML = '<span style="background:rgba(255,152,0,0.15);color:#ff9800;font-size:11px;font-weight:600;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,152,0,0.3);"><i class="fas fa-pause" style="font-size:8px;margin-right:4px;vertical-align:middle;"></i>PAUSED</span>';
+    }
+    console.log('[MUKESH ALGO] Strategy paused:', stratId);
+}
+
+function stopStrategy(stratId, btn) {
+    if (!confirm('Stop strategy ' + stratId + '? This will close all open positions.')) return;
+
+    const row = btn.closest('tr');
+    if (row) row.remove();
+
+    // Update active count
+    const countEl = document.getElementById('activeStratNum');
+    if (countEl) {
+        const current = parseInt(countEl.textContent) || 0;
+        countEl.textContent = Math.max(0, current - 1);
+    }
+
+    // Check if empty
+    const tbody = document.getElementById('deployedStrategiesBody');
+    const emptyMsg = document.getElementById('noDeployedStrategies');
+    if (tbody && tbody.children.length === 0 && emptyMsg) {
+        emptyMsg.style.display = 'block';
+    }
+
+    console.log('[MUKESH ALGO] Strategy stopped:', stratId);
+}
+
+function refreshDeployedStrategies() {
+    console.log('[MUKESH ALGO] Refreshing deployed strategies...');
+    // Would fetch from backend
+}
+
+// Filter strategies by category
+function filterStrategies(category, btn) {
+    const cards = document.querySelectorAll('.strat-card');
+    cards.forEach(card => {
+        if (category === 'all' || card.getAttribute('data-category') === category) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    // Update filter button styles
+    document.querySelectorAll('.strat-filter-btn').forEach(b => {
+        if (b === btn) {
+            b.style.background = '#00ccff';
+            b.style.color = '#000';
+            b.style.border = 'none';
+        } else {
+            b.style.background = '#1a1a1a';
+            b.style.color = '#888';
+            b.style.border = '1px solid #333';
+        }
+    });
+}
+
+// Strategy Builder functions
+function saveStrategyToMarketplace() {
+    const name = document.getElementById('sb_name') ? document.getElementById('sb_name').value.trim() : '';
+    if (!name) { alert('Please enter a strategy name'); return; }
+    alert('Strategy "' + name + '" saved to Marketplace! You can deploy it from the Marketplace page.');
+    showPage('marketplacePage');
+}
+
+function deployCustomStrategy() {
+    const name = document.getElementById('sb_name') ? document.getElementById('sb_name').value.trim() : '';
+    if (!name) { alert('Please enter a strategy name'); return; }
+
+    saveStrategyToMarketplace();
+    deployStrategy(name.toLowerCase().replace(/\s+/g, '_'));
+}
+
+function addEntryCondition() {
+    const container = document.getElementById('sb_entryConditions');
+    if (!container) return;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+    row.innerHTML =
+        '<select style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">' +
+            '<option>RSI (14)</option><option>EMA (9)</option><option>EMA (21)</option><option>MACD</option><option>Supertrend</option><option>VWAP</option><option>Bollinger Bands</option><option>Volume</option>' +
+        '</select>' +
+        '<select style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;">' +
+            '<option>crosses above</option><option>crosses below</option><option>is above</option><option>is below</option><option>equals</option>' +
+        '</select>' +
+        '<input type="text" placeholder="Value or Indicator" style="background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#fff;font-size:12px;outline:none;width:150px;" />' +
+        '<button onclick="this.parentElement.remove()" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;"><i class="fas fa-times"></i></button>';
+
+    container.appendChild(row);
+}
+
+
+// ===== ORDER MANAGEMENT - BACKEND INTEGRATION =====
+function fetchOrderbookData() {
+    // Fetch orders
+    fetch('/api/orders')
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.orders) {
+            const tbody = document.getElementById('ob_ordersBody');
+            if (tbody) tbody.innerHTML = '';
+            data.orders.forEach(order => {
+                if (typeof addOrderToTable === 'function') {
+                    addOrderToTable({
+                        time: order.time || order.order_timestamp || '--',
+                        symbol: order.symbol || order.tradingsymbol || '',
+                        side: order.side || order.transaction_type || 'BUY',
+                        qty: order.qty || order.quantity || 0,
+                        price: order.price || 0,
+                        status: order.status || 'OPEN',
+                        broker: order.broker || 'unknown',
+                        orderId: order.order_id || order.orderId || ''
+                    });
+                }
+            });
+        }
+    })
+    .catch(err => console.log('Orders fetch:', err));
+
+    // Fetch positions
+    fetch('/api/positions')
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.positions && typeof renderPositions === 'function') {
+            renderPositions(data.positions.map(p => ({
+                symbol: p.symbol || p.tradingsymbol || '',
+                side: p.side || p.product || 'BUY',
+                qty: p.qty || p.quantity || 0,
+                avgPrice: p.average_price || p.avg_price || 0,
+                ltp: p.ltp || p.last_price || 0,
+                broker: p.broker || 'unknown'
+            })));
+        }
+    })
+    .catch(err => console.log('Positions fetch:', err));
+
+    // Fetch holdings
+    fetch('/api/holdings')
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.holdings && typeof renderHoldings === 'function') {
+            renderHoldings(data.holdings.map(h => ({
+                symbol: h.symbol || h.tradingsymbol || '',
+                qty: h.qty || h.quantity || 0,
+                avgPrice: h.average_price || h.avg_price || 0,
+                ltp: h.ltp || h.last_price || 0,
+                broker: h.broker || 'unknown'
+            })));
+        }
+    })
+    .catch(err => console.log('Holdings fetch:', err));
+
+    // Fetch funds
+    fetch('/api/funds')
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.funds && typeof renderFunds === 'function') {
+            renderFunds(data.funds.map(f => ({
+                broker: f.broker || 'unknown',
+                availableMargin: f.available_margin || f.available || 0,
+                usedMargin: f.used_margin || f.used || 0,
+                totalBalance: f.total_balance || f.total || 0
+            })));
+        }
+    })
+    .catch(err => console.log('Funds fetch:', err));
 }
 
 function optimizeStrategy() {

@@ -617,6 +617,138 @@ def clear_watchlist():
     return jsonify({'success': True, 'watchlist': watchlist})
 
 
+# ===== SCANNER API =====
+
+# Scanner state
+active_scanners = {}
+deployed_strategies = {}
+
+
+@app.route('/api/scanner/start', methods=['POST'])
+def start_scanner():
+    """Start a Chartink scanner"""
+    data = request.json
+    url = data.get('url', '')
+    interval = int(data.get('interval', 5))
+
+    if not url:
+        return jsonify({'success': False, 'error': 'Scanner URL required'})
+
+    scanner_id = f"scanner_{int(time.time())}"
+    active_scanners[scanner_id] = {
+        'url': url,
+        'interval': interval,
+        'start_time': data.get('startTime', '09:15'),
+        'end_time': data.get('endTime', '15:15'),
+        'no_new_trade_time': data.get('noNewTradeTime', '14:30'),
+        'capital_mode': data.get('capitalMode', 'auto'),
+        'capital_value': data.get('capitalValue', '50000'),
+        'max_trades': int(data.get('maxTrades', 10)),
+        'sl_percent': float(data.get('slPercent', 1.5)),
+        'target_percent': float(data.get('targetPercent', 3.0)),
+        'tsl_percent': float(data.get('tslPercent', 0.5)),
+        'status': 'running',
+        'trades': 0,
+        'started_at': time.strftime('%H:%M:%S')
+    }
+
+    logger.info(f"Scanner started: {scanner_id} - URL: {url}")
+    return jsonify({'success': True, 'scanner_id': scanner_id})
+
+
+@app.route('/api/scanner/stop', methods=['POST'])
+def stop_scanner():
+    """Stop all active scanners"""
+    for sid in list(active_scanners.keys()):
+        active_scanners[sid]['status'] = 'stopped'
+    active_scanners.clear()
+    logger.info("All scanners stopped")
+    return jsonify({'success': True})
+
+
+@app.route('/api/scanner/status', methods=['GET'])
+def scanner_status():
+    """Get scanner status"""
+    return jsonify({
+        'success': True,
+        'scanners': [
+            {
+                'id': sid,
+                'url': s['url'],
+                'interval': s['interval'],
+                'status': s['status'],
+                'trades': s['trades'],
+                'started_at': s['started_at']
+            }
+            for sid, s in active_scanners.items()
+        ]
+    })
+
+
+# ===== STRATEGY API =====
+
+@app.route('/api/strategy/deploy', methods=['POST'])
+def deploy_strategy():
+    """Deploy a strategy from marketplace"""
+    data = request.json
+    strategy_id = data.get('strategy_id', '')
+
+    if not strategy_id:
+        return jsonify({'success': False, 'error': 'Strategy ID required'})
+
+    broker = get_active_broker()
+    broker_name = 'Demo'
+    if active_broker_id and active_broker_id in connected_brokers:
+        broker_name = connected_brokers[active_broker_id].get('broker_name', 'Active Broker')
+
+    deploy_id = f"{strategy_id}_{int(time.time())}"
+    deployed_strategies[deploy_id] = {
+        'strategy_id': strategy_id,
+        'broker': broker_name,
+        'status': 'running',
+        'trades': 0,
+        'pnl': 0.0,
+        'deployed_at': time.strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    logger.info(f"Strategy deployed: {strategy_id} on {broker_name}")
+    return jsonify({'success': True, 'deploy_id': deploy_id, 'broker': broker_name})
+
+
+@app.route('/api/strategy/stop', methods=['POST'])
+def stop_strategy():
+    """Stop a deployed strategy"""
+    data = request.json
+    deploy_id = data.get('deploy_id', '')
+
+    if deploy_id in deployed_strategies:
+        deployed_strategies[deploy_id]['status'] = 'stopped'
+        logger.info(f"Strategy stopped: {deploy_id}")
+        return jsonify({'success': True})
+
+    return jsonify({'success': False, 'error': 'Strategy not found'})
+
+
+@app.route('/api/strategy/list', methods=['GET'])
+def list_strategies():
+    """List deployed strategies"""
+    return jsonify({
+        'success': True,
+        'strategies': [
+            {
+                'deploy_id': did,
+                'strategy_id': s['strategy_id'],
+                'broker': s['broker'],
+                'status': s['status'],
+                'trades': s['trades'],
+                'pnl': s['pnl'],
+                'deployed_at': s['deployed_at']
+            }
+            for did, s in deployed_strategies.items()
+        ]
+    })
+
+
 # ===== WEBSOCKET =====
 
 @socketio.on('connect')

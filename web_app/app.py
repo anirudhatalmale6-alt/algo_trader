@@ -83,7 +83,20 @@ def authenticate():
             return jsonify({'success': False, 'message': 'Auth code is required'})
 
         result = active_broker.generate_session(auth_code)
-        if result:
+
+        # Handle both dict return (new) and bool return (legacy)
+        if isinstance(result, dict):
+            if result.get('success'):
+                return jsonify({
+                    'success': True,
+                    'message': 'Authentication successful',
+                    'broker': active_broker.broker_name,
+                    'is_authenticated': True
+                })
+            else:
+                error_msg = result.get('error', 'Authentication failed')
+                return jsonify({'success': False, 'message': f'Alice Blue: {error_msg}'})
+        elif result:
             return jsonify({
                 'success': True,
                 'message': 'Authentication successful',

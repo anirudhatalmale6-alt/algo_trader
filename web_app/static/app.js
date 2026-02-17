@@ -2182,6 +2182,32 @@ function editBroker() {}
 function testBrokerConnection() { checkBrokerStatusOnLoad(); }
 
 
+// Listen for messages from callback window (auto-auth)
+window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'broker_connected') {
+        // Callback window already authenticated successfully
+        updateBrokerStatus(true, event.data.broker || 'Alice Blue');
+        showAuthResult(true, 'Connected to ' + (event.data.broker || 'broker') + ' successfully!');
+        const brokerName = document.getElementById('brokerSelect') ?
+            document.getElementById('brokerSelect').options[document.getElementById('brokerSelect').selectedIndex].text : 'Alice Blue';
+        const clientId = document.getElementById('clientId') ? document.getElementById('clientId').value : '';
+        let brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
+        brokers.push({ name: brokerName, clientId: clientId, status: 'connected', time: new Date().toLocaleString('en-IN') });
+        localStorage.setItem('mukeshAlgoBrokers', JSON.stringify(brokers));
+        loadBrokers();
+        startLtpUpdates();
+    } else if (event.data && event.data.type === 'auth_callback') {
+        // Callback sent auth code - auto-fill it
+        const input = document.getElementById('authCodeInput');
+        if (input && event.data.authCode) {
+            input.value = event.data.authCode;
+        }
+        if (event.data.error) {
+            showAuthResult(false, event.data.error);
+        }
+    }
+});
+
 // Initialize brokers when page loads
 function initializeBrokerPage() {
     loadBrokers();

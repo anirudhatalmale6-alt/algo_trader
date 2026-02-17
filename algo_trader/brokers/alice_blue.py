@@ -21,8 +21,11 @@ class AliceBlueBroker(BaseBroker):
 
     BASE_URL = "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api"
     AUTH_URL = "https://ant.aliceblueonline.com"
-    # New Open API endpoint for getUserDetails
-    SESSION_URL = "https://ant.aliceblueonline.com/open-api/od/v1/vendor/getUserDetails"
+    # Authentication endpoints - try Open API first, then legacy SSO
+    SESSION_URLS = [
+        "https://ant.aliceblueonline.com/open-api/od/v1/vendor/getUserDetails",
+        "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/sso/getUserDetails",
+    ]
 
     def __init__(self, api_key: str, app_code: str = None, user_id: str = None,
                  redirect_uri: str = "http://127.0.0.1:5000/callback"):
@@ -52,8 +55,8 @@ class AliceBlueBroker(BaseBroker):
             return True
         return False
 
-    def generate_session(self, auth_code: str) -> bool:
-        """Generate session using authorization code"""
+    def generate_session(self, auth_code: str) -> dict:
+        """Generate session using authorization code. Returns dict with success/error details."""
         try:
             # Alice Blue uses SHA-256 hash for authentication
             # Format: userId + authCode + secretKey
@@ -61,7 +64,6 @@ class AliceBlueBroker(BaseBroker):
                 (self.user_id + auth_code + self.secret_key).encode()
             ).hexdigest()
 
-            # New Open API format - just send checkSum
             payload = {
                 'checkSum': checksum
             }
@@ -71,35 +73,47 @@ class AliceBlueBroker(BaseBroker):
                 'Accept': 'application/json'
             }
 
-            logger.info(f"Alice Blue auth attempt: user_id={self.user_id}, checksum={checksum[:20]}...")
+            logger.info(f"Alice Blue auth: user_id={self.user_id}, auth_code={auth_code[:8]}..., checksum={checksum[:20]}...")
 
-            response = requests.post(
-                self.SESSION_URL,
-                json=payload,
-                headers=headers
-            )
+            last_error = ""
+            # Try each session URL
+            for url in self.SESSION_URLS:
+                logger.info(f"Trying Alice Blue auth URL: {url}")
+                try:
+                    response = requests.post(url, json=payload, headers=headers, timeout=30)
+                    logger.info(f"Response from {url}: status={response.status_code}, body={response.text[:500]}")
 
-            logger.info(f"Alice Blue response status: {response.status_code}")
-            logger.info(f"Alice Blue response body: {response.text[:500]}")
+                    data = response.json()
 
-            data = response.json()
+                    # Check for success - different response formats
+                    if response.status_code == 200:
+                        stat = data.get('stat', '').lower()
+                        if stat == 'ok' or data.get('userSession'):
+                            self.session_id = data.get('userSession')
+                            self.access_token = data.get('userSession')
+                            self.client_id = data.get('clientId')
+                            self.is_authenticated = True
+                            logger.info(f"Alice Blue auth successful via {url}, clientId: {self.client_id}")
+                            return {'success': True}
 
-            # New response format uses 'stat' and 'userSession'
-            if response.status_code == 200 and data.get('stat') == 'Ok':
-                self.session_id = data.get('userSession')
-                self.access_token = data.get('userSession')
-                self.client_id = data.get('clientId')
-                self.is_authenticated = True
-                logger.info(f"Alice Blue authentication successful, clientId: {self.client_id}")
-                return True
-            else:
-                error_msg = data.get('emsg', data.get('message', 'Unknown error'))
-                logger.error(f"Alice Blue auth failed: stat={data.get('stat')}, error={error_msg}")
-                return False
+                    # Capture error for reporting
+                    last_error = data.get('emsg', data.get('message', data.get('errorMessage', '')))
+                    if not last_error:
+                        last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                    logger.warning(f"Auth failed at {url}: {last_error}")
+
+                except requests.exceptions.RequestException as e:
+                    last_error = f"Connection error: {e}"
+                    logger.warning(f"Connection failed to {url}: {e}")
+                    continue
+
+            error_detail = last_error or "Authentication failed on all endpoints"
+            logger.error(f"Alice Blue auth failed: {error_detail}")
+            return {'success': False, 'error': error_detail}
 
         except Exception as e:
             logger.error(f"Alice Blue auth error: {e}")
-            return False
+            return {'success': False, 'error': str(e)}
 
     def _get_headers(self) -> Dict:
         """Get headers for authenticated requests"""

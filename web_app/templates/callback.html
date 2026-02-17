@@ -4,42 +4,57 @@
     <title>Authentication Callback</title>
     <style>
         body { background: #0d0d0d; color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #141414; padding: 40px; border-radius: 10px; text-align: center; border: 1px solid #00ccff; }
+        .card { background: #141414; padding: 40px; border-radius: 10px; text-align: center; border: 1px solid #00ccff; max-width: 500px; }
         .code { background: #222; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 18px; color: #00ff00; margin: 20px 0; word-break: break-all; }
         h2 { color: #00ccff; }
         p { color: #aaa; }
+        .status { margin-top: 15px; font-size: 14px; }
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #00ccff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .success { color: #00ff00; }
+        .error { color: #ff4444; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>Authentication Successful!</h2>
-        <p>This window will close automatically...</p>
+        <h2>Authentication Callback</h2>
         <div class="code" id="authCode">{{ auth_code }}</div>
-        <p>If it doesn't close, copy the code above and paste it in the app.</p>
+        <p id="statusText"><span class="spinner"></span> Authenticating with broker...</p>
     </div>
     <script>
-        // Send auth code back to the main app
-        if (window.opener) {
-            window.opener.postMessage({
-                type: 'auth_callback',
-                authCode: '{{ auth_code }}',
-                userId: '{{ user_id }}'
-            }, '*');
-            setTimeout(() => window.close(), 3000);
-        }
-        // Also try to authenticate automatically via API
+        const authCode = '{{ auth_code }}';
+        const userId = '{{ user_id }}';
+
+        // Authenticate directly via API
         fetch('/api/broker/authenticate', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({auth_code: '{{ auth_code }}'})
-        }).then(r => r.json()).then(data => {
+            body: JSON.stringify({auth_code: authCode})
+        })
+        .then(r => r.json())
+        .then(data => {
+            const statusEl = document.getElementById('statusText');
             if (data.success) {
                 document.querySelector('h2').textContent = 'Connected!';
-                document.querySelector('p').textContent = 'Broker connected successfully. This window will close.';
+                statusEl.innerHTML = '<span class="success">Broker connected successfully!</span>';
+                // Notify main window
                 if (window.opener) {
                     window.opener.postMessage({type: 'broker_connected', broker: data.broker}, '*');
-                    setTimeout(() => window.close(), 2000);
                 }
+                setTimeout(() => window.close(), 2000);
+            } else {
+                statusEl.innerHTML = '<span class="error">' + (data.message || 'Authentication failed') + '</span>';
+                // Still send the auth code to main window for manual retry
+                if (window.opener) {
+                    window.opener.postMessage({type: 'auth_callback', authCode: authCode, userId: userId, error: data.message}, '*');
+                }
+            }
+        })
+        .catch(err => {
+            document.getElementById('statusText').innerHTML =
+                '<span class="error">Network error. Copy the code above and paste it in the main app.</span>';
+            if (window.opener) {
+                window.opener.postMessage({type: 'auth_callback', authCode: authCode, userId: userId}, '*');
             }
         });
     </script>

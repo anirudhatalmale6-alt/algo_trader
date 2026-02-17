@@ -1950,34 +1950,99 @@ function shareStrategy() {
 let brokerConnected = false;
 
 function loadBrokers() {
-    const brokerList = document.getElementById('brokerList');
-    const savedBrokers = localStorage.getItem('mukeshAlgoBrokers');
-
-    if (!savedBrokers) {
-        brokerList.innerHTML = '<div style="text-align:center; color:#888; padding:20px;">No connection history yet.</div>';
-        return;
-    }
-
-    const brokers = JSON.parse(savedBrokers);
-    let html = '';
-    brokers.slice(-5).reverse().forEach(broker => {
-        const statusColor = broker.status === 'connected' ? '#00ff88' : '#ff4444';
-        html += `
-          <div style="background:#2a2a2a; padding:10px 12px; margin-bottom:6px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-               <strong style="color:var(--accent-color); font-size:13px;">${broker.name}</strong>
-               <span style="font-size:11px; color:#888; margin-left:8px;">ID: ${broker.clientId}</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-               <span style="font-size:10px; color:#888;">${broker.time || ''}</span>
-               <span style="font-size:11px; color:${statusColor}; font-weight:600;">${broker.status.toUpperCase()}</span>
-            </div>
-          </div>`;
-    });
-    brokerList.innerHTML = html;
+    // Now loads live connected brokers from server
+    refreshConnectedBrokers();
 }
 
-function updateBrokerStatus(connected, brokerName) {
+function refreshConnectedBrokers() {
+    fetch('/api/broker/status')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+
+            const list = document.getElementById('connectedBrokersList');
+            const countEl = document.getElementById('connectedCount');
+            const brokers = data.brokers || [];
+
+            countEl.textContent = brokers.length;
+
+            if (brokers.length === 0) {
+                list.innerHTML = '<p style="color:#666; text-align:center; padding: 20px;">No brokers connected yet. Connect above to start trading.</p>';
+                updateBrokerStatus(false, '');
+                return;
+            }
+
+            let html = '';
+            brokers.forEach(b => {
+                const isActive = b.is_active;
+                const borderColor = isActive ? '#00ff88' : '#333';
+                const activeLabel = isActive ? '<span style="background:#00aa66; color:#fff; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:6px;">ACTIVE</span>' : '';
+                const brokerIcon = b.broker_type === 'alice_blue' ? 'fa-bolt' : b.broker_type === 'upstox' ? 'fa-chart-line' : 'fa-globe';
+
+                html += `
+                <div style="background:#2a2a2a; padding:12px 15px; margin-bottom:8px; border-radius:8px; border-left:3px solid ${borderColor};">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <i class="fas ${brokerIcon}" style="color:var(--accent-color); margin-right:6px;"></i>
+                            <strong style="color:#fff; font-size:14px;">${b.broker_name}</strong>
+                            ${activeLabel}
+                            <div style="font-size:11px; color:#888; margin-top:4px;">
+                                User: ${b.user_id} &nbsp;|&nbsp; Connected: ${b.connected_at}
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            ${!isActive ? `<button onclick="selectBroker('${b.broker_id}')" style="padding:5px 10px; background:#0077ff; border:none; color:#fff; border-radius:4px; cursor:pointer; font-size:11px;">Use for Trading</button>` : '<span style="color:#00ff88; font-size:11px; font-weight:600;">Trading Active</span>'}
+                            <button onclick="disconnectBroker('${b.broker_id}')" style="padding:5px 10px; background:#ff4444; border:none; color:#fff; border-radius:4px; cursor:pointer; font-size:11px;"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            list.innerHTML = html;
+
+            // Update banner with active broker info
+            if (data.connected && data.broker) {
+                const totalCount = brokers.length;
+                updateBrokerStatus(true, data.broker, totalCount);
+                startLtpUpdates();
+            }
+        })
+        .catch(() => {});
+}
+
+function selectBroker(brokerId) {
+    fetch('/api/broker/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broker_id: brokerId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAuthResult(true, data.message);
+            refreshConnectedBrokers();
+        } else {
+            showAuthResult(false, data.message);
+        }
+    });
+}
+
+function disconnectBroker(brokerId) {
+    if (!confirm('Disconnect this broker?')) return;
+    fetch('/api/broker/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broker_id: brokerId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAuthResult(true, data.message);
+            refreshConnectedBrokers();
+        }
+    });
+}
+
+function updateBrokerStatus(connected, brokerName, totalConnected) {
     brokerConnected = connected;
     const dot = document.getElementById('brokerStatusDot');
     const text = document.getElementById('brokerStatusText');
@@ -1985,9 +2050,10 @@ function updateBrokerStatus(connected, brokerName) {
 
     if (connected) {
         dot.style.background = '#00ff88';
-        text.textContent = `Connected to ${brokerName}`;
+        text.textContent = `Active: ${brokerName}`;
         text.style.color = '#00ff88';
-        detail.textContent = 'Real-time data active. Watchlist prices updating.';
+        const extra = totalConnected > 1 ? ` (${totalConnected} brokers connected)` : '';
+        detail.textContent = 'Real-time data active. Watchlist prices updating.' + extra;
     } else {
         dot.style.background = '#ff4444';
         text.textContent = 'Not Connected';
@@ -1997,15 +2063,7 @@ function updateBrokerStatus(connected, brokerName) {
 }
 
 function checkBrokerStatusOnLoad() {
-    fetch('/api/broker/status')
-        .then(r => r.json())
-        .then(data => {
-            if (data.success && data.connected) {
-                updateBrokerStatus(true, data.broker);
-                startLtpUpdates();
-            }
-        })
-        .catch(() => {});
+    refreshConnectedBrokers();
 }
 
 // Switch broker form fields based on selection
@@ -2133,21 +2191,11 @@ function brokerAuthenticate() {
         btn.disabled = false;
 
         if (data.success) {
-            showAuthResult(true, 'Connected to ' + (data.broker || 'broker') + ' successfully!');
-            updateBrokerStatus(true, data.broker || 'Alice Blue');
+            const totalMsg = data.total_connected > 1 ? ` (${data.total_connected} brokers connected)` : '';
+            showAuthResult(true, data.message + totalMsg);
 
-            // Save to history
-            const brokerName = document.getElementById('brokerSelect').options[document.getElementById('brokerSelect').selectedIndex].text;
-            const clientId = document.getElementById('clientId').value;
-            let brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
-            brokers.push({
-                name: brokerName,
-                clientId: clientId,
-                status: 'connected',
-                time: new Date().toLocaleString('en-IN')
-            });
-            localStorage.setItem('mukeshAlgoBrokers', JSON.stringify(brokers));
-            loadBrokers();
+            // Refresh connected brokers list from server
+            refreshConnectedBrokers();
 
             // Start real-time price updates
             startLtpUpdates();
@@ -2243,15 +2291,8 @@ function testBrokerConnection() { checkBrokerStatusOnLoad(); }
 window.addEventListener('message', function(event) {
     if (event.data && event.data.type === 'broker_connected') {
         // Callback window already authenticated successfully
-        updateBrokerStatus(true, event.data.broker || 'Alice Blue');
         showAuthResult(true, 'Connected to ' + (event.data.broker || 'broker') + ' successfully!');
-        const brokerName = document.getElementById('brokerSelect') ?
-            document.getElementById('brokerSelect').options[document.getElementById('brokerSelect').selectedIndex].text : 'Alice Blue';
-        const clientId = document.getElementById('clientId') ? document.getElementById('clientId').value : '';
-        let brokers = JSON.parse(localStorage.getItem('mukeshAlgoBrokers') || '[]');
-        brokers.push({ name: brokerName, clientId: clientId, status: 'connected', time: new Date().toLocaleString('en-IN') });
-        localStorage.setItem('mukeshAlgoBrokers', JSON.stringify(brokers));
-        loadBrokers();
+        refreshConnectedBrokers();
         startLtpUpdates();
     } else if (event.data && event.data.type === 'auth_callback') {
         // Callback sent auth code - auto-fill it

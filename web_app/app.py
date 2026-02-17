@@ -34,11 +34,26 @@ app.config['SECRET_KEY'] = 'mukesh-algo-secret-key'
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Global state
-active_broker = None
-broker_config = {}
+# Global state - Multi-broker & Multi-user support
+# Structure: { "broker_id": { "broker": BrokerInstance, "config": {...}, "user": "username" } }
+connected_brokers = {}
+active_broker_id = None  # Currently selected broker for trading
+pending_broker = None  # Broker being authenticated (not yet connected)
+pending_broker_config = {}
 watchlist = []
 instruments_cache = {}  # exchange -> list of instruments
+
+
+def get_active_broker():
+    """Get the currently active broker instance"""
+    if active_broker_id and active_broker_id in connected_brokers:
+        return connected_brokers[active_broker_id]['broker']
+    return None
+
+
+def make_broker_id(broker_type, user_id):
+    """Create unique broker ID like 'alice_blue_515175' """
+    return f"{broker_type}_{user_id}".replace(' ', '_')
 
 # ===== PAGE ROUTES =====
 
@@ -50,7 +65,7 @@ def index():
 
 @app.route('/api/broker/login-url', methods=['POST'])
 def get_login_url():
-    global active_broker, broker_config
+    global pending_broker, pending_broker_config
     try:
         data = request.json
         broker_type = data.get('broker_type', 'upstox')
@@ -60,21 +75,19 @@ def get_login_url():
         app_code = data.get('app_code', '')
         redirect_uri = data.get('redirect_uri', 'http://127.0.0.1:5000/callback')
 
-        broker_config = data
+        pending_broker_config = data
 
         if broker_type == 'upstox':
-            active_broker = UpstoxBroker(api_key, api_secret, redirect_uri)
+            pending_broker = UpstoxBroker(api_key, api_secret, redirect_uri)
         elif broker_type == 'alice_blue':
-            active_broker = AliceBlueBroker(api_key, app_code, user_id, redirect_uri)
+            pending_broker = AliceBlueBroker(api_key, app_code, user_id, redirect_uri)
         elif broker_type == 'exness':
-            # Exness uses MT5 direct login - no OAuth URL needed
             if not MT5_AVAILABLE:
                 return jsonify({'success': False, 'message': 'MetaTrader5 package not installed. Run: pip install MetaTrader5 (Windows only)'})
-            # Store credentials for authenticate step
             mt5_login = int(user_id) if user_id else 0
-            mt5_password = api_key  # Secret Key field = MT5 password
-            mt5_server = api_secret  # App Code / Server field = MT5 server
-            active_broker = MT5Broker(login=mt5_login, password=mt5_password, server=mt5_server)
+            mt5_password = api_key
+            mt5_server = api_secret
+            pending_broker = MT5Broker(login=mt5_login, password=mt5_password, server=mt5_server)
             return jsonify({
                 'success': True,
                 'login_url': '',
@@ -84,7 +97,7 @@ def get_login_url():
         else:
             return jsonify({'success': False, 'message': f'Unknown broker: {broker_type}'})
 
-        login_url = active_broker.get_login_url()
+        login_url = pending_broker.get_login_url()
         return jsonify({'success': True, 'login_url': login_url})
 
     except Exception as e:
@@ -94,53 +107,72 @@ def get_login_url():
 
 @app.route('/api/broker/authenticate', methods=['POST'])
 def authenticate():
-    global active_broker
+    global pending_broker, active_broker_id, connected_brokers
     try:
         data = request.json
         auth_code = data.get('auth_code', '')
 
-        if not active_broker:
+        if not pending_broker:
             return jsonify({'success': False, 'message': 'No broker initialized. Get login URL first.'})
 
-        # MT5/Exness uses direct login - no auth code needed
-        if isinstance(active_broker, MT5Broker) if MT5_AVAILABLE and MT5Broker else False:
-            result = active_broker.authenticate()
-            if result:
-                return jsonify({
-                    'success': True,
-                    'message': 'Connected to Exness MT5 successfully',
-                    'broker': 'Exness (MT5)',
-                    'is_authenticated': True
-                })
-            else:
+        auth_success = False
+        broker_label = ''
+
+        # MT5/Exness uses direct login
+        if MT5_AVAILABLE and MT5Broker and isinstance(pending_broker, MT5Broker):
+            result = pending_broker.authenticate()
+            auth_success = bool(result)
+            broker_label = 'Exness (MT5)'
+            if not auth_success:
                 return jsonify({'success': False, 'message': 'MT5 connection failed. Make sure MetaTrader 5 terminal is running and credentials are correct.'})
-
-        if not auth_code:
-            return jsonify({'success': False, 'message': 'Auth code is required'})
-
-        result = active_broker.generate_session(auth_code)
-
-        # Handle both dict return (new) and bool return (legacy)
-        if isinstance(result, dict):
-            if result.get('success'):
-                return jsonify({
-                    'success': True,
-                    'message': 'Authentication successful',
-                    'broker': active_broker.broker_name,
-                    'is_authenticated': True
-                })
-            else:
-                error_msg = result.get('error', 'Authentication failed')
-                return jsonify({'success': False, 'message': f'{active_broker.broker_name}: {error_msg}'})
-        elif result:
-            return jsonify({
-                'success': True,
-                'message': 'Authentication successful',
-                'broker': active_broker.broker_name,
-                'is_authenticated': True
-            })
         else:
-            return jsonify({'success': False, 'message': 'Authentication failed. Check credentials.'})
+            if not auth_code:
+                return jsonify({'success': False, 'message': 'Auth code is required'})
+
+            result = pending_broker.generate_session(auth_code)
+
+            if isinstance(result, dict):
+                auth_success = result.get('success', False)
+                if not auth_success:
+                    error_msg = result.get('error', 'Authentication failed')
+                    return jsonify({'success': False, 'message': f'{pending_broker.broker_name}: {error_msg}'})
+            else:
+                auth_success = bool(result)
+
+            if not auth_success:
+                return jsonify({'success': False, 'message': 'Authentication failed. Check credentials.'})
+
+            broker_label = pending_broker.broker_name
+
+        # Auth succeeded - add to connected brokers pool
+        user_id = pending_broker_config.get('user_id', '')
+        broker_type = pending_broker_config.get('broker_type', 'unknown')
+        broker_id = make_broker_id(broker_type, user_id)
+
+        connected_brokers[broker_id] = {
+            'broker': pending_broker,
+            'config': pending_broker_config.copy(),
+            'broker_type': broker_type,
+            'broker_name': broker_label or broker_type,
+            'user_id': user_id,
+            'connected_at': time.strftime('%d %b %Y %I:%M %p')
+        }
+
+        # Auto-select as active if none selected
+        if not active_broker_id:
+            active_broker_id = broker_id
+
+        logger.info(f"Broker connected: {broker_id} (total: {len(connected_brokers)})")
+        pending_broker = None
+
+        return jsonify({
+            'success': True,
+            'message': f'Connected to {broker_label} successfully!',
+            'broker': broker_label,
+            'broker_id': broker_id,
+            'is_authenticated': True,
+            'total_connected': len(connected_brokers)
+        })
 
     except Exception as e:
         logger.error(f"Auth error: {e}")
@@ -149,13 +181,73 @@ def authenticate():
 
 @app.route('/api/broker/status')
 def broker_status():
-    if active_broker and active_broker.is_authenticated:
-        return jsonify({
-            'success': True,
-            'connected': True,
-            'broker': active_broker.broker_name,
+    brokers_list = []
+    for bid, bdata in connected_brokers.items():
+        broker = bdata['broker']
+        brokers_list.append({
+            'broker_id': bid,
+            'broker_type': bdata['broker_type'],
+            'broker_name': bdata['broker_name'],
+            'user_id': bdata['user_id'],
+            'connected': broker.is_authenticated,
+            'is_active': bid == active_broker_id,
+            'connected_at': bdata.get('connected_at', '')
         })
-    return jsonify({'success': True, 'connected': False, 'broker': None})
+
+    active = get_active_broker()
+    return jsonify({
+        'success': True,
+        'connected': active is not None and active.is_authenticated,
+        'broker': active.broker_name if active else None,
+        'active_broker_id': active_broker_id,
+        'brokers': brokers_list,
+        'total_connected': len(brokers_list)
+    })
+
+
+@app.route('/api/broker/select', methods=['POST'])
+def select_broker():
+    """Switch the active broker for trading"""
+    global active_broker_id
+    data = request.json
+    broker_id = data.get('broker_id', '')
+
+    if broker_id not in connected_brokers:
+        return jsonify({'success': False, 'message': f'Broker {broker_id} not found'})
+
+    active_broker_id = broker_id
+    bdata = connected_brokers[broker_id]
+    logger.info(f"Active broker switched to: {broker_id}")
+    return jsonify({
+        'success': True,
+        'message': f'Switched to {bdata["broker_name"]} ({bdata["user_id"]})',
+        'active_broker_id': broker_id
+    })
+
+
+@app.route('/api/broker/disconnect', methods=['POST'])
+def disconnect_broker():
+    """Disconnect a specific broker"""
+    global active_broker_id, connected_brokers
+    data = request.json
+    broker_id = data.get('broker_id', '')
+
+    if broker_id not in connected_brokers:
+        return jsonify({'success': False, 'message': f'Broker {broker_id} not found'})
+
+    bdata = connected_brokers.pop(broker_id)
+    logger.info(f"Broker disconnected: {broker_id}")
+
+    # If we disconnected the active broker, switch to another
+    if active_broker_id == broker_id:
+        active_broker_id = next(iter(connected_brokers), None)
+
+    return jsonify({
+        'success': True,
+        'message': f'{bdata["broker_name"]} disconnected',
+        'active_broker_id': active_broker_id,
+        'total_connected': len(connected_brokers)
+    })
 
 
 @app.route('/api/instruments')
@@ -279,12 +371,14 @@ def oauth_callback():
 
 @app.route('/api/ltp/<symbol>')
 def get_ltp(symbol):
-    if not active_broker or not active_broker.is_authenticated:
+    broker_id = request.args.get('broker_id', '')
+    broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
+    if not broker or not broker.is_authenticated:
         return jsonify({'success': False, 'message': 'Broker not connected'})
 
     try:
         exchange = request.args.get('exchange', 'NSE')
-        ltp = active_broker.get_ltp(symbol, exchange)
+        ltp = broker.get_ltp(symbol, exchange)
         return jsonify({'success': True, 'symbol': symbol, 'ltp': ltp})
     except Exception as e:
         logger.error(f"LTP error: {e}")
@@ -293,7 +387,8 @@ def get_ltp(symbol):
 
 @app.route('/api/option-ltp')
 def get_option_ltp():
-    if not active_broker or not active_broker.is_authenticated:
+    broker = get_active_broker()
+    if not broker or not broker.is_authenticated:
         return jsonify({'success': False, 'message': 'Broker not connected'})
 
     try:
@@ -301,7 +396,7 @@ def get_option_ltp():
         strike = int(request.args.get('strike', 0))
         opt_type = request.args.get('opt_type', 'CE')
 
-        ltp = active_broker.get_option_ltp(symbol, strike, opt_type)
+        ltp = broker.get_option_ltp(symbol, strike, opt_type)
         return jsonify({'success': True, 'symbol': symbol, 'strike': strike, 'opt_type': opt_type, 'ltp': ltp})
     except Exception as e:
         logger.error(f"Option LTP error: {e}")
@@ -311,8 +406,8 @@ def get_option_ltp():
 @app.route('/api/market-data')
 def market_data():
     """Get market data for ticker (NIFTY, SENSEX, BANKNIFTY, VIX)"""
-    if not active_broker or not active_broker.is_authenticated:
-        # Return simulated data when no broker connected
+    broker = get_active_broker()
+    if not broker or not broker.is_authenticated:
         return jsonify({
             'success': True,
             'data': [
@@ -329,7 +424,7 @@ def market_data():
         for idx in indices:
             try:
                 exchange = 'BSE' if idx in ['SENSEX'] else 'NSE'
-                ltp = active_broker.get_ltp(idx, exchange)
+                ltp = broker.get_ltp(idx, exchange)
                 data.append({'symbol': idx, 'ltp': ltp, 'change': 0})
             except:
                 data.append({'symbol': idx, 'ltp': 0, 'change': 0})
@@ -344,11 +439,16 @@ def market_data():
 
 @app.route('/api/order/place', methods=['POST'])
 def place_order():
-    if not active_broker or not active_broker.is_authenticated:
+    data = request.json
+    # Allow specifying which broker to trade on
+    broker_id = data.get('broker_id', '')
+    broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
+    target_id = broker_id or active_broker_id
+
+    if not broker or not broker.is_authenticated:
         return jsonify({'success': False, 'message': 'Broker not connected'})
 
     try:
-        data = request.json
         order = BrokerOrder(
             symbol=data.get('symbol'),
             exchange=data.get('exchange', 'NSE'),
@@ -360,7 +460,9 @@ def place_order():
             product=data.get('product', 'CNC')
         )
 
-        result = active_broker.place_order(order)
+        result = broker.place_order(order)
+        if isinstance(result, dict):
+            result['broker_id'] = target_id
         return jsonify(result)
 
     except Exception as e:
@@ -370,11 +472,28 @@ def place_order():
 
 @app.route('/api/orders')
 def get_orders():
-    if not active_broker or not active_broker.is_authenticated:
-        return jsonify({'success': True, 'orders': []})
+    broker_id = request.args.get('broker_id', '')
+    # If broker_id='all', merge orders from all brokers
+    if broker_id == 'all':
+        all_orders = []
+        for bid, bdata in connected_brokers.items():
+            b = bdata['broker']
+            if b.is_authenticated:
+                try:
+                    orders = b.get_orders()
+                    for o in orders:
+                        o['broker_id'] = bid
+                        o['broker_name'] = bdata['broker_name']
+                    all_orders.extend(orders)
+                except:
+                    pass
+        return jsonify({'success': True, 'orders': all_orders})
 
+    broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'success': True, 'orders': []})
     try:
-        orders = active_broker.get_orders()
+        orders = broker.get_orders()
         return jsonify({'success': True, 'orders': orders})
     except Exception as e:
         logger.error(f"Orders error: {e}")
@@ -383,11 +502,27 @@ def get_orders():
 
 @app.route('/api/positions')
 def get_positions():
-    if not active_broker or not active_broker.is_authenticated:
-        return jsonify({'success': True, 'positions': []})
+    broker_id = request.args.get('broker_id', '')
+    if broker_id == 'all':
+        all_positions = []
+        for bid, bdata in connected_brokers.items():
+            b = bdata['broker']
+            if b.is_authenticated:
+                try:
+                    positions = b.get_positions()
+                    for p in positions:
+                        p['broker_id'] = bid
+                        p['broker_name'] = bdata['broker_name']
+                    all_positions.extend(positions)
+                except:
+                    pass
+        return jsonify({'success': True, 'positions': all_positions})
 
+    broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'success': True, 'positions': []})
     try:
-        positions = active_broker.get_positions()
+        positions = broker.get_positions()
         return jsonify({'success': True, 'positions': positions})
     except Exception as e:
         logger.error(f"Positions error: {e}")
@@ -396,11 +531,27 @@ def get_positions():
 
 @app.route('/api/holdings')
 def get_holdings():
-    if not active_broker or not active_broker.is_authenticated:
-        return jsonify({'success': True, 'holdings': []})
+    broker_id = request.args.get('broker_id', '')
+    if broker_id == 'all':
+        all_holdings = []
+        for bid, bdata in connected_brokers.items():
+            b = bdata['broker']
+            if b.is_authenticated:
+                try:
+                    holdings = b.get_holdings()
+                    for h in holdings:
+                        h['broker_id'] = bid
+                        h['broker_name'] = bdata['broker_name']
+                    all_holdings.extend(holdings)
+                except:
+                    pass
+        return jsonify({'success': True, 'holdings': all_holdings})
 
+    broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'success': True, 'holdings': []})
     try:
-        holdings = active_broker.get_holdings()
+        holdings = broker.get_holdings()
         return jsonify({'success': True, 'holdings': holdings})
     except Exception as e:
         logger.error(f"Holdings error: {e}")
@@ -409,11 +560,24 @@ def get_holdings():
 
 @app.route('/api/funds')
 def get_funds():
-    if not active_broker or not active_broker.is_authenticated:
-        return jsonify({'success': True, 'funds': {}})
+    broker_id = request.args.get('broker_id', '')
+    if broker_id == 'all':
+        all_funds = {}
+        for bid, bdata in connected_brokers.items():
+            b = bdata['broker']
+            if b.is_authenticated:
+                try:
+                    funds = b.get_funds()
+                    all_funds[bid] = {'broker_name': bdata['broker_name'], 'user_id': bdata['user_id'], 'funds': funds}
+                except:
+                    pass
+        return jsonify({'success': True, 'funds': all_funds, 'multi': True})
 
+    broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'success': True, 'funds': {}})
     try:
-        funds = active_broker.get_funds()
+        funds = broker.get_funds()
         return jsonify({'success': True, 'funds': funds})
     except Exception as e:
         logger.error(f"Funds error: {e}")

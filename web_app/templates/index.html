@@ -2003,14 +2003,15 @@
                 <div id="authResult" style="display:none; margin-top: 15px; padding: 12px; border-radius: 8px;"></div>
             </div>
 
-            <!-- Saved Brokers List -->
+            <!-- Connected Brokers (Live) -->
             <div style="background: #1a1a1a; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h3 style="color: var(--accent-color); margin-bottom: 15px;">
-                    <i class="fas fa-list"></i> Connection History
+                    <i class="fas fa-link"></i> Connected Brokers <span id="connectedCount" style="background:#0077ff; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px; margin-left:8px;">0</span>
                 </h3>
-                <div id="brokerList" style="max-height: 300px; overflow-y: auto;">
-                    <!-- Broker list will be loaded here -->
+                <div id="connectedBrokersList" style="max-height: 400px; overflow-y: auto;">
+                    <p style="color:#666; text-align:center; padding: 20px;">No brokers connected yet. Connect above to start trading.</p>
                 </div>
+                <p style="color:#666; font-size:11px; margin-top:10px;"><i class="fas fa-info-circle"></i> Multiple brokers can be connected simultaneously. The <span style="color:#00ff88;">ACTIVE</span> broker is used for trading. Click "Use for Trading" to switch.</p>
             </div>
         </div>
 

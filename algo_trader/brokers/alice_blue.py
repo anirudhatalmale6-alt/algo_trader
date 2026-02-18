@@ -115,6 +115,66 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Alice Blue auth error: {e}")
             return {'success': False, 'error': str(e)}
 
+    def direct_login(self) -> dict:
+        """Direct API login without browser redirect (official SDK method).
+        Uses encryption key + SHA-256 hash approach.
+        Requires: user_id and api_key (secret_key).
+        """
+        try:
+            headers = {
+                'X-SAS-Version': '2.0',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+
+            # Step 1: Get encryption key
+            logger.info(f"Alice Blue direct login: getting encryption key for {self.user_id}")
+            enc_payload = {'userId': self.user_id.upper()}
+            enc_response = requests.post(
+                f"{self.BASE_URL}/customer/getAPIEncpkey",
+                json=enc_payload, headers=headers, timeout=30
+            )
+            enc_data = enc_response.json()
+            logger.info(f"Encryption key response: stat={enc_data.get('stat')}")
+
+            enc_key = enc_data.get('encKey')
+            if not enc_key:
+                error = enc_data.get('emsg', 'Failed to get encryption key')
+                logger.error(f"Alice Blue: No encryption key - {error}")
+                return {'success': False, 'error': error}
+
+            # Step 2: Create SHA-256 hash of userId + apiKey + encKey
+            hash_input = self.user_id.upper() + self.secret_key + enc_key
+            user_data = hashlib.sha256(hash_input.encode()).hexdigest()
+
+            # Step 3: Get session ID
+            session_payload = {
+                'userId': self.user_id.upper(),
+                'userData': user_data
+            }
+            logger.info(f"Alice Blue direct login: getting session for {self.user_id}")
+            session_response = requests.post(
+                f"{self.BASE_URL}/customer/getUserSID",
+                json=session_payload, headers=headers, timeout=30
+            )
+            session_data = session_response.json()
+            logger.info(f"Session response: stat={session_data.get('stat')}")
+
+            if session_data.get('stat') == 'Ok' and session_data.get('sessionID'):
+                self.session_id = session_data['sessionID']
+                self.access_token = session_data['sessionID']
+                self.is_authenticated = True
+                logger.info(f"Alice Blue direct login successful!")
+                return {'success': True}
+            else:
+                error = session_data.get('emsg', 'Failed to get session')
+                logger.error(f"Alice Blue direct login failed: {error}")
+                return {'success': False, 'error': error}
+
+        except Exception as e:
+            logger.error(f"Alice Blue direct login error: {e}")
+            return {'success': False, 'error': str(e)}
+
     def _get_headers(self) -> Dict:
         """Get headers for authenticated requests"""
         # Alice Blue requires: Bearer USER_ID SESSION_ID (as per official SDK)

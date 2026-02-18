@@ -65,7 +65,7 @@ def index():
 
 @app.route('/api/broker/login-url', methods=['POST'])
 def get_login_url():
-    global pending_broker, pending_broker_config
+    global pending_broker, pending_broker_config, active_broker_id, connected_brokers
     try:
         data = request.json
         broker_type = data.get('broker_type', 'upstox')
@@ -81,6 +81,38 @@ def get_login_url():
             pending_broker = UpstoxBroker(api_key, api_secret, redirect_uri)
         elif broker_type == 'alice_blue':
             pending_broker = AliceBlueBroker(api_key, app_code, user_id, redirect_uri)
+            # Try direct login first (no browser needed)
+            logger.info("Alice Blue: Trying direct login first...")
+            direct_result = pending_broker.direct_login()
+            if direct_result.get('success'):
+                # Direct login worked! Skip OAuth flow entirely
+                broker_id = make_broker_id(broker_type, user_id)
+                connected_brokers[broker_id] = {
+                    'broker': pending_broker,
+                    'config': pending_broker_config.copy(),
+                    'broker_type': broker_type,
+                    'broker_name': 'Alice Blue',
+                    'user_id': user_id,
+                    'connected_at': time.strftime('%d %b %Y %I:%M %p')
+                }
+                if not active_broker_id:
+                    active_broker_id = broker_id
+                logger.info(f"Alice Blue direct login SUCCESS for {user_id}")
+                pending_broker = None
+                return jsonify({
+                    'success': True,
+                    'login_url': '',
+                    'direct_login': True,
+                    'already_connected': True,
+                    'message': 'Connected to Alice Blue successfully!',
+                    'broker': 'Alice Blue',
+                    'broker_id': broker_id,
+                    'is_authenticated': True,
+                    'total_connected': len(connected_brokers)
+                })
+            else:
+                # Direct login failed, fall back to OAuth flow
+                logger.info(f"Alice Blue direct login failed: {direct_result.get('error')}. Falling back to OAuth...")
         elif broker_type == 'exness':
             if not MT5_AVAILABLE:
                 return jsonify({'success': False, 'message': 'MetaTrader5 package not installed. Run: pip install MetaTrader5 (Windows only)'})
@@ -383,6 +415,17 @@ def oauth_callback():
     auth_code = request.args.get('authCode') or request.args.get('code') or request.args.get('auth_code', '')
     user_id = request.args.get('userId', '')
     return render_template('callback.html', auth_code=auth_code, user_id=user_id)
+
+
+@app.before_request
+def strip_trailing_space():
+    """Fix URLs with trailing spaces (e.g. /callback%20 → /callback)"""
+    from flask import redirect
+    if request.path != request.path.rstrip():
+        cleaned = request.path.rstrip()
+        if request.query_string:
+            cleaned += '?' + request.query_string.decode('utf-8')
+        return redirect(cleaned, code=301)
 
 
 # ===== MARKET DATA =====

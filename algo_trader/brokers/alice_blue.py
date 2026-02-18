@@ -30,11 +30,13 @@ class AliceBlueBroker(BaseBroker):
     def __init__(self, api_key: str, app_code: str = None, user_id: str = None,
                  redirect_uri: str = "http://127.0.0.1:5000/callback"):
         # api_key = Secret Key (long), app_code = App Code (short)
-        super().__init__(api_key, "")
+        # Strip spaces from secret key - portal may show with spaces but key works without
+        clean_key = api_key.replace(' ', '') if api_key else ''
+        super().__init__(clean_key, "")
         self.broker_name = "alice_blue"
-        self.user_id = user_id
-        self.app_code = app_code  # Short code like "cabzLFoeRT" for login URL
-        self.secret_key = api_key  # Long key for checksum calculation
+        self.user_id = user_id.strip() if user_id else user_id
+        self.app_code = app_code.strip() if app_code else app_code
+        self.secret_key = clean_key  # Long key for checksum calculation (spaces removed)
         self.redirect_uri = redirect_uri
         self.session_id = None
 
@@ -58,56 +60,65 @@ class AliceBlueBroker(BaseBroker):
     def generate_session(self, auth_code: str) -> dict:
         """Generate session using authorization code. Returns dict with success/error details."""
         try:
-            # Alice Blue uses SHA-256 hash for authentication
-            # Format: userId + authCode + secretKey
-            checksum = hashlib.sha256(
-                (self.user_id + auth_code + self.secret_key).encode()
-            ).hexdigest()
+            auth_code = auth_code.strip()
 
-            payload = {
-                'checkSum': checksum
-            }
+            # Try multiple checksum variants:
+            # Official docs say: SHA-256(userId + authCode + apiSecret)
+            # Some implementations uppercase userId, some don't
+            checksum_variants = [
+                (self.user_id + auth_code + self.secret_key, "userId+authCode+secretKey"),
+                (self.user_id.upper() + auth_code + self.secret_key, "USERID+authCode+secretKey"),
+            ]
 
             headers = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             }
 
-            logger.info(f"Alice Blue auth: user_id={self.user_id}, auth_code={auth_code[:8]}..., checksum={checksum[:20]}...")
+            logger.info(f"Alice Blue OAuth auth: user_id={self.user_id}, auth_code={auth_code}, secret_key_len={len(self.secret_key)}")
 
             last_error = ""
-            # Try each session URL
-            for url in self.SESSION_URLS:
-                logger.info(f"Trying Alice Blue auth URL: {url}")
-                try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=30)
-                    logger.info(f"Response from {url}: status={response.status_code}, body={response.text[:500]}")
+            for hash_input, variant_name in checksum_variants:
+                checksum = hashlib.sha256(hash_input.encode()).hexdigest()
+                payload = {'checkSum': checksum}
 
-                    data = response.json()
+                logger.info(f"Trying checksum variant: {variant_name} → {checksum[:20]}...")
 
-                    # Check for success - different response formats
-                    if response.status_code == 200:
-                        stat = data.get('stat', '').lower()
-                        if stat == 'ok' or data.get('userSession'):
-                            self.session_id = data.get('userSession')
-                            self.access_token = data.get('userSession')
-                            self.client_id = data.get('clientId')
-                            self.is_authenticated = True
-                            logger.info(f"Alice Blue auth successful via {url}, clientId: {self.client_id}")
-                            return {'success': True}
+                for url in self.SESSION_URLS:
+                    logger.info(f"  POST {url}")
+                    try:
+                        response = requests.post(url, json=payload, headers=headers, timeout=30)
+                        logger.info(f"  Response: status={response.status_code}, body={response.text[:500]}")
 
-                    # Capture error for reporting
-                    last_error = data.get('emsg', data.get('message', data.get('errorMessage', '')))
-                    if not last_error:
-                        last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-                    logger.warning(f"Auth failed at {url}: {last_error}")
+                        data = response.json()
 
-                except requests.exceptions.RequestException as e:
-                    last_error = f"Connection error: {e}"
-                    logger.warning(f"Connection failed to {url}: {e}")
-                    continue
+                        if response.status_code == 200:
+                            stat = data.get('stat', '').lower() if data.get('stat') else ''
+                            if stat == 'ok' or data.get('userSession'):
+                                self.session_id = data.get('userSession')
+                                self.access_token = data.get('userSession')
+                                self.client_id = data.get('clientId')
+                                self.is_authenticated = True
+                                logger.info(f"Alice Blue auth SUCCESS via {variant_name} at {url}")
+                                return {'success': True}
 
-            error_detail = last_error or "Authentication failed on all endpoints"
+                        last_error = data.get('emsg', data.get('message', data.get('errorMessage', '')))
+                        if not last_error:
+                            last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                        logger.warning(f"  Failed: {last_error}")
+
+                    except requests.exceptions.RequestException as e:
+                        last_error = f"Connection error: {e}"
+                        logger.warning(f"  Connection failed: {e}")
+                        continue
+
+            # OAuth failed - try direct login as automatic fallback
+            logger.info("OAuth auth code failed, trying direct login (getAPIEncpkey → getUserSID)...")
+            direct_result = self.direct_login()
+            if direct_result.get('success'):
+                return direct_result
+
+            error_detail = last_error or "Authentication failed on all methods"
             logger.error(f"Alice Blue auth failed: {error_detail}")
             return {'success': False, 'error': error_detail}
 

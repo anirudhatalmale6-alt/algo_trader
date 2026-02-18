@@ -3056,7 +3056,7 @@ function onBrokerChange() {
 
     if (brokerType === 'alice_blue') {
         fieldsAB.style.display = 'block';
-        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        btn.innerHTML = '<i class="fas fa-plug"></i> Connect to Alice Blue';
     } else if (brokerType === 'upstox') {
         fieldsUp.style.display = 'block';
         btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
@@ -3102,7 +3102,7 @@ function brokerGetLoginUrl() {
     }
 
     const btn = document.getElementById('btnGetLoginUrl');
-    btn.textContent = brokerType === 'exness' ? 'Connecting...' : 'Getting Login URL...';
+    btn.textContent = (brokerType === 'exness' || brokerType === 'alice_blue') ? 'Connecting...' : 'Getting Login URL...';
     btn.disabled = true;
 
     fetch('/api/broker/login-url', {
@@ -3112,14 +3112,23 @@ function brokerGetLoginUrl() {
     })
     .then(r => r.json())
     .then(data => {
-        btn.innerHTML = brokerType === 'exness'
-            ? '<i class="fas fa-plug"></i> Connect to Exness MT5'
-            : '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        const btnLabels = {
+            'exness': '<i class="fas fa-plug"></i> Connect to Exness MT5',
+            'alice_blue': '<i class="fas fa-plug"></i> Connect to Alice Blue',
+            'upstox': '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL'
+        };
+        btn.innerHTML = btnLabels[brokerType] || '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
         btn.disabled = false;
 
         if (data.success) {
-            if (data.direct_login) {
-                // Direct login (Alice Blue / Exness) - skip login URL, go straight to authenticate
+            if (data.already_connected) {
+                // Already connected via direct login - no further steps needed
+                showAuthResult(true, data.message || 'Connected successfully!');
+                if (typeof addLog === 'function') addLog('SUCCESS', 'system', 'Broker connected: ' + (data.message || brokerType));
+                refreshConnectedBrokers();
+                startLtpUpdates();
+            } else if (data.direct_login) {
+                // Direct login (Exness) - skip login URL, go straight to authenticate
                 showAuthResult(true, data.message || 'Connecting...');
                 brokerAuthenticate();
             } else if (data.login_url) {
@@ -3133,9 +3142,12 @@ function brokerGetLoginUrl() {
         }
     })
     .catch(err => {
-        btn.innerHTML = brokerType === 'exness'
-            ? '<i class="fas fa-plug"></i> Connect to Exness MT5'
-            : '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
+        const btnLabels2 = {
+            'exness': '<i class="fas fa-plug"></i> Connect to Exness MT5',
+            'alice_blue': '<i class="fas fa-plug"></i> Connect to Alice Blue',
+            'upstox': '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL'
+        };
+        btn.innerHTML = btnLabels2[brokerType] || '<i class="fas fa-sign-in-alt"></i> Step 1: Get Login URL';
         btn.disabled = false;
         showAuthResult(false, 'Network error: ' + err.message);
     });

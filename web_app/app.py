@@ -81,13 +81,6 @@ def get_login_url():
             pending_broker = UpstoxBroker(api_key, api_secret, redirect_uri)
         elif broker_type == 'alice_blue':
             pending_broker = AliceBlueBroker(api_key, app_code, user_id, redirect_uri)
-            # Alice Blue uses direct API login (no browser redirect needed)
-            return jsonify({
-                'success': True,
-                'login_url': '',
-                'direct_login': True,
-                'message': 'Alice Blue uses direct API login. Click Authenticate to connect.'
-            })
         elif broker_type == 'exness':
             if not MT5_AVAILABLE:
                 return jsonify({'success': False, 'message': 'MetaTrader5 package not installed. Run: pip install MetaTrader5 (Windows only)'})
@@ -133,25 +126,21 @@ def authenticate():
             if not auth_success:
                 return jsonify({'success': False, 'message': 'MT5 connection failed. Make sure MetaTrader 5 terminal is running and credentials are correct.'})
         elif isinstance(pending_broker, AliceBlueBroker):
-            # Alice Blue: try direct API login first (no auth code needed)
-            result = pending_broker.direct_login()
+            # Alice Blue: use auth code method (OAuth flow)
+            if not auth_code:
+                return jsonify({'success': False, 'message': 'Auth code is required. Login via the URL and paste the auth code.'})
+
+            result = pending_broker.generate_session(auth_code)
             if isinstance(result, dict):
                 auth_success = result.get('success', False)
+                if not auth_success:
+                    error_msg = result.get('error', 'Authentication failed')
+                    return jsonify({'success': False, 'message': f'Alice Blue: {error_msg}'})
             else:
                 auth_success = bool(result)
 
-            # Fallback: if direct login failed and auth code provided, try old method
-            if not auth_success and auth_code and auth_code != 'direct_login':
-                logger.info("Direct login failed, trying auth code method...")
-                result = pending_broker.generate_session(auth_code)
-                if isinstance(result, dict):
-                    auth_success = result.get('success', False)
-                else:
-                    auth_success = bool(result)
-
             if not auth_success:
-                error_msg = result.get('error', 'Authentication failed') if isinstance(result, dict) else 'Authentication failed'
-                return jsonify({'success': False, 'message': f'Alice Blue: {error_msg}'})
+                return jsonify({'success': False, 'message': 'Alice Blue authentication failed. Check credentials and auth code.'})
 
             broker_label = 'Alice Blue'
         else:

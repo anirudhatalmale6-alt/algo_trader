@@ -388,7 +388,6 @@ def get_ltp(symbol=None):
         exchange = request.args.get('exchange', 'NSE')
 
         # Auto-detect NFO for option/future symbols
-        # Patterns: NIFTY10MAR26P25600, NIFTY30MAR26F, BANKNIFTY26224CE, etc.
         if exchange == 'NSE':
             if (re.search(r'\d{2}[A-Z]{3}\d{2}[CPF]', symbol) or
                 symbol.endswith('FUT') or
@@ -397,25 +396,123 @@ def get_ltp(symbol=None):
             elif symbol.startswith('SENSEX') and len(symbol) > 6:
                 exchange = 'BFO'
 
-        # Try fetching LTP with the symbol as-is
-        ltp = broker.get_ltp(symbol, exchange)
+        # Look up instrument token from cached master data
+        token = _find_instrument_token(symbol, exchange)
 
-        # If LTP is 0 and symbol has -EQ suffix, try without it
-        if (not ltp or float(ltp) == 0) and symbol.endswith('-EQ'):
+        # Try multiple approaches to get LTP
+        ltp = 0
+
+        # Approach 1: Token-based scripDetails (most reliable for Alice Blue)
+        if token and hasattr(broker, '_make_request'):
+            try:
+                payload = {'exchange': exchange, 'token': str(token)}
+                result = broker._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+                logger.debug(f"scripDetails(token) for {symbol}: {result}")
+                ltp = _extract_ltp(result)
+            except Exception as e:
+                logger.debug(f"Token scripDetails failed for {symbol}: {e}")
+
+        # Approach 2: Token-based lite endpoint
+        if (not ltp or ltp == 0) and token and hasattr(broker, '_make_request'):
+            try:
+                payload = [{'exchange': exchange, 'token': str(token)}]
+                result = broker._make_request("POST", "/marketWatch/fetchData/lite", payload)
+                logger.debug(f"lite(token) for {symbol}: {result}")
+                ltp = _extract_ltp(result)
+            except Exception as e:
+                logger.debug(f"Token lite failed for {symbol}: {e}")
+
+        # Approach 3: tradingSymbol-based scripDetails (original method)
+        if not ltp or ltp == 0:
+            try:
+                ltp = broker.get_ltp(symbol, exchange)
+                logger.debug(f"get_ltp({symbol}, {exchange}): {ltp}")
+            except:
+                pass
+
+        # Approach 4: Try without -EQ suffix
+        if (not ltp or ltp == 0) and symbol.endswith('-EQ'):
             stripped = symbol.replace('-EQ', '')
-            ltp = broker.get_ltp(stripped, exchange)
-            if ltp and float(ltp) > 0:
-                logger.info(f"LTP found with stripped symbol: {stripped} ({exchange}): {ltp}")
+            token2 = _find_instrument_token(stripped, exchange)
+            if token2 and hasattr(broker, '_make_request'):
+                try:
+                    payload = {'exchange': exchange, 'token': str(token2)}
+                    result = broker._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+                    ltp = _extract_ltp(result)
+                except:
+                    pass
+            if not ltp or ltp == 0:
+                try:
+                    ltp = broker.get_ltp(stripped, exchange)
+                except:
+                    pass
 
-        # If LTP is 0 and it's NSE, try with -EQ suffix (some brokers need it)
-        if (not ltp or float(ltp) == 0) and exchange == 'NSE' and '-EQ' not in symbol:
-            ltp = broker.get_ltp(symbol + '-EQ', exchange)
+        # Approach 5: Try with -EQ suffix for NSE equity
+        if (not ltp or ltp == 0) and exchange == 'NSE' and '-EQ' not in symbol:
+            token3 = _find_instrument_token(symbol + '-EQ', 'NSE')
+            if token3 and hasattr(broker, '_make_request'):
+                try:
+                    payload = {'exchange': 'NSE', 'token': str(token3)}
+                    result = broker._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+                    ltp = _extract_ltp(result)
+                except:
+                    pass
+            if not ltp or ltp == 0:
+                try:
+                    ltp = broker.get_ltp(symbol + '-EQ', exchange)
+                except:
+                    pass
 
-        logger.info(f"LTP for {symbol} ({exchange}): {ltp}")
+        logger.info(f"LTP for {symbol} ({exchange}) token={token}: {ltp}")
         return jsonify({'success': True, 'symbol': symbol, 'ltp': float(ltp) if ltp else 0})
     except Exception as e:
         logger.error(f"LTP error for {symbol}: {e}")
         return jsonify({'success': False, 'message': str(e)})
+
+
+def _find_instrument_token(symbol, exchange):
+    """Look up instrument token from cached master data"""
+    global instruments_cache
+    if exchange in instruments_cache:
+        for inst in instruments_cache[exchange]:
+            if inst.get('symbol', '') == symbol:
+                return inst.get('token', '')
+    # Also try other exchanges
+    for exch, instruments in instruments_cache.items():
+        for inst in instruments:
+            if inst.get('symbol', '') == symbol:
+                return inst.get('token', '')
+    return None
+
+
+def _extract_ltp(result):
+    """Extract LTP value from various Alice Blue API response formats"""
+    if not result:
+        return 0
+    try:
+        # Format: {'stat': 'Ok', 'data': {'ltp': '123.45', ...}}
+        if isinstance(result, dict):
+            data = result.get('data', result)
+            if isinstance(data, dict):
+                ltp = data.get('ltp', 0)
+                if ltp:
+                    return float(ltp)
+            elif isinstance(data, list) and len(data) > 0:
+                ltp = data[0].get('ltp', 0)
+                if ltp:
+                    return float(ltp)
+            # Direct ltp in result
+            ltp = result.get('ltp', 0)
+            if ltp:
+                return float(ltp)
+        # Format: [{'ltp': '123.45', ...}]
+        elif isinstance(result, list) and len(result) > 0:
+            ltp = result[0].get('ltp', 0)
+            if ltp:
+                return float(ltp)
+    except (ValueError, TypeError, IndexError):
+        pass
+    return 0
 
 
 @app.route('/api/option-ltp')
@@ -474,6 +571,106 @@ def market_data():
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         logger.error(f"Market data error: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/ltp/bulk', methods=['POST'])
+def get_bulk_ltp():
+    """Fetch LTP for multiple symbols in one call using tokens"""
+    broker = get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'success': False, 'message': 'Broker not connected'})
+
+    try:
+        import re
+        data = request.json or {}
+        symbols = data.get('symbols', [])  # [{symbol, exchange}]
+
+        if not symbols:
+            return jsonify({'success': True, 'data': {}})
+
+        # Build token-based payload for bulk fetch
+        token_payload = []
+        symbol_map = {}  # token -> symbol for mapping back
+
+        for item in symbols:
+            sym = item.get('symbol', '')
+            exch = item.get('exchange', 'NSE')
+
+            # Auto-detect exchange
+            if exch == 'NSE':
+                if (re.search(r'\d{2}[A-Z]{3}\d{2}[CPF]', sym) or
+                    sym.endswith('FUT') or re.search(r'\d+CE$|\d+PE$', sym)):
+                    exch = 'NFO'
+
+            token = _find_instrument_token(sym, exch)
+            if not token and sym.endswith('-EQ'):
+                token = _find_instrument_token(sym.replace('-EQ', ''), exch)
+            if not token and exch == 'NSE' and '-EQ' not in sym:
+                token = _find_instrument_token(sym + '-EQ', exch)
+
+            if token:
+                token_payload.append({'exchange': exch, 'token': str(token)})
+                symbol_map[str(token)] = sym
+
+        result_map = {}
+
+        # Try individual token-based scripDetails for each symbol (most reliable)
+        if hasattr(broker, '_make_request'):
+            for tok_item in token_payload:
+                tok = tok_item['token']
+                sym = symbol_map.get(tok, '')
+                if not sym:
+                    continue
+                try:
+                    payload = {'exchange': tok_item['exchange'], 'token': tok}
+                    result = broker._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+                    ltp = _extract_ltp(result)
+                    if ltp > 0:
+                        result_map[sym] = ltp
+                except:
+                    pass
+
+        # Also try bulk lite endpoint
+        if token_payload and hasattr(broker, '_make_request'):
+            try:
+                result = broker._make_request("POST", "/marketWatch/fetchData/lite", token_payload)
+                logger.debug(f"Bulk lite result: {result}")
+                if result and isinstance(result, dict) and result.get('data'):
+                    data = result['data']
+                    if isinstance(data, list):
+                        for item in data:
+                            tok = str(item.get('token', ''))
+                            ltp = float(item.get('ltp', 0))
+                            if tok in symbol_map and ltp > 0 and symbol_map[tok] not in result_map:
+                                result_map[symbol_map[tok]] = ltp
+                elif result and isinstance(result, list):
+                    for item in result:
+                        tok = str(item.get('token', ''))
+                        ltp = float(item.get('ltp', 0))
+                        if tok in symbol_map and ltp > 0 and symbol_map[tok] not in result_map:
+                            result_map[symbol_map[tok]] = ltp
+            except Exception as e:
+                logger.debug(f"Bulk lite fetch error: {e}")
+
+        # Fallback: individual tradingSymbol-based fetch for missing symbols
+        for item in symbols:
+            sym = item.get('symbol', '')
+            if sym not in result_map:
+                exch = item.get('exchange', 'NSE')
+                if exch == 'NSE' and (re.search(r'\d{2}[A-Z]{3}\d{2}[CPF]', sym) or
+                    sym.endswith('FUT') or re.search(r'\d+CE$|\d+PE$', sym)):
+                    exch = 'NFO'
+                try:
+                    ltp = broker.get_ltp(sym, exch)
+                    if ltp and float(ltp) > 0:
+                        result_map[sym] = float(ltp)
+                except:
+                    pass
+
+        return jsonify({'success': True, 'data': result_map})
+    except Exception as e:
+        logger.error(f"Bulk LTP error: {e}")
         return jsonify({'success': False, 'message': str(e)})
 
 

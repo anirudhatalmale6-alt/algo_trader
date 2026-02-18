@@ -3192,84 +3192,97 @@ let ltpUpdateInterval = null;
 
 function startLtpUpdates() {
     if (ltpUpdateInterval) clearInterval(ltpUpdateInterval);
-    // Update immediately then every 3 seconds
-    updateWatchlistLtp();
-    ltpUpdateInterval = setInterval(updateWatchlistLtp, 3000);
+    // Ensure instruments are loaded on server (needed for token-based LTP)
+    instrumentsLoading = false;
+    instrumentsLoaded = false;
+    fetchBrokerInstruments();
+    // Wait a moment for instruments to load, then start LTP updates
+    setTimeout(() => {
+        updateWatchlistLtp();
+        ltpUpdateInterval = setInterval(updateWatchlistLtp, 3000);
+    }, 2000);
 }
 
 function updateWatchlistLtp() {
     if (!brokerConnected) return;
 
-    // Get visible watchlist symbols
     const visibleItems = document.querySelectorAll('.wl-item');
     if (visibleItems.length === 0) return;
 
+    // Collect all symbols for bulk fetch
+    const symbolList = [];
     visibleItems.forEach(item => {
         const symbol = item.dataset.symbol;
         if (!symbol) return;
-
-        // Determine exchange from symbol pattern
         let exchange = 'NSE';
-        // NFO patterns: NIFTY10MAR26P25600, NIFTY30MAR26F, BANKNIFTY26224CE, etc.
         if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CPF]/) || symbol.match(/FUT$/) ||
-            symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/) || symbol.endsWith('F')) {
-            // Check it's not a normal stock ending with F (like IDFCFIRSTB)
-            if (symbol.match(/\d[A-Z]{3}\d{2}[F]$/) || symbol.match(/\d{2}[A-Z]{3}\d{2}[CPF]/)) {
-                exchange = 'NFO';
-            }
+            symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/)) {
+            exchange = 'NFO';
         }
-        // BSE symbols
         if (symbol.match(/^SENSEX|^BANKEX/) && symbol.length > 6) {
             exchange = 'BFO';
         }
-
-        fetch(`/api/ltp/${encodeURIComponent(symbol)}?exchange=${exchange}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success && data.ltp > 0) {
-                    const priceEl = item.querySelector('.wl-item-price');
-                    if (priceEl) {
-                        const oldPrice = parseFloat(priceEl.textContent) || 0;
-                        const newPrice = data.ltp;
-                        priceEl.textContent = newPrice.toFixed(2);
-
-                        // Update change data
-                        const changeEl = item.querySelector('.wl-item-change');
-                        if (stockPrices[symbol]) {
-                            const prevPrice = stockPrices[symbol].price;
-                            if (prevPrice > 0) {
-                                stockPrices[symbol].change = newPrice - prevPrice;
-                                stockPrices[symbol].changePct = ((newPrice - prevPrice) / prevPrice * 100);
-                            }
-                            stockPrices[symbol].price = newPrice;
-                        } else {
-                            stockPrices[symbol] = { price: newPrice, change: 0, changePct: 0 };
-                        }
-
-                        if (changeEl) {
-                            const chg = stockPrices[symbol].change;
-                            const chgPct = stockPrices[symbol].changePct;
-                            const sign = chg >= 0 ? '+' : '';
-                            changeEl.innerHTML = `<span class="change-abs">${sign}${chg.toFixed(2)}</span> <span class="change-pct">(${sign}${chgPct.toFixed(2)}%)</span>`;
-                            // Update color class
-                            item.classList.remove('wl-positive', 'wl-negative', 'wl-neutral');
-                            item.classList.add(chg > 0 ? 'wl-positive' : chg < 0 ? 'wl-negative' : 'wl-neutral');
-                        }
-
-                        // Flash effect on price change
-                        if (oldPrice !== 0 && oldPrice !== newPrice) {
-                            priceEl.style.transition = 'none';
-                            priceEl.style.background = newPrice > oldPrice ? 'rgba(0,204,102,0.3)' : 'rgba(255,68,68,0.3)';
-                            setTimeout(() => {
-                                priceEl.style.transition = 'background 0.5s';
-                                priceEl.style.background = 'transparent';
-                            }, 300);
-                        }
-                    }
-                }
-            })
-            .catch(() => {}); // Silent fail for individual symbols
+        symbolList.push({ symbol, exchange });
     });
+
+    if (symbolList.length === 0) return;
+
+    // Use bulk LTP endpoint
+    fetch('/api/ltp/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: symbolList })
+    })
+    .then(r => r.json())
+    .then(response => {
+        if (!response.success || !response.data) return;
+        const ltpData = response.data;
+
+        visibleItems.forEach(item => {
+            const symbol = item.dataset.symbol;
+            if (!symbol || !ltpData[symbol]) return;
+
+            const newPrice = ltpData[symbol];
+            if (newPrice <= 0) return;
+
+            const priceEl = item.querySelector('.wl-item-price');
+            if (!priceEl) return;
+
+            const oldPrice = parseFloat(priceEl.textContent) || 0;
+            priceEl.textContent = newPrice.toFixed(2);
+
+            const changeEl = item.querySelector('.wl-item-change');
+            if (stockPrices[symbol]) {
+                const prevPrice = stockPrices[symbol].price;
+                if (prevPrice > 0) {
+                    stockPrices[symbol].change = newPrice - prevPrice;
+                    stockPrices[symbol].changePct = ((newPrice - prevPrice) / prevPrice * 100);
+                }
+                stockPrices[symbol].price = newPrice;
+            } else {
+                stockPrices[symbol] = { price: newPrice, change: 0, changePct: 0 };
+            }
+
+            if (changeEl && stockPrices[symbol]) {
+                const chg = stockPrices[symbol].change;
+                const chgPct = stockPrices[symbol].changePct;
+                const sign = chg >= 0 ? '+' : '';
+                changeEl.innerHTML = `<span class="change-abs">${sign}${chg.toFixed(2)}</span> <span class="change-pct">(${sign}${chgPct.toFixed(2)}%)</span>`;
+                item.classList.remove('wl-positive', 'wl-negative', 'wl-neutral');
+                item.classList.add(chg > 0 ? 'wl-positive' : chg < 0 ? 'wl-negative' : 'wl-neutral');
+            }
+
+            if (oldPrice !== 0 && oldPrice !== newPrice) {
+                priceEl.style.transition = 'none';
+                priceEl.style.background = newPrice > oldPrice ? 'rgba(0,204,102,0.3)' : 'rgba(255,68,68,0.3)';
+                setTimeout(() => {
+                    priceEl.style.transition = 'background 0.5s';
+                    priceEl.style.background = 'transparent';
+                }, 300);
+            }
+        });
+    })
+    .catch(() => {});
 }
 
 // Keep old function names as no-ops for compatibility

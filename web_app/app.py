@@ -517,15 +517,22 @@ def market_data():
         }
         data = []
         for idx, variants in index_symbols.items():
-            ltp = 0
+            quote = {'ltp': 0, 'change': 0, 'change_pct': 0}
             for sym, exchange in variants:
                 try:
-                    ltp = broker.get_ltp(sym, exchange)
-                    if ltp and float(ltp) > 0:
-                        break
+                    if hasattr(broker, 'get_scrip_quote'):
+                        q = broker.get_scrip_quote(sym, exchange)
+                        if q['ltp'] > 0:
+                            quote = q
+                            break
+                    else:
+                        ltp = broker.get_ltp(sym, exchange)
+                        if ltp and float(ltp) > 0:
+                            quote = {'ltp': float(ltp), 'change': 0, 'change_pct': 0}
+                            break
                 except:
                     continue
-            data.append({'symbol': idx, 'ltp': float(ltp) if ltp else 0, 'change': 0})
+            data.append({'symbol': idx, 'ltp': quote['ltp'], 'change': quote['change'], 'change_pct': quote.get('change_pct', 0)})
 
         return jsonify({'success': True, 'data': data})
     except Exception as e:
@@ -535,7 +542,7 @@ def market_data():
 
 @app.route('/api/ltp/bulk', methods=['POST'])
 def get_bulk_ltp():
-    """Fetch LTP for multiple symbols in one call using tokens"""
+    """Fetch LTP + change data for multiple symbols in one call"""
     broker = get_active_broker()
     if not broker or not broker.is_authenticated:
         return jsonify({'success': False, 'message': 'Broker not connected'})
@@ -561,17 +568,31 @@ def get_bulk_ltp():
                     exch = 'NFO'
 
             try:
-                ltp = broker.get_ltp(sym, exch)
-                if ltp and float(ltp) > 0:
-                    result_map[sym] = float(ltp)
-                    continue
-                # Try -EQ suffix variants
-                if sym.endswith('-EQ'):
-                    ltp = broker.get_ltp(sym.replace('-EQ', ''), exch)
-                elif exch == 'NSE':
-                    ltp = broker.get_ltp(sym + '-EQ', exch)
-                if ltp and float(ltp) > 0:
-                    result_map[sym] = float(ltp)
+                # Use get_scrip_quote if available (returns change data)
+                if hasattr(broker, 'get_scrip_quote'):
+                    quote = broker.get_scrip_quote(sym, exch)
+                    if quote['ltp'] > 0:
+                        result_map[sym] = quote
+                        continue
+                    # Try -EQ suffix variants
+                    if sym.endswith('-EQ'):
+                        quote = broker.get_scrip_quote(sym.replace('-EQ', ''), exch)
+                    elif exch == 'NSE':
+                        quote = broker.get_scrip_quote(sym + '-EQ', exch)
+                    if quote['ltp'] > 0:
+                        result_map[sym] = quote
+                else:
+                    # Fallback for brokers without get_scrip_quote
+                    ltp = broker.get_ltp(sym, exch)
+                    if ltp and float(ltp) > 0:
+                        result_map[sym] = {'ltp': float(ltp), 'change': 0, 'change_pct': 0}
+                        continue
+                    if sym.endswith('-EQ'):
+                        ltp = broker.get_ltp(sym.replace('-EQ', ''), exch)
+                    elif exch == 'NSE':
+                        ltp = broker.get_ltp(sym + '-EQ', exch)
+                    if ltp and float(ltp) > 0:
+                        result_map[sym] = {'ltp': float(ltp), 'change': 0, 'change_pct': 0}
             except:
                 pass
 

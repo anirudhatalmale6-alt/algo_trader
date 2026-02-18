@@ -1153,10 +1153,9 @@ function updateMarketData() {
                     data.data.forEach(item => {
                         const existing = tickerData.find(t => t.symbol === item.symbol || t.symbol === item.symbol + ' 50');
                         if (existing) {
-                            const oldPrice = existing.price;
                             if (item.ltp > 0) {
                                 existing.price = item.ltp;
-                                existing.change = item.change || (item.ltp - oldPrice);
+                                existing.change = item.change || 0;
                             }
                         }
                     });
@@ -1178,12 +1177,7 @@ function updateMarketData() {
                 updateCurrentPrices();
             })
             .catch(() => {
-                // Fallback to random on error
-                tickerData.forEach(stock => {
-                    const change = (Math.random() - 0.5) * 10;
-                    stock.price += change;
-                    stock.change = change;
-                });
+                // On error, just repopulate with existing data (no random changes)
                 populateMarketTicker();
                 updateCurrentPrices();
             });
@@ -3259,8 +3253,13 @@ function updateWatchlistLtp() {
             const symbol = item.dataset.symbol;
             if (!symbol || !ltpData[symbol]) return;
 
-            const newPrice = ltpData[symbol];
-            if (newPrice <= 0) return;
+            // Response can be {ltp, change, change_pct} object or just a number (backward compat)
+            const quoteData = ltpData[symbol];
+            const newPrice = typeof quoteData === 'object' ? quoteData.ltp : quoteData;
+            const apiChange = typeof quoteData === 'object' ? (quoteData.change || 0) : 0;
+            const apiChangePct = typeof quoteData === 'object' ? (quoteData.change_pct || 0) : 0;
+
+            if (!newPrice || newPrice <= 0) return;
 
             const priceEl = item.querySelector('.wl-item-price');
             if (!priceEl) return;
@@ -3269,20 +3268,21 @@ function updateWatchlistLtp() {
             priceEl.textContent = newPrice.toFixed(2);
 
             const changeEl = item.querySelector('.wl-item-change');
-            if (stockPrices[symbol]) {
+
+            // Use API-provided change data (from broker's previous close)
+            let chg = apiChange;
+            let chgPct = apiChangePct;
+
+            // If API didn't provide change, calculate from previous LTP
+            if (chg === 0 && stockPrices[symbol] && stockPrices[symbol].price > 0) {
                 const prevPrice = stockPrices[symbol].price;
-                if (prevPrice > 0) {
-                    stockPrices[symbol].change = newPrice - prevPrice;
-                    stockPrices[symbol].changePct = ((newPrice - prevPrice) / prevPrice * 100);
-                }
-                stockPrices[symbol].price = newPrice;
-            } else {
-                stockPrices[symbol] = { price: newPrice, change: 0, changePct: 0 };
+                chg = newPrice - prevPrice;
+                chgPct = (chg / prevPrice) * 100;
             }
 
-            if (changeEl && stockPrices[symbol]) {
-                const chg = stockPrices[symbol].change;
-                const chgPct = stockPrices[symbol].changePct;
+            stockPrices[symbol] = { price: newPrice, change: chg, changePct: chgPct };
+
+            if (changeEl) {
                 const sign = chg >= 0 ? '+' : '';
                 changeEl.innerHTML = `<span class="change-abs">${sign}${chg.toFixed(2)}</span> <span class="change-pct">(${sign}${chgPct.toFixed(2)}%)</span>`;
                 item.classList.remove('wl-positive', 'wl-negative', 'wl-neutral');

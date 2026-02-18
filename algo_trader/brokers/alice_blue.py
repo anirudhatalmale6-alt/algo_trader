@@ -539,46 +539,51 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Error fetching option LTP from AliceBlue: {e}")
             return 0
 
-    def get_ltp(self, symbol: str, exchange: str = "NSE") -> float:
-        """Get LTP for any instrument using ScripDetails/getScripQuoteDetails"""
+    def _extract_quote_data(self, result: Dict) -> Dict:
+        """Extract LTP, change, change% and prev close from ScripQuoteDetails response"""
+        data = result
+        # Some responses nest data under 'data' key
+        if result.get('data') and isinstance(result['data'], dict):
+            data = result['data']
+
+        ltp = float(data.get('LTP') or data.get('ltp') or 0)
+        prev_close = float(data.get('PrvClose') or data.get('prvClose') or data.get('previous_close') or data.get('pClose') or 0)
+        change = float(data.get('Chng') or data.get('chng') or data.get('change') or 0)
+        change_pct = float(data.get('ChngPer') or data.get('chngPer') or data.get('change_per') or data.get('pChange') or 0)
+
+        # Calculate change from prev_close if API didn't return it
+        if ltp > 0 and prev_close > 0 and change == 0:
+            change = round(ltp - prev_close, 2)
+            change_pct = round((change / prev_close) * 100, 2)
+
+        return {'ltp': ltp, 'change': change, 'change_pct': change_pct, 'prev_close': prev_close}
+
+    def get_scrip_quote(self, symbol: str, exchange: str = "NSE") -> Dict:
+        """Get full quote data (LTP + change + prev close) for a symbol"""
         try:
-            # First try with token lookup from master data
             token = self._get_instrument_token(symbol, exchange)
             if token and token != 0:
-                payload = {
-                    'exch': exchange,
-                    'symbol': str(token)
-                }
+                payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
-                logger.debug(f"ScripQuoteDetails({symbol}, exch={exchange}, token={token}): stat={result.get('stat')}")
-
                 if result.get('stat') == 'Ok' or result.get('success'):
-                    ltp = result.get('LTP') or result.get('ltp') or 0
-                    if not ltp and result.get('data'):
-                        data = result['data']
-                        if isinstance(data, dict):
-                            ltp = data.get('LTP') or data.get('ltp') or 0
-                    if float(ltp) > 0:
-                        return float(ltp)
+                    quote = self._extract_quote_data(result)
+                    if quote['ltp'] > 0:
+                        return quote
 
-            # Fallback: try with tradingSymbol (old method)
-            payload = {
-                'exch': exchange,
-                'symbol': symbol
-            }
+            # Fallback with trading symbol
+            payload = {'exch': exchange, 'symbol': symbol}
             result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
-            logger.debug(f"ScripQuoteDetails({symbol}, exch={exchange}, tradingSym): stat={result.get('stat')}")
-
             if result.get('stat') == 'Ok' or result.get('success'):
-                ltp = result.get('LTP') or result.get('ltp') or 0
-                if not ltp and result.get('data'):
-                    data = result['data']
-                    if isinstance(data, dict):
-                        ltp = data.get('LTP') or data.get('ltp') or 0
-                if float(ltp) > 0:
-                    return float(ltp)
+                quote = self._extract_quote_data(result)
+                if quote['ltp'] > 0:
+                    return quote
 
-            return 0
+            return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
         except Exception as e:
-            logger.error(f"Error getting LTP for {symbol}: {e}")
-            return 0
+            logger.error(f"Error getting quote for {symbol}: {e}")
+            return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
+
+    def get_ltp(self, symbol: str, exchange: str = "NSE") -> float:
+        """Get LTP for any instrument using ScripDetails/getScripQuoteDetails"""
+        quote = self.get_scrip_quote(symbol, exchange)
+        return quote['ltp']

@@ -133,18 +133,25 @@ def authenticate():
             if not auth_success:
                 return jsonify({'success': False, 'message': 'MT5 connection failed. Make sure MetaTrader 5 terminal is running and credentials are correct.'})
         elif isinstance(pending_broker, AliceBlueBroker):
-            # Alice Blue: use direct API login (no auth code needed)
+            # Alice Blue: try direct API login first (no auth code needed)
             result = pending_broker.direct_login()
             if isinstance(result, dict):
                 auth_success = result.get('success', False)
-                if not auth_success:
-                    error_msg = result.get('error', 'Authentication failed')
-                    return jsonify({'success': False, 'message': f'Alice Blue: {error_msg}'})
             else:
                 auth_success = bool(result)
 
+            # Fallback: if direct login failed and auth code provided, try old method
+            if not auth_success and auth_code and auth_code != 'direct_login':
+                logger.info("Direct login failed, trying auth code method...")
+                result = pending_broker.generate_session(auth_code)
+                if isinstance(result, dict):
+                    auth_success = result.get('success', False)
+                else:
+                    auth_success = bool(result)
+
             if not auth_success:
-                return jsonify({'success': False, 'message': 'Alice Blue authentication failed. Check User ID and API Key.'})
+                error_msg = result.get('error', 'Authentication failed') if isinstance(result, dict) else 'Authentication failed'
+                return jsonify({'success': False, 'message': f'Alice Blue: {error_msg}'})
 
             broker_label = 'Alice Blue'
         else:

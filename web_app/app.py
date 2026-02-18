@@ -370,7 +370,14 @@ def oauth_callback():
 # ===== MARKET DATA =====
 
 @app.route('/api/ltp/<symbol>')
-def get_ltp(symbol):
+@app.route('/api/ltp')
+def get_ltp(symbol=None):
+    # Support both /api/ltp/<symbol> and /api/ltp?symbol=X
+    if symbol is None:
+        symbol = request.args.get('symbol', '')
+    if not symbol:
+        return jsonify({'success': False, 'message': 'No symbol provided'})
+
     broker_id = request.args.get('broker_id', '')
     broker = connected_brokers[broker_id]['broker'] if broker_id in connected_brokers else get_active_broker()
     if not broker or not broker.is_authenticated:
@@ -378,10 +385,16 @@ def get_ltp(symbol):
 
     try:
         exchange = request.args.get('exchange', 'NSE')
+        # Auto-detect NFO for option/future symbols
+        if any(x in symbol for x in ['CE', 'PE', 'FUT']) and exchange == 'NSE':
+            import re
+            if re.search(r'\d{2}[A-Z]{3}\d{2}[CP]\d+', symbol) or symbol.endswith('FUT') or re.search(r'\d+CE$|\d+PE$', symbol):
+                exchange = 'NFO'
         ltp = broker.get_ltp(symbol, exchange)
+        logger.info(f"LTP for {symbol} ({exchange}): {ltp}")
         return jsonify({'success': True, 'symbol': symbol, 'ltp': ltp})
     except Exception as e:
-        logger.error(f"LTP error: {e}")
+        logger.error(f"LTP error for {symbol}: {e}")
         return jsonify({'success': False, 'message': str(e)})
 
 
@@ -419,15 +432,24 @@ def market_data():
         })
 
     try:
-        indices = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'INDIAVIX']
+        # Alice Blue uses specific trading symbols for indices
+        index_symbols = {
+            'NIFTY': [('NIFTY', 'NSE'), ('Nifty 50', 'NSE'), ('NIFTY 50', 'NSE')],
+            'BANKNIFTY': [('BANKNIFTY', 'NSE'), ('Nifty Bank', 'NSE'), ('NIFTY BANK', 'NSE')],
+            'SENSEX': [('SENSEX', 'BSE'), ('SENSEX', 'BFO')],
+            'INDIAVIX': [('INDIAVIX', 'NSE'), ('India VIX', 'NSE'), ('NIFTY VIX', 'NSE')],
+        }
         data = []
-        for idx in indices:
-            try:
-                exchange = 'BSE' if idx in ['SENSEX'] else 'NSE'
-                ltp = broker.get_ltp(idx, exchange)
-                data.append({'symbol': idx, 'ltp': ltp, 'change': 0})
-            except:
-                data.append({'symbol': idx, 'ltp': 0, 'change': 0})
+        for idx, variants in index_symbols.items():
+            ltp = 0
+            for sym, exchange in variants:
+                try:
+                    ltp = broker.get_ltp(sym, exchange)
+                    if ltp and float(ltp) > 0:
+                        break
+                except:
+                    continue
+            data.append({'symbol': idx, 'ltp': float(ltp) if ltp else 0, 'change': 0})
 
         return jsonify({'success': True, 'data': data})
     except Exception as e:

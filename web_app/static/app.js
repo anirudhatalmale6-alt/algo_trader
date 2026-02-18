@@ -1110,15 +1110,59 @@ function updateCurrentPrices() {
 }
 
 function updateMarketData() {
-    // Update ticker data with random changes
-    tickerData.forEach(stock => {
-        const change = (Math.random() - 0.5) * 10;
-        stock.price += change;
-        stock.change = change;
-    });
-
-    populateMarketTicker();
-    updateCurrentPrices();
+    if (brokerConnected) {
+        // Fetch real market data from broker
+        fetch('/api/market-data')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    data.data.forEach(item => {
+                        const existing = tickerData.find(t => t.symbol === item.symbol || t.symbol === item.symbol + ' 50');
+                        if (existing) {
+                            const oldPrice = existing.price;
+                            if (item.ltp > 0) {
+                                existing.price = item.ltp;
+                                existing.change = item.change || (item.ltp - oldPrice);
+                            }
+                        }
+                    });
+                    // Also add RELIANCE, TCS etc from individual LTP calls
+                    const extraSymbols = tickerData.filter(t => !['NIFTY 50', 'NIFTY', 'BANKNIFTY', 'SENSEX', 'INDIAVIX'].includes(t.symbol));
+                    extraSymbols.forEach(stock => {
+                        fetch(`/api/ltp/${encodeURIComponent(stock.symbol)}?exchange=NSE`)
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d.success && d.ltp > 0) {
+                                    stock.change = d.ltp - stock.price;
+                                    stock.price = d.ltp;
+                                }
+                            })
+                            .catch(() => {});
+                    });
+                }
+                populateMarketTicker();
+                updateCurrentPrices();
+            })
+            .catch(() => {
+                // Fallback to random on error
+                tickerData.forEach(stock => {
+                    const change = (Math.random() - 0.5) * 10;
+                    stock.price += change;
+                    stock.change = change;
+                });
+                populateMarketTicker();
+                updateCurrentPrices();
+            });
+    } else {
+        // Demo mode - random changes
+        tickerData.forEach(stock => {
+            const change = (Math.random() - 0.5) * 10;
+            stock.price += change;
+            stock.change = change;
+        });
+        populateMarketTicker();
+        updateCurrentPrices();
+    }
 }
 
 // ===== POSITION MODAL FUNCTIONS =====

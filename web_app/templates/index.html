@@ -1774,6 +1774,9 @@
         <button onclick="showPage('alPage')">
             <i class="fas fa-robot"></i> AL
         </button>
+        <button onclick="showPage('logPage')">
+            <i class="fas fa-clipboard-list"></i> Log
+        </button>
 
         <!-- Dashboard Controls -->
         <div style="margin-top: 20px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px;">
@@ -2772,6 +2775,7 @@
       });
 
       showToast(currentOrderSide + ' order placed for ' + symbol, 'success');
+      if (typeof addLog === 'function') addLog('SUCCESS', 'order', currentOrderSide + ' ' + orderType + ' order: ' + symbol + ' x' + qty + (price ? ' @ ' + price : ' @ MKT'));
 
       // Reset form
       document.getElementById('qo_symbol').value = '';
@@ -7171,6 +7175,179 @@ function al_runScan(scanType) {
 </script>
 
         </div>
+
+    <!-- ===== LOG PAGE ===== -->
+    <div class="content-page hidden" id="logPage" style="content-visibility:auto;contain-intrinsic-size:auto 800px;">
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back to Dashboard
+  </button>
+  <h2 style="margin:0 0 20px 0;color:#00ccff;display:flex;align-items:center;gap:10px;">
+    <i class="fas fa-clipboard-list"></i> Activity Log
+  </h2>
+
+  <!-- Log Tabs -->
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+    <button onclick="switchLogTab('all')" id="logTabAll" class="log-tab-btn" style="padding:8px 18px;background:linear-gradient(135deg,#0077ff,#0055cc);border:none;color:#fff;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;">All Logs</button>
+    <button onclick="switchLogTab('trade')" id="logTabTrade" class="log-tab-btn" style="padding:8px 18px;background:#222;border:1px solid #333;color:#aaa;border-radius:5px;cursor:pointer;font-size:13px;">Trade Log</button>
+    <button onclick="switchLogTab('order')" id="logTabOrder" class="log-tab-btn" style="padding:8px 18px;background:#222;border:1px solid #333;color:#aaa;border-radius:5px;cursor:pointer;font-size:13px;">Order Log</button>
+    <button onclick="switchLogTab('strategy')" id="logTabStrategy" class="log-tab-btn" style="padding:8px 18px;background:#222;border:1px solid #333;color:#aaa;border-radius:5px;cursor:pointer;font-size:13px;">Strategy Log</button>
+    <button onclick="switchLogTab('system')" id="logTabSystem" class="log-tab-btn" style="padding:8px 18px;background:#222;border:1px solid #333;color:#aaa;border-radius:5px;cursor:pointer;font-size:13px;">System Log</button>
+    <button onclick="switchLogTab('alert')" id="logTabAlert" class="log-tab-btn" style="padding:8px 18px;background:#222;border:1px solid #333;color:#aaa;border-radius:5px;cursor:pointer;font-size:13px;">Alert Log</button>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;flex-wrap:wrap;">
+    <input type="text" id="logSearchInput" placeholder="Search logs..." oninput="filterLogs()" style="flex:1;min-width:200px;padding:8px 12px;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:5px;font-size:13px;">
+    <select id="logLevelFilter" onchange="filterLogs()" style="padding:8px 12px;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:5px;font-size:13px;">
+      <option value="all">All Levels</option>
+      <option value="INFO">INFO</option>
+      <option value="SUCCESS">SUCCESS</option>
+      <option value="WARNING">WARNING</option>
+      <option value="ERROR">ERROR</option>
+    </select>
+    <button onclick="clearLogs()" style="padding:8px 16px;background:#ff4444;border:none;color:#fff;border-radius:5px;cursor:pointer;font-size:13px;"><i class="fas fa-trash"></i> Clear</button>
+    <button onclick="exportLogs()" style="padding:8px 16px;background:#00aa66;border:none;color:#fff;border-radius:5px;cursor:pointer;font-size:13px;"><i class="fas fa-download"></i> Export</button>
+  </div>
+
+  <!-- Log Display -->
+  <div id="logContainer" style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:0;max-height:calc(100vh - 300px);overflow-y:auto;font-family:'Consolas','Courier New',monospace;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead style="position:sticky;top:0;background:#111;z-index:1;">
+        <tr>
+          <th style="padding:10px 12px;text-align:left;color:#888;border-bottom:1px solid #222;width:160px;">Time</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;border-bottom:1px solid #222;width:70px;">Level</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;border-bottom:1px solid #222;width:90px;">Category</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;border-bottom:1px solid #222;">Message</th>
+        </tr>
+      </thead>
+      <tbody id="logTableBody">
+      </tbody>
+    </table>
+    <div id="logEmptyState" style="text-align:center;padding:60px 20px;color:#555;">
+      <i class="fas fa-clipboard-list" style="font-size:48px;margin-bottom:15px;display:block;"></i>
+      <p style="font-size:14px;">No log entries yet. Activity will appear here as you use the app.</p>
+    </div>
+  </div>
+
+  <!-- Log Stats -->
+  <div style="display:flex;gap:15px;margin-top:15px;flex-wrap:wrap;">
+    <div style="background:#111;border:1px solid #222;border-radius:5px;padding:10px 15px;font-size:12px;color:#888;">
+      Total: <span id="logCountTotal" style="color:#fff;font-weight:600;">0</span>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:5px;padding:10px 15px;font-size:12px;color:#888;">
+      Info: <span id="logCountInfo" style="color:#00ccff;font-weight:600;">0</span>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:5px;padding:10px 15px;font-size:12px;color:#888;">
+      Success: <span id="logCountSuccess" style="color:#00c853;font-weight:600;">0</span>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:5px;padding:10px 15px;font-size:12px;color:#888;">
+      Warning: <span id="logCountWarning" style="color:#ff8800;font-weight:600;">0</span>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:5px;padding:10px 15px;font-size:12px;color:#888;">
+      Error: <span id="logCountError" style="color:#ff4444;font-weight:600;">0</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== LOG PAGE FUNCTIONALITY =====
+let appLogs = [];
+let currentLogTab = 'all';
+
+function addLog(level, category, message) {
+    const now = new Date();
+    const timeStr = now.toLocaleString('en-IN', {day:'2-digit',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    const entry = { time: timeStr, timestamp: now.getTime(), level: level.toUpperCase(), category: category.toLowerCase(), message: message };
+    appLogs.unshift(entry);
+    if (appLogs.length > 1000) appLogs.pop();
+    renderLogs();
+}
+
+function switchLogTab(tab) {
+    currentLogTab = tab;
+    document.querySelectorAll('.log-tab-btn').forEach(function(btn) {
+        btn.style.background = '#222';
+        btn.style.border = '1px solid #333';
+        btn.style.color = '#aaa';
+    });
+    var activeBtn = document.getElementById('logTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+    if (activeBtn) {
+        activeBtn.style.background = 'linear-gradient(135deg,#0077ff,#0055cc)';
+        activeBtn.style.border = 'none';
+        activeBtn.style.color = '#fff';
+    }
+    renderLogs();
+}
+
+function filterLogs() { renderLogs(); }
+
+function renderLogs() {
+    var tbody = document.getElementById('logTableBody');
+    var empty = document.getElementById('logEmptyState');
+    var search = (document.getElementById('logSearchInput').value || '').toLowerCase();
+    var levelFilter = document.getElementById('logLevelFilter').value;
+
+    var filtered = appLogs.filter(function(e) {
+        if (currentLogTab !== 'all' && e.category !== currentLogTab) return false;
+        if (levelFilter !== 'all' && e.level !== levelFilter) return false;
+        if (search && e.message.toLowerCase().indexOf(search) === -1 && e.category.toLowerCase().indexOf(search) === -1) return false;
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+    } else {
+        empty.style.display = 'none';
+        var html = '';
+        var colorMap = {INFO:'#00ccff',SUCCESS:'#00c853',WARNING:'#ff8800',ERROR:'#ff4444'};
+        filtered.forEach(function(e) {
+            var c = colorMap[e.level] || '#888';
+            html += '<tr style="border-bottom:1px solid #1a1a1a;">';
+            html += '<td style="padding:6px 12px;color:#666;white-space:nowrap;">' + e.time + '</td>';
+            html += '<td style="padding:6px 12px;"><span style="color:' + c + ';font-weight:600;font-size:11px;">' + e.level + '</span></td>';
+            html += '<td style="padding:6px 12px;color:#888;text-transform:capitalize;">' + e.category + '</td>';
+            html += '<td style="padding:6px 12px;color:#ccc;word-break:break-word;">' + e.message + '</td>';
+            html += '</tr>';
+        });
+        tbody.innerHTML = html;
+    }
+
+    // Update counts
+    var counts = {INFO:0,SUCCESS:0,WARNING:0,ERROR:0};
+    appLogs.forEach(function(e) { if (counts[e.level] !== undefined) counts[e.level]++; });
+    document.getElementById('logCountTotal').textContent = appLogs.length;
+    document.getElementById('logCountInfo').textContent = counts.INFO;
+    document.getElementById('logCountSuccess').textContent = counts.SUCCESS;
+    document.getElementById('logCountWarning').textContent = counts.WARNING;
+    document.getElementById('logCountError').textContent = counts.ERROR;
+}
+
+function clearLogs() {
+    if (confirm('Clear all logs?')) {
+        appLogs = [];
+        renderLogs();
+    }
+}
+
+function exportLogs() {
+    if (appLogs.length === 0) { alert('No logs to export'); return; }
+    var csv = 'Time,Level,Category,Message\n';
+    appLogs.forEach(function(e) {
+        csv += '"' + e.time + '","' + e.level + '","' + e.category + '","' + e.message.replace(/"/g,'""') + '"\n';
+    });
+    var blob = new Blob([csv], {type:'text/csv'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mukesh_algo_logs_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+}
+
+// Add system startup log
+addLog('INFO', 'system', 'MUKESH ALGO Web App initialized');
+addLog('INFO', 'system', 'Waiting for broker connection...');
+</script>
+
     </div>
 
     <!-- ===== ENHANCED ADD POSITION MODAL ===== -->

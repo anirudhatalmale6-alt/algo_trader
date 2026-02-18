@@ -337,6 +337,7 @@ function addToWatchlistBySymbol(symbol) {
     watchlistStocks.push(symbol);
     saveWatchlist();
     renderWatchlist();
+    if (typeof addLog === 'function') addLog('INFO', 'system', 'Added to watchlist: ' + symbol);
 }
 
 function removeFromWatchlist(symbol) {
@@ -1477,6 +1478,7 @@ function addPosition() {
     closeAddModal();
 
     alert(`${orderType} position added for ${symbol} with position settings`);
+    if (typeof addLog === 'function') addLog('SUCCESS', 'trade', `Position opened: ${orderType} ${symbol} x${newPosition.buyQty || newPosition.sellQty} @ ${newPosition.entryPrice}`);
 }
 
 // ===== ACTION MODAL FUNCTIONS =====
@@ -3160,6 +3162,7 @@ function brokerAuthenticate() {
         if (data.success) {
             const totalMsg = data.total_connected > 1 ? ` (${data.total_connected} brokers connected)` : '';
             showAuthResult(true, data.message + totalMsg);
+            if (typeof addLog === 'function') addLog('SUCCESS', 'system', 'Broker connected: ' + (data.message || brokerType));
 
             // Refresh connected brokers list from server
             refreshConnectedBrokers();
@@ -3168,12 +3171,14 @@ function brokerAuthenticate() {
             startLtpUpdates();
         } else {
             showAuthResult(false, data.message || 'Authentication failed');
+            if (typeof addLog === 'function') addLog('ERROR', 'system', 'Broker auth failed: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(err => {
         btn.innerHTML = '<i class="fas fa-check-circle"></i> Step 2: Authenticate';
         btn.disabled = false;
         showAuthResult(false, 'Network error: ' + err.message);
+        if (typeof addLog === 'function') addLog('ERROR', 'system', 'Broker auth network error: ' + err.message);
     });
 }
 

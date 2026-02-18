@@ -117,9 +117,9 @@ class AliceBlueBroker(BaseBroker):
 
     def _get_headers(self) -> Dict:
         """Get headers for authenticated requests"""
-        # Use JWT token from userSession for authorization
+        # Alice Blue requires: Bearer USER_ID SESSION_ID (as per official SDK)
         return {
-            'Authorization': f'Bearer {self.session_id}',
+            'Authorization': f'Bearer {self.user_id.upper()} {self.session_id}',
             'X-SAS-Version': '2.0',
             'Content-Type': 'application/json',
             'Accept': 'application/json'
@@ -131,7 +131,7 @@ class AliceBlueBroker(BaseBroker):
             return {'success': False, 'message': 'Not authenticated'}
 
         url = f"{self.BASE_URL}{endpoint}"
-        self._log_request(endpoint, method)
+        logger.debug(f"Alice Blue API: {method} {endpoint}")
 
         try:
             if method == "GET":
@@ -150,7 +150,9 @@ class AliceBlueBroker(BaseBroker):
                     result['success'] = False
                 return result
             else:
-                return self._handle_error(result, endpoint)
+                logger.error(f"Alice Blue API error ({endpoint}): HTTP {response.status_code} - {result}")
+                result['success'] = False
+                return result
 
         except Exception as e:
             logger.error(f"Alice Blue API error: {e}")
@@ -229,9 +231,36 @@ class AliceBlueBroker(BaseBroker):
         return result
 
     def _get_instrument_token(self, symbol: str, exchange: str) -> int:
-        """Get instrument token for a symbol (placeholder - needs master data)"""
-        # In production, this should look up from master contract file
-        # For now, return placeholder
+        """Get instrument token for a symbol from master contract data"""
+        if not hasattr(self, '_master_cache'):
+            self._master_cache = {}
+
+        # Download and cache master contract for the exchange
+        if exchange not in self._master_cache:
+            try:
+                contracts = self.download_master_contract(exchange)
+                if contracts:
+                    self._master_cache[exchange] = {
+                        item.get('trading_symbol', item.get('symbol', '')): item.get('token', 0)
+                        for item in contracts
+                    }
+                    logger.info(f"Cached {len(self._master_cache[exchange])} instruments for {exchange}")
+                else:
+                    self._master_cache[exchange] = {}
+            except Exception as e:
+                logger.error(f"Failed to cache master for {exchange}: {e}")
+                self._master_cache[exchange] = {}
+
+        # Look up token
+        cache = self._master_cache.get(exchange, {})
+        if symbol in cache:
+            return cache[symbol]
+        # Try without -EQ suffix
+        if symbol.endswith('-EQ') and symbol[:-3] in cache:
+            return cache[symbol[:-3]]
+        # Try with -EQ suffix
+        if '-EQ' not in symbol and (symbol + '-EQ') in cache:
+            return cache[symbol + '-EQ']
         return 0
 
     def modify_order(self, order_id: str, quantity: int = None, price: float = None,
@@ -356,10 +385,14 @@ class AliceBlueBroker(BaseBroker):
     def download_master_contract(self, exchange: str = "NSE") -> List[Dict]:
         """Download master contract file for symbol lookup"""
         try:
-            url = f"https://v2api.aliceblueonline.com/restpy/static/{exchange.upper()}_symbols.json"
-            response = requests.get(url)
+            url = f"https://v2api.aliceblueonline.com/restpy/contract_master?exch={exchange.upper()}"
+            headers = {'Accept-Encoding': 'gzip, deflate', 'Accept': 'application/json'}
+            response = requests.get(url, timeout=120, headers=headers)
             if response.status_code == 200:
-                return response.json()
+                raw_data = response.json()
+                # Response format: {"NSE": [...]} - data nested under exchange key
+                data = raw_data.get(exchange.upper(), raw_data if isinstance(raw_data, list) else [])
+                return data
         except Exception as e:
             logger.error(f"Failed to download master contract: {e}")
         return []
@@ -417,35 +450,18 @@ class AliceBlueBroker(BaseBroker):
 
                 for trading_symbol in formats_to_try:
                     logger.debug(f"AliceBlue: Trying symbol {trading_symbol}")
-
-                    payload = {
-                        'exchange': exchange,
-                        'tradingSymbol': trading_symbol
-                    }
-
-                    result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
-
-                    if result.get('success') and result.get('data'):
-                        ltp = result['data'].get('ltp', 0)
-                        if ltp and float(ltp) > 0:
-                            logger.info(f"AliceBlue LTP found: {ltp} for {trading_symbol}")
-                            return float(ltp)
+                    ltp = self.get_ltp(trading_symbol, exchange)
+                    if ltp and float(ltp) > 0:
+                        logger.info(f"AliceBlue LTP found: {ltp} for {trading_symbol}")
+                        return float(ltp)
 
             # Try monthly expiry format
             expiry_month = now.strftime('%y%b').upper()  # e.g., 26FEB
             monthly_symbol = f"{sym_upper}{expiry_month}{int(strike)}{opt_type.upper()}"
-
-            payload = {
-                'exchange': exchange,
-                'tradingSymbol': monthly_symbol
-            }
-            result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
-
-            if result.get('success') and result.get('data'):
-                ltp = result['data'].get('ltp', 0)
-                if ltp and float(ltp) > 0:
-                    logger.info(f"AliceBlue LTP found (monthly): {ltp} for {monthly_symbol}")
-                    return float(ltp)
+            ltp = self.get_ltp(monthly_symbol, exchange)
+            if ltp and float(ltp) > 0:
+                logger.info(f"AliceBlue LTP found (monthly): {ltp} for {monthly_symbol}")
+                return float(ltp)
 
             logger.warning(f"AliceBlue: Could not fetch option LTP for {symbol} {strike} {opt_type}")
             return 0
@@ -455,17 +471,45 @@ class AliceBlueBroker(BaseBroker):
             return 0
 
     def get_ltp(self, symbol: str, exchange: str = "NSE") -> float:
-        """Get LTP for any instrument"""
+        """Get LTP for any instrument using ScripDetails/getScripQuoteDetails"""
         try:
-            payload = {
-                'exchange': exchange,
-                'tradingSymbol': symbol
-            }
-            result = self._make_request("POST", "/marketWatch/fetchData/scripDetails", payload)
+            # First try with token lookup from master data
+            token = self._get_instrument_token(symbol, exchange)
+            if token and token != 0:
+                payload = {
+                    'exch': exchange,
+                    'symbol': str(token)
+                }
+                result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
+                logger.debug(f"ScripQuoteDetails({symbol}, exch={exchange}, token={token}): stat={result.get('stat')}")
 
-            if result.get('success') and result.get('data'):
-                return float(result['data'].get('ltp', 0))
+                if result.get('stat') == 'Ok' or result.get('success'):
+                    ltp = result.get('LTP') or result.get('ltp') or 0
+                    if not ltp and result.get('data'):
+                        data = result['data']
+                        if isinstance(data, dict):
+                            ltp = data.get('LTP') or data.get('ltp') or 0
+                    if float(ltp) > 0:
+                        return float(ltp)
+
+            # Fallback: try with tradingSymbol (old method)
+            payload = {
+                'exch': exchange,
+                'symbol': symbol
+            }
+            result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
+            logger.debug(f"ScripQuoteDetails({symbol}, exch={exchange}, tradingSym): stat={result.get('stat')}")
+
+            if result.get('stat') == 'Ok' or result.get('success'):
+                ltp = result.get('LTP') or result.get('ltp') or 0
+                if not ltp and result.get('data'):
+                    data = result['data']
+                    if isinstance(data, dict):
+                        ltp = data.get('LTP') or data.get('ltp') or 0
+                if float(ltp) > 0:
+                    return float(ltp)
+
             return 0
         except Exception as e:
-            logger.error(f"Error getting LTP: {e}")
+            logger.error(f"Error getting LTP for {symbol}: {e}")
             return 0

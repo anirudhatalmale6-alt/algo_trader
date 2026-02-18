@@ -40,6 +40,9 @@
 
 
                 .hidden { display: none !important; }
+                .content-page { content-visibility: auto; contain-intrinsic-size: 0 500px; }
+                .content-page.hidden { content-visibility: hidden; }
+                * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 
                 /* ===== HEADER ===== */
@@ -4157,8 +4160,367 @@
     <i class="fas fa-arrow-left"></i> Back
   </button>
 
-            <h2><i class="fas fa-chart-bar"></i> Reports</h2>
-            <p>This page shows trading reports and analytics.</p>
+<!-- ============================================================== -->
+
+<!-- Page Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
+      <i class="fas fa-chart-bar" style="color:#00ccff;margin-right:10px;"></i>Reports & Analytics
+    </h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Trade journal, performance metrics, and detailed trade history.</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="display:inline-flex;align-items:center;gap:6px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:6px 14px;font-size:12px;color:#888;">
+      <i class="fas fa-calendar" style="color:#00ccff;"></i> <span id="rpt_dateRangeLabel">Today</span>
+    </span>
+  </div>
+</div>
+
+<!-- Date Filter Row -->
+<div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;align-items:center;">
+  <button onclick="rptFilterDate('today', this)" class="rpt_filter_btn" style="background:#00ccff;color:#000;border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;">Today</button>
+  <button onclick="rptFilterDate('week', this)" class="rpt_filter_btn" style="background:#1a1a1a;color:#888;border:1px solid #333;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;">This Week</button>
+  <button onclick="rptFilterDate('month', this)" class="rpt_filter_btn" style="background:#1a1a1a;color:#888;border:1px solid #333;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;">This Month</button>
+  <button onclick="rptFilterDate('30days', this)" class="rpt_filter_btn" style="background:#1a1a1a;color:#888;border:1px solid #333;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;">Last 30 Days</button>
+  <button onclick="rptFilterDate('custom', this)" class="rpt_filter_btn" style="background:#1a1a1a;color:#888;border:1px solid #333;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;">Custom</button>
+  <div id="rpt_customRange" style="display:none;align-items:center;gap:6px;">
+    <input type="date" id="rpt_startDate" style="padding:7px 10px;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:6px;font-size:12px;">
+    <span style="color:#555;">to</span>
+    <input type="date" id="rpt_endDate" style="padding:7px 10px;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:6px;font-size:12px;">
+    <button onclick="rptApplyCustomDate()" style="background:#00ccff;color:#000;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">Apply</button>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:8px;">
+    <button onclick="rptRefreshData()" style="background:#1a1a1a;color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.1)'" onmouseleave="this.style.background='#1a1a1a'">
+      <i class="fas fa-sync-alt"></i> Refresh
+    </button>
+    <button onclick="rptExportCSV()" style="background:#1a1a1a;color:#00cc88;border:1px solid rgba(0,204,136,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,204,136,0.1)'" onmouseleave="this.style.background='#1a1a1a'">
+      <i class="fas fa-file-csv"></i> Export CSV
+    </button>
+  </div>
+</div>
+
+<!-- Performance Summary Cards -->
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:28px;">
+  <!-- Total P&L -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,200,83,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Total P&L</div>
+    <div id="rpt_totalPL" style="font-size:24px;font-weight:700;color:#00c853;">+&#8377;24,560</div>
+    <div style="font-size:10px;color:#00cc88;margin-top:4px;"><i class="fas fa-arrow-up"></i> +12.3% from capital</div>
+  </div>
+  <!-- Total Trades -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,204,255,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Total Trades</div>
+    <div id="rpt_totalTrades" style="font-size:24px;font-weight:700;color:#00ccff;">42</div>
+    <div style="font-size:10px;color:#888;margin-top:4px;"><i class="fas fa-exchange-alt" style="color:#00ccff;"></i> 28 Buy / 14 Sell</div>
+  </div>
+  <!-- Win Rate -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,204,136,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Win Rate</div>
+    <div id="rpt_winRate" style="font-size:24px;font-weight:700;color:#00cc88;">68.5%</div>
+    <div style="font-size:10px;color:#00cc88;margin-top:4px;"><i class="fas fa-trophy"></i> Above average</div>
+  </div>
+  <!-- Profit Factor -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(170,102,255,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Profit Factor</div>
+    <div id="rpt_profitFactor" style="font-size:24px;font-weight:700;color:#aa66ff;">2.14</div>
+    <div style="font-size:10px;color:#aa66ff;margin-top:4px;"><i class="fas fa-chart-line"></i> Strong ratio</div>
+  </div>
+  <!-- Avg Win/Loss -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(255,136,0,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Avg Win / Loss</div>
+    <div id="rpt_avgWinLoss" style="font-size:24px;font-weight:700;color:#ff8800;">1.85</div>
+    <div style="font-size:10px;color:#888;margin-top:4px;"><span style="color:#00c853;">&#8377;1,240</span> / <span style="color:#ff4444;">&#8377;670</span></div>
+  </div>
+  <!-- Max Drawdown -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(255,68,68,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Max Drawdown</div>
+    <div id="rpt_maxDrawdown" style="font-size:24px;font-weight:700;color:#ff4444;">-&#8377;8,320</div>
+    <div style="font-size:10px;color:#ff4444;margin-top:4px;"><i class="fas fa-arrow-down"></i> -3.4% from peak</div>
+  </div>
+</div>
+
+<!-- Detailed Statistics Panel -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:28px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-chart-pie" style="color:#aa66ff;margin-right:8px;"></i>Detailed Statistics
+  </h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-check-circle" style="color:#00c853;margin-right:8px;"></i>Winning Trades</span>
+      <span style="font-size:14px;font-weight:700;color:#00c853;">29</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-times-circle" style="color:#ff4444;margin-right:8px;"></i>Losing Trades</span>
+      <span style="font-size:14px;font-weight:700;color:#ff4444;">13</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-arrow-up" style="color:#00c853;margin-right:8px;"></i>Largest Win</span>
+      <span style="font-size:14px;font-weight:700;color:#00c853;">+&#8377;5,680</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-arrow-down" style="color:#ff4444;margin-right:8px;"></i>Largest Loss</span>
+      <span style="font-size:14px;font-weight:700;color:#ff4444;">-&#8377;3,240</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-balance-scale" style="color:#ff8800;margin-right:8px;"></i>Avg Trade P&L</span>
+      <span style="font-size:14px;font-weight:700;color:#00cc88;">+&#8377;585</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-clock" style="color:#00ccff;margin-right:8px;"></i>Avg Hold Time</span>
+      <span style="font-size:14px;font-weight:700;color:#00ccff;">2h 15m</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-cubes" style="color:#aa66ff;margin-right:8px;"></i>Total Volume</span>
+      <span style="font-size:14px;font-weight:700;color:#aa66ff;">3,450 Qty</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-receipt" style="color:#ff8800;margin-right:8px;"></i>Est. Brokerage</span>
+      <span style="font-size:14px;font-weight:700;color:#ff8800;">&#8377;840</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-star" style="color:#00c853;margin-right:8px;"></i>Best Symbol</span>
+      <span style="font-size:14px;font-weight:700;color:#00c853;">RELIANCE</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-exclamation-triangle" style="color:#ff4444;margin-right:8px;"></i>Worst Symbol</span>
+      <span style="font-size:14px;font-weight:700;color:#ff4444;">TATAMOTORS</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-fire" style="color:#ff8800;margin-right:8px;"></i>Most Traded</span>
+      <span style="font-size:14px;font-weight:700;color:#ff8800;">NIFTY 50</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d0d;border-radius:8px;border:1px solid #222;">
+      <span style="font-size:13px;color:#888;"><i class="fas fa-bolt" style="color:#00cc88;margin-right:8px;"></i>Max Consecutive Wins</span>
+      <span style="font-size:14px;font-weight:700;color:#00cc88;">7</span>
+    </div>
+  </div>
+</div>
+
+<!-- Trade History Table -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h3 style="margin:0;font-size:16px;font-weight:700;color:#fff;">
+      <i class="fas fa-history" style="color:#00ccff;margin-right:8px;"></i>Trade History
+    </h3>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <select id="rpt_symbolFilter" onchange="rptFilterBySymbol()" style="padding:7px 12px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:6px;font-size:12px;cursor:pointer;">
+        <option value="all">All Symbols</option>
+        <option value="RELIANCE">RELIANCE</option>
+        <option value="NIFTY 50">NIFTY 50</option>
+        <option value="BANKNIFTY">BANKNIFTY</option>
+        <option value="TATAMOTORS">TATAMOTORS</option>
+        <option value="INFY">INFY</option>
+        <option value="HDFCBANK">HDFCBANK</option>
+      </select>
+      <div style="position:relative;">
+        <input type="text" id="rpt_searchInput" oninput="rptSearchTrades()" placeholder="Search trades..." style="padding:7px 12px 7px 32px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:6px;font-size:12px;width:180px;">
+        <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#555;font-size:11px;"></i>
+      </div>
+    </div>
+  </div>
+  <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+    <table id="rpt_tradeTable" style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px;">
+      <thead>
+        <tr style="background:#0d0d0d;">
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Date</th>
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Time</th>
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Symbol</th>
+          <th style="padding:12px 10px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Side</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Qty</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Entry</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Exit</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">P&L &#8377;</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">P&L %</th>
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Strategy</th>
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="rpt_tradeBody">
+        <tr class="rpt_trade_row" data-symbol="RELIANCE" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">18 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">09:32:15</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">RELIANCE</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">50</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;2,456.30</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;2,478.50</td>
+          <td style="padding:10px;text-align:right;color:#00c853;font-weight:600;">+&#8377;1,110</td>
+          <td style="padding:10px;text-align:right;color:#00c853;">+0.90%</td>
+          <td style="padding:10px;color:#aa66ff;font-size:11px;">CPR Strategy</td>
+          <td style="padding:10px;color:#666;font-size:11px;">Breakout above R1</td>
+        </tr>
+        <tr class="rpt_trade_row" data-symbol="NIFTY 50" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">18 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">10:15:42</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">NIFTY 50</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(255,68,68,0.15);color:#ff4444;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">SELL</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">75</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;22,340.00</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;22,280.00</td>
+          <td style="padding:10px;text-align:right;color:#00c853;font-weight:600;">+&#8377;4,500</td>
+          <td style="padding:10px;text-align:right;color:#00c853;">+0.27%</td>
+          <td style="padding:10px;color:#ff8800;font-size:11px;">Scalping</td>
+          <td style="padding:10px;color:#666;font-size:11px;">Rejected at VWAP</td>
+        </tr>
+        <tr class="rpt_trade_row" data-symbol="BANKNIFTY" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">17 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">11:05:30</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">BANKNIFTY</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">25</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;47,850.00</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;47,720.00</td>
+          <td style="padding:10px;text-align:right;color:#ff4444;font-weight:600;">-&#8377;3,250</td>
+          <td style="padding:10px;text-align:right;color:#ff4444;">-0.27%</td>
+          <td style="padding:10px;color:#00ccff;font-size:11px;">TradingView</td>
+          <td style="padding:10px;color:#666;font-size:11px;">SL hit at support</td>
+        </tr>
+        <tr class="rpt_trade_row" data-symbol="TATAMOTORS" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">17 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">13:22:18</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">TATAMOTORS</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">100</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;765.20</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;752.80</td>
+          <td style="padding:10px;text-align:right;color:#ff4444;font-weight:600;">-&#8377;1,240</td>
+          <td style="padding:10px;text-align:right;color:#ff4444;">-1.62%</td>
+          <td style="padding:10px;color:#aa66ff;font-size:11px;">CPR Strategy</td>
+          <td style="padding:10px;color:#666;font-size:11px;">Failed breakout</td>
+        </tr>
+        <tr class="rpt_trade_row" data-symbol="INFY" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">16 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">09:48:55</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">INFY</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(255,68,68,0.15);color:#ff4444;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">SELL</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">200</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,845.60</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,832.10</td>
+          <td style="padding:10px;text-align:right;color:#00c853;font-weight:600;">+&#8377;2,700</td>
+          <td style="padding:10px;text-align:right;color:#00c853;">+0.73%</td>
+          <td style="padding:10px;color:#ff8800;font-size:11px;">Scalping</td>
+          <td style="padding:10px;color:#666;font-size:11px;">Weak earnings gap down</td>
+        </tr>
+        <tr class="rpt_trade_row" data-symbol="HDFCBANK" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">16 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">14:10:05</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">HDFCBANK</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">75</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,678.40</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,695.80</td>
+          <td style="padding:10px;text-align:right;color:#00c853;font-weight:600;">+&#8377;1,305</td>
+          <td style="padding:10px;text-align:right;color:#00c853;">+1.04%</td>
+          <td style="padding:10px;color:#00ccff;font-size:11px;">TradingView</td>
+          <td style="padding:10px;color:#666;font-size:11px;">Momentum continuation</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">
+    <span style="font-size:11px;color:#555;">Showing <span id="rpt_showCount">6</span> of 6 trades</span>
+    <span style="font-size:11px;color:#555;">Last updated: <span id="rpt_lastUpdated">Just now</span></span>
+  </div>
+</div>
+
+<!-- Reports JavaScript -->
+<script>
+function rptFilterDate(range, btn) {
+  document.querySelectorAll('.rpt_filter_btn').forEach(function(b) {
+    b.style.background = '#1a1a1a';
+    b.style.color = '#888';
+    b.style.border = '1px solid #333';
+  });
+  btn.style.background = '#00ccff';
+  btn.style.color = '#000';
+  btn.style.border = 'none';
+
+  var customEl = document.getElementById('rpt_customRange');
+  var labelEl = document.getElementById('rpt_dateRangeLabel');
+  if (range === 'custom') {
+    customEl.style.display = 'flex';
+    labelEl.textContent = 'Custom Range';
+  } else {
+    customEl.style.display = 'none';
+    var labels = { today: 'Today', week: 'This Week', month: 'This Month', '30days': 'Last 30 Days' };
+    labelEl.textContent = labels[range] || range;
+  }
+}
+
+function rptApplyCustomDate() {
+  var s = document.getElementById('rpt_startDate').value;
+  var e = document.getElementById('rpt_endDate').value;
+  if (s && e) {
+    document.getElementById('rpt_dateRangeLabel').textContent = s + ' to ' + e;
+  }
+}
+
+function rptRefreshData() {
+  document.getElementById('rpt_lastUpdated').textContent = 'Just now';
+  var btn = event.currentTarget;
+  var icon = btn.querySelector('i');
+  icon.style.animation = 'spin 0.6s linear';
+  setTimeout(function() { icon.style.animation = ''; }, 600);
+}
+
+function rptExportCSV() {
+  var rows = [['Date','Time','Symbol','Side','Qty','Entry','Exit','P&L','P&L%','Strategy','Notes']];
+  document.querySelectorAll('#rpt_tradeBody tr.rpt_trade_row').forEach(function(tr) {
+    if (tr.style.display !== 'none') {
+      var cells = tr.querySelectorAll('td');
+      var row = [];
+      cells.forEach(function(c) { row.push(c.textContent.trim()); });
+      rows.push(row);
+    }
+  });
+  var csv = rows.map(function(r) { return r.join(','); }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'mukesh_algo_trades_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function rptFilterBySymbol() {
+  var val = document.getElementById('rpt_symbolFilter').value;
+  var count = 0;
+  document.querySelectorAll('#rpt_tradeBody tr.rpt_trade_row').forEach(function(tr) {
+    if (val === 'all' || tr.getAttribute('data-symbol') === val) {
+      tr.style.display = '';
+      count++;
+    } else {
+      tr.style.display = 'none';
+    }
+  });
+  document.getElementById('rpt_showCount').textContent = count;
+}
+
+function rptSearchTrades() {
+  var q = document.getElementById('rpt_searchInput').value.toLowerCase();
+  var count = 0;
+  document.querySelectorAll('#rpt_tradeBody tr.rpt_trade_row').forEach(function(tr) {
+    if (tr.textContent.toLowerCase().indexOf(q) > -1) {
+      tr.style.display = '';
+      count++;
+    } else {
+      tr.style.display = 'none';
+    }
+  });
+  document.getElementById('rpt_showCount').textContent = count;
+}
+</script>
+
+
+<!-- ============================================================== -->
         </div>
 
         <!-- ===== ENHANCED BROKER PAGE ===== -->
@@ -4300,8 +4662,243 @@
     <i class="fas fa-arrow-left"></i> Back
   </button>
 
-            <h2><i class="fas fa-user"></i> Profile</h2>
-            <p>User profile content will be displayed here.</p>
+<!-- ============================================================== -->
+
+<!-- Profile Header -->
+<div style="display:flex;align-items:center;gap:24px;margin-bottom:28px;flex-wrap:wrap;">
+  <div style="width:90px;height:90px;border-radius:50%;background:linear-gradient(135deg,#00ccff,#aa66ff);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.4);border:3px solid rgba(0,204,255,0.4);box-shadow:0 0 24px rgba(0,204,255,0.2);">MK</div>
+  <div>
+    <h2 style="margin:0;font-size:24px;font-weight:700;color:#fff;">Mukeshbhai</h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;"><i class="fas fa-calendar-alt" style="margin-right:6px;color:#555;"></i>Member since January 2025</p>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,200,83,0.12);border:1px solid rgba(0,200,83,0.3);color:#00c853;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#00c853;display:inline-block;box-shadow:0 0 6px #00c853;"></span> Active
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:6px;background:rgba(170,102,255,0.1);border:1px solid rgba(170,102,255,0.3);color:#aa66ff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;">
+        <i class="fas fa-crown"></i> Pro Plan
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Account Overview Cards -->
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:28px;">
+  <!-- Available Margin -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,204,255,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-wallet" style="margin-right:6px;color:#00ccff;"></i>Available Margin</div>
+    <div style="font-size:22px;font-weight:700;color:#00ccff;">&#8377;2,45,000</div>
+    <div style="margin-top:8px;background:#222;border-radius:4px;height:4px;overflow:hidden;">
+      <div style="width:68%;height:100%;background:linear-gradient(90deg,#00ccff,#0099ff);border-radius:4px;"></div>
+    </div>
+    <div style="font-size:10px;color:#555;margin-top:4px;">68% of total balance</div>
+  </div>
+  <!-- Used Margin -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(255,136,0,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-lock" style="margin-right:6px;color:#ff8800;"></i>Used Margin</div>
+    <div style="font-size:22px;font-weight:700;color:#ff8800;">&#8377;1,15,000</div>
+    <div style="margin-top:8px;background:#222;border-radius:4px;height:4px;overflow:hidden;">
+      <div style="width:32%;height:100%;background:linear-gradient(90deg,#ff8800,#ff6600);border-radius:4px;"></div>
+    </div>
+    <div style="font-size:10px;color:#555;margin-top:4px;">32% of total balance</div>
+  </div>
+  <!-- Total Balance -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(170,102,255,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-university" style="margin-right:6px;color:#aa66ff;"></i>Total Balance</div>
+    <div style="font-size:22px;font-weight:700;color:#aa66ff;">&#8377;3,60,000</div>
+    <div style="font-size:10px;color:#00cc88;margin-top:6px;"><i class="fas fa-arrow-up"></i> +8.2% from initial deposit</div>
+  </div>
+  <!-- Today's P&L -->
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,200,83,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-chart-line" style="margin-right:6px;color:#00c853;"></i>Today's P&L</div>
+    <div style="font-size:22px;font-weight:700;color:#00c853;">+&#8377;12,450</div>
+    <div style="font-size:10px;color:#00cc88;margin-top:6px;"><i class="fas fa-arrow-up"></i> +3.5% today</div>
+  </div>
+</div>
+
+<!-- Trading Statistics Section -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:28px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-chart-bar" style="color:#00ccff;margin-right:8px;"></i>Trading Statistics (This Month)
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div>
+        <div style="font-size:11px;color:#666;margin-bottom:4px;">Total Trades</div>
+        <div style="font-size:20px;font-weight:700;color:#00ccff;">156</div>
+      </div>
+      <div style="width:42px;height:42px;background:rgba(0,204,255,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-exchange-alt" style="color:#00ccff;font-size:16px;"></i>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div>
+        <div style="font-size:11px;color:#666;margin-bottom:4px;">Win Rate</div>
+        <div style="font-size:20px;font-weight:700;color:#00cc88;">68%</div>
+      </div>
+      <div style="width:42px;height:42px;background:rgba(0,204,136,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-trophy" style="color:#00cc88;font-size:16px;"></i>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div>
+        <div style="font-size:11px;color:#666;margin-bottom:4px;">Avg Daily P&L</div>
+        <div style="font-size:20px;font-weight:700;color:#00c853;">+&#8377;4,150</div>
+      </div>
+      <div style="width:42px;height:42px;background:rgba(0,200,83,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-rupee-sign" style="color:#00c853;font-size:16px;"></i>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div>
+        <div style="font-size:11px;color:#666;margin-bottom:4px;">Active Strategies</div>
+        <div style="font-size:20px;font-weight:700;color:#aa66ff;">3</div>
+      </div>
+      <div style="width:42px;height:42px;background:rgba(170,102,255,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-chess-board" style="color:#aa66ff;font-size:16px;"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Connected Brokers Summary -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:28px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-plug" style="color:#00cc88;margin-right:8px;"></i>Connected Brokers
+  </h3>
+  <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#0d0d0d;">
+          <th style="padding:12px 16px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Broker</th>
+          <th style="padding:12px 16px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Type</th>
+          <th style="padding:12px 16px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Status</th>
+          <th style="padding:12px 16px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Last Connected</th>
+          <th style="padding:12px 16px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Active</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:12px 16px;color:#fff;font-weight:600;"><i class="fas fa-building" style="color:#00ccff;margin-right:8px;"></i>Alice Blue</td>
+          <td style="padding:12px 16px;color:#888;">NSE / BSE / NFO</td>
+          <td style="padding:12px 16px;text-align:center;"><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:#00c853;display:inline-block;box-shadow:0 0 6px #00c853;"></span><span style="color:#00c853;font-size:12px;">Connected</span></span></td>
+          <td style="padding:12px 16px;color:#aaa;">18 Feb 2026, 09:15</td>
+          <td style="padding:12px 16px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">PRIMARY</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:12px 16px;color:#fff;font-weight:600;"><i class="fas fa-building" style="color:#ff8800;margin-right:8px;"></i>Upstox</td>
+          <td style="padding:12px 16px;color:#888;">NSE / BSE / NFO</td>
+          <td style="padding:12px 16px;text-align:center;"><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:#00c853;display:inline-block;box-shadow:0 0 6px #00c853;"></span><span style="color:#00c853;font-size:12px;">Connected</span></span></td>
+          <td style="padding:12px 16px;color:#aaa;">17 Feb 2026, 10:30</td>
+          <td style="padding:12px 16px;text-align:center;"><span style="background:rgba(255,255,255,0.05);color:#555;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BACKUP</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:12px 16px;color:#fff;font-weight:600;"><i class="fas fa-globe" style="color:#aa66ff;margin-right:8px;"></i>Exness (MT5)</td>
+          <td style="padding:12px 16px;color:#888;">Forex / Crypto</td>
+          <td style="padding:12px 16px;text-align:center;"><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:#ff4444;display:inline-block;box-shadow:0 0 6px #ff4444;"></span><span style="color:#ff4444;font-size:12px;">Disconnected</span></span></td>
+          <td style="padding:12px 16px;color:#aaa;">15 Feb 2026, 14:00</td>
+          <td style="padding:12px 16px;text-align:center;"><span style="background:rgba(255,68,68,0.1);color:#ff4444;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">OFFLINE</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Notification Preferences -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:28px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-bell" style="color:#ff8800;margin-right:8px;"></i>Notification Preferences
+  </h3>
+  <div style="display:grid;gap:0;">
+    <!-- Trade Alerts -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #222;">
+      <div>
+        <div style="font-size:14px;color:#fff;font-weight:500;"><i class="fas fa-bolt" style="color:#00ccff;margin-right:10px;width:18px;text-align:center;"></i>Trade Alerts</div>
+        <div style="font-size:11px;color:#666;margin-top:3px;padding-left:28px;">Get notified when trades are executed</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer;">
+        <input type="checkbox" id="prf_tradeAlerts" checked style="opacity:0;width:0;height:0;" onchange="prfToggleNotif(this)">
+        <span style="position:absolute;top:0;left:0;right:0;bottom:0;background:#00cc88;border-radius:13px;transition:0.3s;"></span>
+        <span style="position:absolute;height:20px;width:20px;left:24px;bottom:3px;background:#fff;border-radius:50%;transition:0.3s;"></span>
+      </label>
+    </div>
+    <!-- P&L Updates -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #222;">
+      <div>
+        <div style="font-size:14px;color:#fff;font-weight:500;"><i class="fas fa-rupee-sign" style="color:#00c853;margin-right:10px;width:18px;text-align:center;"></i>P&L Updates</div>
+        <div style="font-size:11px;color:#666;margin-top:3px;padding-left:28px;">Periodic profit/loss summary notifications</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer;">
+        <input type="checkbox" id="prf_plUpdates" checked style="opacity:0;width:0;height:0;" onchange="prfToggleNotif(this)">
+        <span style="position:absolute;top:0;left:0;right:0;bottom:0;background:#00cc88;border-radius:13px;transition:0.3s;"></span>
+        <span style="position:absolute;height:20px;width:20px;left:24px;bottom:3px;background:#fff;border-radius:50%;transition:0.3s;"></span>
+      </label>
+    </div>
+    <!-- Strategy Signals -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #222;">
+      <div>
+        <div style="font-size:14px;color:#fff;font-weight:500;"><i class="fas fa-signal" style="color:#aa66ff;margin-right:10px;width:18px;text-align:center;"></i>Strategy Signals</div>
+        <div style="font-size:11px;color:#666;margin-top:3px;padding-left:28px;">Alerts when strategy conditions are triggered</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer;">
+        <input type="checkbox" id="prf_stratSignals" checked style="opacity:0;width:0;height:0;" onchange="prfToggleNotif(this)">
+        <span style="position:absolute;top:0;left:0;right:0;bottom:0;background:#00cc88;border-radius:13px;transition:0.3s;"></span>
+        <span style="position:absolute;height:20px;width:20px;left:24px;bottom:3px;background:#fff;border-radius:50%;transition:0.3s;"></span>
+      </label>
+    </div>
+    <!-- Market News -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;">
+      <div>
+        <div style="font-size:14px;color:#fff;font-weight:500;"><i class="fas fa-newspaper" style="color:#ff8800;margin-right:10px;width:18px;text-align:center;"></i>Market News</div>
+        <div style="font-size:11px;color:#666;margin-top:3px;padding-left:28px;">Breaking market news and important updates</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer;">
+        <input type="checkbox" id="prf_marketNews" style="opacity:0;width:0;height:0;" onchange="prfToggleNotif(this)">
+        <span style="position:absolute;top:0;left:0;right:0;bottom:0;background:#333;border-radius:13px;transition:0.3s;"></span>
+        <span style="position:absolute;height:20px;width:20px;left:4px;bottom:3px;background:#888;border-radius:50%;transition:0.3s;"></span>
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- Danger Zone -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid rgba(255,68,68,0.3);border-radius:14px;padding:24px;">
+  <h3 style="margin:0 0 6px 0;font-size:16px;font-weight:700;color:#ff4444;">
+    <i class="fas fa-exclamation-triangle" style="margin-right:8px;"></i>Danger Zone
+  </h3>
+  <p style="font-size:12px;color:#666;margin:0 0 20px 0;">These actions are irreversible. Please proceed with caution.</p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <button onclick="if(confirm('Are you sure you want to reset all data? This cannot be undone.')){alert('Data has been reset.');}" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'">
+      <i class="fas fa-trash-alt"></i> Reset All Data
+    </button>
+    <button onclick="if(confirm('Are you sure you want to logout?')){alert('Logged out successfully.');}" style="background:rgba(255,136,0,0.1);color:#ff8800;border:1px solid rgba(255,136,0,0.3);border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,136,0,0.2)'" onmouseleave="this.style.background='rgba(255,136,0,0.1)'">
+      <i class="fas fa-sign-out-alt"></i> Logout
+    </button>
+  </div>
+</div>
+
+<!-- Profile JavaScript -->
+<script>
+function prfToggleNotif(checkbox) {
+  var label = checkbox.parentElement;
+  var slider = label.querySelectorAll('span');
+  if (checkbox.checked) {
+    slider[0].style.background = '#00cc88';
+    slider[1].style.left = '24px';
+    slider[1].style.background = '#fff';
+  } else {
+    slider[0].style.background = '#333';
+    slider[1].style.left = '4px';
+    slider[1].style.background = '#888';
+  }
+}
+</script>
+
+
+<!-- ============================================================== -->
         </div>
 
         <div class="content-page hidden" id="marketplacePage">
@@ -4639,8 +5236,419 @@
     <i class="fas fa-arrow-left"></i> Back
   </button>
 
-            <h2><i class="fas fa-file-invoice-dollar"></i> Paper Trading</h2>
-            <p>Paper trading content will be displayed here.</p>
+<!-- ============================================================== -->
+
+<!-- Page Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
+      <i class="fas fa-file-invoice-dollar" style="color:#00ccff;margin-right:10px;"></i>Paper Trading Simulator
+    </h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Practice trading with virtual money. No real funds at risk.</p>
+  </div>
+</div>
+
+<!-- Mode Toggle Banner -->
+<div id="pt_modeBanner" style="background:linear-gradient(135deg,rgba(0,204,255,0.08) 0%,rgba(170,102,255,0.08) 100%);border:1px solid rgba(0,204,255,0.3);border-radius:14px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div style="width:50px;height:50px;background:rgba(0,204,255,0.15);border:1px solid rgba(0,204,255,0.3);border-radius:12px;display:flex;align-items:center;justify-content:center;">
+      <i id="pt_modeIcon" class="fas fa-flask" style="color:#00ccff;font-size:22px;"></i>
+    </div>
+    <div>
+      <div style="font-size:16px;font-weight:700;color:#fff;">Current Mode: <span id="pt_modeText" style="color:#00ccff;">Paper Trading</span></div>
+      <div id="pt_modeDesc" style="font-size:12px;color:#888;margin-top:3px;"><i class="fas fa-shield-alt" style="color:#00cc88;margin-right:4px;"></i>Virtual money mode - No real trades will be placed</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:12px;color:#00ccff;font-weight:600;">PAPER</span>
+    <label style="position:relative;display:inline-block;width:56px;height:30px;cursor:pointer;">
+      <input type="checkbox" id="pt_modeToggle" style="opacity:0;width:0;height:0;" onchange="ptToggleMode(this)">
+      <span style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#00ccff,#0099cc);border-radius:15px;transition:0.4s;box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);"></span>
+      <span style="position:absolute;height:24px;width:24px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.4s;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></span>
+    </label>
+    <span style="font-size:12px;color:#666;font-weight:600;">LIVE</span>
+  </div>
+</div>
+
+<!-- Simulator Capital Section -->
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,204,255,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-coins" style="margin-right:6px;color:#00ccff;"></i>Current Capital</div>
+    <div id="pt_currentCapital" style="font-size:22px;font-weight:700;color:#00ccff;">&#8377;10,00,000</div>
+  </div>
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(170,102,255,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-flag-checkered" style="margin-right:6px;color:#aa66ff;"></i>Starting Capital</div>
+    <div style="font-size:22px;font-weight:700;color:#aa66ff;">&#8377;10,00,000</div>
+  </div>
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle at top right,rgba(0,200,83,0.15) 0%,transparent 70%);"></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-chart-line" style="margin-right:6px;color:#00c853;"></i>P&L Today</div>
+    <div id="pt_plToday" style="font-size:22px;font-weight:700;color:#888;">&#8377;0</div>
+  </div>
+  <div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:20px;">
+    <div style="font-size:11px;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-sliders-h" style="margin-right:6px;color:#ff8800;"></i>Set Capital</div>
+    <div style="display:flex;gap:8px;">
+      <input type="number" id="pt_capitalInput" placeholder="Enter amount" value="1000000" style="flex:1;padding:8px 12px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:6px;font-size:13px;">
+      <button onclick="ptResetSimulator()" style="background:linear-gradient(135deg,#ff8800,#cc6600);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'">
+        <i class="fas fa-redo"></i> Reset
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Trade Section -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-bolt" style="color:#ff8800;margin-right:8px;"></i>Quick Paper Trade
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;align-items:end;">
+    <!-- Symbol -->
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Symbol</label>
+      <select id="pt_symbolSelect" style="width:100%;padding:10px 12px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:8px;font-size:13px;cursor:pointer;">
+        <option value="NIFTY 50">NIFTY 50</option>
+        <option value="BANKNIFTY">BANKNIFTY</option>
+        <option value="RELIANCE">RELIANCE</option>
+        <option value="HDFCBANK">HDFCBANK</option>
+        <option value="INFY">INFY</option>
+        <option value="TATAMOTORS">TATAMOTORS</option>
+        <option value="TCS">TCS</option>
+        <option value="ICICIBANK">ICICIBANK</option>
+      </select>
+    </div>
+    <!-- Buy/Sell Toggle -->
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Side</label>
+      <div style="display:flex;border-radius:8px;overflow:hidden;border:1px solid #333;">
+        <button id="pt_buyBtn" onclick="ptSetSide('BUY')" style="flex:1;padding:10px;background:#00c853;color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;">BUY</button>
+        <button id="pt_sellBtn" onclick="ptSetSide('SELL')" style="flex:1;padding:10px;background:#1a1a1a;color:#666;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;">SELL</button>
+      </div>
+    </div>
+    <!-- Quantity -->
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Quantity</label>
+      <input type="number" id="pt_qtyInput" value="50" min="1" style="width:100%;padding:10px 12px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:8px;font-size:13px;">
+    </div>
+    <!-- Price Type -->
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Price</label>
+      <div style="display:flex;gap:6px;">
+        <select id="pt_priceType" onchange="document.getElementById('pt_limitPrice').style.display=this.value==='limit'?'block':'none'" style="flex:1;padding:10px 12px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:8px;font-size:13px;cursor:pointer;">
+          <option value="market">Market</option>
+          <option value="limit">Limit</option>
+        </select>
+      </div>
+      <input type="number" id="pt_limitPrice" placeholder="Limit price" style="display:none;width:100%;padding:8px 12px;background:#0d0d0d;color:#fff;border:1px solid #333;border-radius:8px;font-size:12px;margin-top:6px;">
+    </div>
+    <!-- Place Order Button -->
+    <div>
+      <label style="display:block;font-size:11px;color:transparent;margin-bottom:6px;">&nbsp;</label>
+      <button onclick="ptPlaceOrder()" style="width:100%;padding:10px 20px;background:linear-gradient(135deg,#00ccff 0%,#0099cc 100%);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 12px rgba(0,204,255,0.3);transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.03)'" onmouseleave="this.style.transform='scale(1)'">
+        <i class="fas fa-paper-plane"></i> Place Paper Order
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Paper Positions Table -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:24px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <h3 style="margin:0;font-size:16px;font-weight:700;color:#fff;">
+      <i class="fas fa-layer-group" style="color:#aa66ff;margin-right:8px;"></i>Open Paper Positions
+      <span style="background:rgba(170,102,255,0.15);color:#aa66ff;font-size:11px;padding:3px 10px;border-radius:10px;margin-left:8px;font-weight:600;">3</span>
+    </h3>
+  </div>
+  <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:750px;">
+      <thead>
+        <tr style="background:#0d0d0d;">
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Symbol</th>
+          <th style="padding:12px 10px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Side</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Qty</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Avg Price</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Current</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">P&L</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">P&L %</th>
+          <th style="padding:12px 10px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pt_positionsBody">
+        <tr id="pt_pos_0" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#fff;font-weight:600;">RELIANCE</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">50</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;2,456.30</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;2,472.50</td>
+          <td style="padding:10px;text-align:right;color:#00c853;font-weight:600;">+&#8377;810</td>
+          <td style="padding:10px;text-align:right;color:#00c853;">+0.66%</td>
+          <td style="padding:10px;text-align:center;">
+            <button onclick="ptClosePosition(0, 'RELIANCE')" style="background:rgba(255,68,68,0.15);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 14px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.3)'" onmouseleave="this.style.background='rgba(255,68,68,0.15)'">
+              <i class="fas fa-times"></i> Close
+            </button>
+          </td>
+        </tr>
+        <tr id="pt_pos_1" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#fff;font-weight:600;">NIFTY 50</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(255,68,68,0.15);color:#ff4444;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">SELL</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">75</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;22,340.00</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;22,310.00</td>
+          <td style="padding:10px;text-align:right;color:#00c853;font-weight:600;">+&#8377;2,250</td>
+          <td style="padding:10px;text-align:right;color:#00c853;">+0.13%</td>
+          <td style="padding:10px;text-align:center;">
+            <button onclick="ptClosePosition(1, 'NIFTY 50')" style="background:rgba(255,68,68,0.15);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 14px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.3)'" onmouseleave="this.style.background='rgba(255,68,68,0.15)'">
+              <i class="fas fa-times"></i> Close
+            </button>
+          </td>
+        </tr>
+        <tr id="pt_pos_2" style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#fff;font-weight:600;">INFY</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">100</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,832.10</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,825.40</td>
+          <td style="padding:10px;text-align:right;color:#ff4444;font-weight:600;">-&#8377;670</td>
+          <td style="padding:10px;text-align:right;color:#ff4444;">-0.37%</td>
+          <td style="padding:10px;text-align:center;">
+            <button onclick="ptClosePosition(2, 'INFY')" style="background:rgba(255,68,68,0.15);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 14px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.3)'" onmouseleave="this.style.background='rgba(255,68,68,0.15)'">
+              <i class="fas fa-times"></i> Close
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Paper Trade History Table -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 16px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-history" style="color:#00ccff;margin-right:8px;"></i>Paper Trade History
+  </h3>
+  <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:650px;">
+      <thead>
+        <tr style="background:#0d0d0d;">
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Date</th>
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Time</th>
+          <th style="padding:12px 10px;text-align:left;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Symbol</th>
+          <th style="padding:12px 10px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Side</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Qty</th>
+          <th style="padding:12px 10px;text-align:right;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Price</th>
+          <th style="padding:12px 10px;text-align:center;color:#00ccff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #222;">Status</th>
+        </tr>
+      </thead>
+      <tbody id="pt_historyBody">
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">18 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">09:32:15</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">RELIANCE</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">50</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;2,456.30</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,204,136,0.12);color:#00cc88;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">EXECUTED</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">18 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">10:15:42</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">NIFTY 50</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(255,68,68,0.15);color:#ff4444;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">SELL</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">75</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;22,340.00</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,204,136,0.12);color:#00cc88;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">EXECUTED</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">18 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">11:05:30</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">INFY</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">100</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,832.10</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,204,136,0.12);color:#00cc88;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">EXECUTED</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background='rgba(0,204,255,0.05)'" onmouseleave="this.style.background='transparent'">
+          <td style="padding:10px;color:#ccc;">17 Feb 2026</td>
+          <td style="padding:10px;color:#aaa;">14:22:08</td>
+          <td style="padding:10px;color:#fff;font-weight:600;">HDFCBANK</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(0,200,83,0.15);color:#00c853;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">BUY</span></td>
+          <td style="padding:10px;text-align:right;color:#ccc;">75</td>
+          <td style="padding:10px;text-align:right;color:#ccc;">&#8377;1,678.40</td>
+          <td style="padding:10px;text-align:center;"><span style="background:rgba(255,136,0,0.12);color:#ff8800;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">CLOSED</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Simulator Statistics -->
+<div style="background:linear-gradient(145deg,#1a1a1a 0%,#111 100%);border:1px solid #2a2a2a;border-radius:14px;padding:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:700;color:#fff;">
+    <i class="fas fa-chart-pie" style="color:#aa66ff;margin-right:8px;"></i>Simulator Statistics
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;">
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Total Paper Trades</div>
+      <div id="pt_statTotal" style="font-size:24px;font-weight:700;color:#00ccff;">12</div>
+    </div>
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Winning</div>
+      <div id="pt_statWins" style="font-size:24px;font-weight:700;color:#00c853;">8</div>
+    </div>
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Losing</div>
+      <div id="pt_statLosses" style="font-size:24px;font-weight:700;color:#ff4444;">4</div>
+    </div>
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Win Rate</div>
+      <div id="pt_statWinRate" style="font-size:24px;font-weight:700;color:#00cc88;">66.7%</div>
+    </div>
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Total P&L</div>
+      <div id="pt_statPL" style="font-size:24px;font-weight:700;color:#00c853;">+&#8377;15,430</div>
+    </div>
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Largest Win</div>
+      <div id="pt_statBestWin" style="font-size:24px;font-weight:700;color:#00c853;">+&#8377;4,500</div>
+    </div>
+    <div style="text-align:center;padding:18px 14px;background:#0d0d0d;border-radius:10px;border:1px solid #222;">
+      <div style="font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Largest Loss</div>
+      <div id="pt_statWorstLoss" style="font-size:24px;font-weight:700;color:#ff4444;">-&#8377;2,100</div>
+    </div>
+  </div>
+</div>
+
+<!-- Paper Trading JavaScript -->
+<script>
+var ptCurrentSide = 'BUY';
+
+function ptToggleMode(checkbox) {
+  var banner = document.getElementById('pt_modeBanner');
+  var modeText = document.getElementById('pt_modeText');
+  var modeDesc = document.getElementById('pt_modeDesc');
+  var modeIcon = document.getElementById('pt_modeIcon');
+  var slider = checkbox.parentElement.querySelectorAll('span');
+
+  if (checkbox.checked) {
+    // Switching to LIVE
+    if (!confirm('WARNING: Switching to LIVE mode will place REAL trades with REAL money. Are you sure?')) {
+      checkbox.checked = false;
+      return;
+    }
+    banner.style.background = 'linear-gradient(135deg,rgba(255,68,68,0.08) 0%,rgba(255,136,0,0.08) 100%)';
+    banner.style.borderColor = 'rgba(255,68,68,0.3)';
+    modeText.textContent = 'LIVE Trading';
+    modeText.style.color = '#ff4444';
+    modeDesc.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ff4444;margin-right:4px;"></i>LIVE mode - Real trades will be placed with real money!';
+    modeIcon.className = 'fas fa-broadcast-tower';
+    modeIcon.style.color = '#ff4444';
+    slider[0].style.background = 'linear-gradient(135deg,#ff4444,#cc3333)';
+    slider[1].style.left = '29px';
+  } else {
+    // Switching to Paper
+    banner.style.background = 'linear-gradient(135deg,rgba(0,204,255,0.08) 0%,rgba(170,102,255,0.08) 100%)';
+    banner.style.borderColor = 'rgba(0,204,255,0.3)';
+    modeText.textContent = 'Paper Trading';
+    modeText.style.color = '#00ccff';
+    modeDesc.innerHTML = '<i class="fas fa-shield-alt" style="color:#00cc88;margin-right:4px;"></i>Virtual money mode - No real trades will be placed';
+    modeIcon.className = 'fas fa-flask';
+    modeIcon.style.color = '#00ccff';
+    slider[0].style.background = 'linear-gradient(135deg,#00ccff,#0099cc)';
+    slider[1].style.left = '3px';
+  }
+}
+
+function ptSetSide(side) {
+  ptCurrentSide = side;
+  var buyBtn = document.getElementById('pt_buyBtn');
+  var sellBtn = document.getElementById('pt_sellBtn');
+  if (side === 'BUY') {
+    buyBtn.style.background = '#00c853';
+    buyBtn.style.color = '#fff';
+    sellBtn.style.background = '#1a1a1a';
+    sellBtn.style.color = '#666';
+  } else {
+    sellBtn.style.background = '#ff4444';
+    sellBtn.style.color = '#fff';
+    buyBtn.style.background = '#1a1a1a';
+    buyBtn.style.color = '#666';
+  }
+}
+
+function ptPlaceOrder() {
+  var symbol = document.getElementById('pt_symbolSelect').value;
+  var qty = document.getElementById('pt_qtyInput').value;
+  var priceType = document.getElementById('pt_priceType').value;
+  var limitPrice = document.getElementById('pt_limitPrice').value;
+
+  if (!qty || parseInt(qty) <= 0) {
+    alert('Please enter a valid quantity.');
+    return;
+  }
+
+  var price = priceType === 'market' ? 'Market' : ('₹' + parseFloat(limitPrice).toLocaleString('en-IN'));
+  var now = new Date();
+  var dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  var timeStr = now.toLocaleTimeString('en-IN', { hour12: false });
+
+  var sideColor = ptCurrentSide === 'BUY' ? '#00c853' : '#ff4444';
+  var sideBg = ptCurrentSide === 'BUY' ? 'rgba(0,200,83,0.15)' : 'rgba(255,68,68,0.15)';
+
+  var newRow = '<tr style="border-bottom:1px solid #1a1a1a;transition:background 0.2s;animation:fadeIn 0.3s;" onmouseenter="this.style.background=\'rgba(0,204,255,0.05)\'" onmouseleave="this.style.background=\'transparent\'">' +
+    '<td style="padding:10px;color:#ccc;">' + dateStr + '</td>' +
+    '<td style="padding:10px;color:#aaa;">' + timeStr + '</td>' +
+    '<td style="padding:10px;color:#fff;font-weight:600;">' + symbol + '</td>' +
+    '<td style="padding:10px;text-align:center;"><span style="background:' + sideBg + ';color:' + sideColor + ';padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">' + ptCurrentSide + '</span></td>' +
+    '<td style="padding:10px;text-align:right;color:#ccc;">' + qty + '</td>' +
+    '<td style="padding:10px;text-align:right;color:#ccc;">' + price + '</td>' +
+    '<td style="padding:10px;text-align:center;"><span style="background:rgba(0,204,136,0.12);color:#00cc88;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">EXECUTED</span></td>' +
+    '</tr>';
+
+  var tbody = document.getElementById('pt_historyBody');
+  tbody.insertAdjacentHTML('afterbegin', newRow);
+
+  // Update stat count
+  var totalEl = document.getElementById('pt_statTotal');
+  totalEl.textContent = parseInt(totalEl.textContent) + 1;
+
+  alert('Paper order placed: ' + ptCurrentSide + ' ' + qty + ' ' + symbol + ' @ ' + price);
+}
+
+function ptClosePosition(idx, symbol) {
+  if (confirm('Close paper position for ' + symbol + '?')) {
+    var row = document.getElementById('pt_pos_' + idx);
+    if (row) {
+      row.style.opacity = '0.3';
+      row.style.pointerEvents = 'none';
+      setTimeout(function() { row.style.display = 'none'; }, 300);
+    }
+  }
+}
+
+function ptResetSimulator() {
+  if (confirm('Reset paper trading simulator? All paper positions and history will be cleared.')) {
+    var capital = document.getElementById('pt_capitalInput').value || 1000000;
+    var formatted = '₹' + parseInt(capital).toLocaleString('en-IN');
+    document.getElementById('pt_currentCapital').innerHTML = formatted;
+    document.getElementById('pt_plToday').innerHTML = '₹0';
+    document.getElementById('pt_plToday').style.color = '#888';
+    document.getElementById('pt_positionsBody').innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:#555;font-style:italic;">No open paper positions</td></tr>';
+    document.getElementById('pt_historyBody').innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:#555;font-style:italic;">No paper trade history</td></tr>';
+    document.getElementById('pt_statTotal').textContent = '0';
+    document.getElementById('pt_statWins').textContent = '0';
+    document.getElementById('pt_statLosses').textContent = '0';
+    document.getElementById('pt_statWinRate').textContent = '0%';
+    document.getElementById('pt_statPL').textContent = '₹0';
+    document.getElementById('pt_statPL').style.color = '#888';
+    document.getElementById('pt_statBestWin').textContent = '₹0';
+    document.getElementById('pt_statBestWin').style.color = '#888';
+    document.getElementById('pt_statWorstLoss').textContent = '₹0';
+    document.getElementById('pt_statWorstLoss').style.color = '#888';
+    alert('Paper trading simulator has been reset with capital: ' + formatted);
+  }
+}
+</script>
         </div>
 
         <div class="content-page hidden" id="myPlanPage">
@@ -4649,13 +5657,649 @@
     <i class="fas fa-arrow-left"></i> Back
   </button>
 
-            <h2><i class="fas fa-calendar-alt"></i> My Plan</h2>
-            <p>Plan details will be displayed here.</p>
+<!-- MY PLAN PAGE CONTENT -->
+
+<!-- Page Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
+      <i class="fas fa-crown" style="color:#ff8800;margin-right:10px;"></i>My Plan & Subscription
+    </h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Manage your subscription, risk settings, and monitor usage</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.3);border-radius:8px;padding:6px 14px;font-size:12px;color:#00c853;font-weight:600;">
+      <span style="width:8px;height:8px;border-radius:50%;background:#00c853;display:inline-block;animation:pulse 2s infinite;"></span>
+      Active Subscription
+    </span>
+  </div>
+</div>
+
+<!-- Current Plan Card -->
+<div style="background:linear-gradient(145deg,#1a1a2e 0%,#111 100%);border:1px solid rgba(0,204,255,0.3);border-radius:14px;padding:28px;margin-bottom:24px;position:relative;overflow:hidden;">
+  <div style="position:absolute;top:0;right:0;width:120px;height:120px;background:radial-gradient(circle at top right,rgba(0,204,255,0.1) 0%,transparent 70%);"></div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:20px;">
+    <div style="flex:1;min-width:250px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <div style="width:52px;height:52px;background:rgba(0,204,255,0.1);border:1px solid rgba(0,204,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-rocket" style="color:#00ccff;font-size:22px;"></i>
+        </div>
+        <div>
+          <h3 style="margin:0;font-size:20px;font-weight:700;color:#fff;">Pro Trader</h3>
+          <span style="font-size:11px;color:#00c853;background:rgba(0,200,83,0.1);padding:3px 10px;border-radius:4px;border:1px solid rgba(0,200,83,0.2);font-weight:600;">
+            <i class="fas fa-check-circle" style="margin-right:4px;"></i>ACTIVE
+          </span>
+        </div>
+      </div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div>
+          <span style="font-size:11px;color:#666;display:block;">Monthly Price</span>
+          <span style="font-size:22px;font-weight:700;color:#00ccff;">&#8377;999</span><span style="color:#666;font-size:12px;">/mo</span>
+        </div>
+        <div>
+          <span style="font-size:11px;color:#666;display:block;">Next Renewal</span>
+          <span style="font-size:14px;font-weight:600;color:#fff;">March 18, 2026</span>
+        </div>
+        <div>
+          <span style="font-size:11px;color:#666;display:block;">Member Since</span>
+          <span style="font-size:14px;font-weight:600;color:#fff;">Jan 05, 2026</span>
+        </div>
+      </div>
+    </div>
+    <div style="min-width:200px;">
+      <h4 style="margin:0 0 10px 0;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Plan Features</h4>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>3 Broker Connections</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Unlimited Strategies</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Chartink Scanner</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Live Trading</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Telegram Alerts</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Plan Comparison Grid -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#fff;">
+    <i class="fas fa-th-large" style="color:#aa66ff;margin-right:8px;"></i>Compare Plans
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;">
+
+    <!-- Free Plan -->
+    <div style="background:linear-gradient(145deg,#111 0%,#0d0d0d 100%);border:1px solid #2a2a2a;border-radius:12px;padding:24px;position:relative;transition:all 0.3s;" onmouseenter="this.style.borderColor='#555';this.style.transform='translateY(-4px)'" onmouseleave="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="width:48px;height:48px;background:rgba(136,136,136,0.1);border:1px solid rgba(136,136,136,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px auto;">
+          <i class="fas fa-leaf" style="color:#888;font-size:20px;"></i>
+        </div>
+        <h4 style="margin:0 0 4px 0;font-size:18px;font-weight:700;color:#fff;">Free</h4>
+        <div style="font-size:28px;font-weight:700;color:#888;">&#8377;0<span style="font-size:13px;font-weight:400;">/mo</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;">
+        <span style="font-size:12px;color:#aaa;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>1 Broker Connection</span>
+        <span style="font-size:12px;color:#aaa;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>2 Strategies</span>
+        <span style="font-size:12px;color:#aaa;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Basic Scanner</span>
+        <span style="font-size:12px;color:#aaa;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Paper Trading Only</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>Live Trading</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>Telegram Alerts</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>Priority Support</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>API Access</span>
+      </div>
+      <button style="width:100%;padding:12px;background:#222;border:1px solid #333;color:#888;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed;">
+        <i class="fas fa-arrow-down" style="margin-right:6px;"></i>Downgrade
+      </button>
+    </div>
+
+    <!-- Pro Trader Plan (Current) -->
+    <div style="background:linear-gradient(145deg,#1a1a2e 0%,#111 100%);border:2px solid #00ccff;border-radius:12px;padding:24px;position:relative;transition:all 0.3s;box-shadow:0 8px 24px rgba(0,204,255,0.15);">
+      <div style="position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#00ccff,#0099cc);color:#000;font-size:10px;font-weight:700;padding:4px 16px;border-radius:0 0 8px 8px;letter-spacing:1px;">CURRENT PLAN</div>
+      <div style="text-align:center;margin-bottom:20px;margin-top:10px;">
+        <div style="width:48px;height:48px;background:rgba(0,204,255,0.1);border:1px solid rgba(0,204,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px auto;">
+          <i class="fas fa-rocket" style="color:#00ccff;font-size:20px;"></i>
+        </div>
+        <h4 style="margin:0 0 4px 0;font-size:18px;font-weight:700;color:#fff;">Pro Trader</h4>
+        <div style="font-size:28px;font-weight:700;color:#00ccff;">&#8377;999<span style="font-size:13px;font-weight:400;color:#888;">/mo</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;">
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>3 Broker Connections</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Unlimited Strategies</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Chartink Scanner</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Live Trading</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Telegram Alerts</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>Priority Support</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>API Access</span>
+        <span style="font-size:12px;color:#555;"><i class="fas fa-times" style="color:#ff4444;margin-right:8px;width:14px;"></i>Dedicated Server</span>
+      </div>
+      <button style="width:100%;padding:12px;background:rgba(0,204,255,0.15);border:1px solid rgba(0,204,255,0.4);color:#00ccff;border-radius:8px;font-size:13px;font-weight:600;cursor:default;">
+        <i class="fas fa-check-circle" style="margin-right:6px;"></i>Current Plan
+      </button>
+    </div>
+
+    <!-- Enterprise Plan -->
+    <div style="background:linear-gradient(145deg,#111 0%,#0d0d0d 100%);border:1px solid #2a2a2a;border-radius:12px;padding:24px;position:relative;transition:all 0.3s;" onmouseenter="this.style.borderColor='#aa66ff';this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 24px rgba(170,102,255,0.15)'" onmouseleave="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)';this.style.boxShadow='none'">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="width:48px;height:48px;background:rgba(170,102,255,0.1);border:1px solid rgba(170,102,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px auto;">
+          <i class="fas fa-building" style="color:#aa66ff;font-size:20px;"></i>
+        </div>
+        <h4 style="margin:0 0 4px 0;font-size:18px;font-weight:700;color:#fff;">Enterprise</h4>
+        <div style="font-size:28px;font-weight:700;color:#aa66ff;">&#8377;2,999<span style="font-size:13px;font-weight:400;color:#888;">/mo</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;">
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Unlimited Brokers</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Custom Strategies</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Chartink Scanner</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Live Trading</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Telegram Alerts</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Priority Support</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>API Access</span>
+        <span style="font-size:12px;color:#ccc;"><i class="fas fa-check" style="color:#00c853;margin-right:8px;width:14px;"></i>Dedicated Server</span>
+      </div>
+      <button onclick="alert('Contact sales@mukeshalgo.com for Enterprise plans')" style="width:100%;padding:12px;background:linear-gradient(135deg,#aa66ff,#8844dd);border:none;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 12px rgba(170,102,255,0.3);" onmouseenter="this.style.transform='scale(1.02)'" onmouseleave="this.style.transform='scale(1)'">
+        <i class="fas fa-headset" style="margin-right:6px;"></i>Contact Sales
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Risk Management Settings -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#fff;">
+    <i class="fas fa-shield-alt" style="color:#ff8800;margin-right:8px;"></i>Risk Management Settings
+  </h3>
+
+  <!-- Daily P&L Limits -->
+  <div style="margin-bottom:24px;">
+    <h4 style="margin:0 0 14px 0;font-size:13px;color:#00ccff;font-weight:600;">
+      <i class="fas fa-chart-line" style="margin-right:6px;"></i>Daily P&L Limits
+    </h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-arrow-up" style="color:#00c853;margin-right:4px;"></i>Daily Profit Target (&#8377;)
+        </label>
+        <input type="number" id="mp_dailyProfitTarget" value="5000" placeholder="e.g. 5000" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-arrow-down" style="color:#ff4444;margin-right:4px;"></i>Daily Loss Limit (&#8377;)
+        </label>
+        <input type="number" id="mp_dailyLossLimit" value="3000" placeholder="e.g. 3000" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Time-based Square-off -->
+  <div style="margin-bottom:24px;">
+    <h4 style="margin:0 0 14px 0;font-size:13px;color:#ff8800;font-weight:600;">
+      <i class="fas fa-clock" style="margin-right:6px;"></i>Time-based Square-off
+    </h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">Square-off Time</label>
+        <input type="time" id="mp_squareoffTime" value="15:15" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-Position Limits -->
+  <div style="margin-bottom:20px;">
+    <h4 style="margin:0 0 14px 0;font-size:13px;color:#aa66ff;font-weight:600;">
+      <i class="fas fa-crosshairs" style="margin-right:6px;"></i>Per-Position Limits
+    </h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-arrow-up" style="color:#00c853;margin-right:4px;"></i>Profit Target (%)
+        </label>
+        <input type="number" id="mp_posProfit" value="5" min="0" max="100" step="0.5" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-arrow-down" style="color:#ff4444;margin-right:4px;"></i>Stop Loss (%)
+        </label>
+        <input type="number" id="mp_posLoss" value="2" min="0" max="100" step="0.5" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-shoe-prints" style="color:#ff8800;margin-right:4px;"></i>Trailing Profit (%)
+        </label>
+        <input type="number" id="mp_posTrailing" value="1" min="0" max="50" step="0.5" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+    </div>
+  </div>
+
+  <button onclick="mp_saveRiskSettings()" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;box-shadow:0 4px 12px rgba(0,204,136,0.3);" onmouseenter="this.style.transform='scale(1.03)'" onmouseleave="this.style.transform='scale(1)'">
+    <i class="fas fa-save"></i> Save Risk Settings
+  </button>
+  <span id="mp_riskSaveStatus" style="margin-left:12px;font-size:12px;color:#00c853;display:none;"><i class="fas fa-check-circle"></i> Saved!</span>
+</div>
+
+<!-- Usage Statistics -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#fff;">
+    <i class="fas fa-chart-pie" style="color:#00ccff;margin-right:8px;"></i>Usage Statistics
+    <span style="font-size:11px;color:#666;font-weight:400;margin-left:8px;">This Month</span>
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px;">
+
+    <!-- API Calls -->
+    <div style="background:#111;border:1px solid #222;border-radius:10px;padding:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span style="font-size:12px;color:#888;font-weight:500;"><i class="fas fa-plug" style="color:#00ccff;margin-right:6px;"></i>API Calls</span>
+        <span style="font-size:13px;font-weight:700;color:#fff;">12,450 <span style="color:#666;font-weight:400;">/ 50,000</span></span>
+      </div>
+      <div style="width:100%;height:8px;background:#222;border-radius:4px;overflow:hidden;">
+        <div style="width:24.9%;height:100%;background:linear-gradient(90deg,#00ccff,#0099cc);border-radius:4px;transition:width 0.5s;"></div>
+      </div>
+      <span style="font-size:10px;color:#555;margin-top:6px;display:block;">24.9% used</span>
+    </div>
+
+    <!-- Strategies Deployed -->
+    <div style="background:#111;border:1px solid #222;border-radius:10px;padding:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span style="font-size:12px;color:#888;font-weight:500;"><i class="fas fa-chess-board" style="color:#aa66ff;margin-right:6px;"></i>Strategies Deployed</span>
+        <span style="font-size:13px;font-weight:700;color:#fff;">7 <span style="color:#666;font-weight:400;">/ Unlimited</span></span>
+      </div>
+      <div style="width:100%;height:8px;background:#222;border-radius:4px;overflow:hidden;">
+        <div style="width:100%;height:100%;background:linear-gradient(90deg,#aa66ff,#8844dd);border-radius:4px;"></div>
+      </div>
+      <span style="font-size:10px;color:#00c853;margin-top:6px;display:block;"><i class="fas fa-infinity" style="margin-right:3px;"></i>Unlimited on Pro Plan</span>
+    </div>
+
+    <!-- Scanners Run -->
+    <div style="background:#111;border:1px solid #222;border-radius:10px;padding:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span style="font-size:12px;color:#888;font-weight:500;"><i class="fas fa-crosshairs" style="color:#ff8800;margin-right:6px;"></i>Scanners Run</span>
+        <span style="font-size:13px;font-weight:700;color:#fff;">342 <span style="color:#666;font-weight:400;">/ 1,000</span></span>
+      </div>
+      <div style="width:100%;height:8px;background:#222;border-radius:4px;overflow:hidden;">
+        <div style="width:34.2%;height:100%;background:linear-gradient(90deg,#ff8800,#cc6600);border-radius:4px;transition:width 0.5s;"></div>
+      </div>
+      <span style="font-size:10px;color:#555;margin-top:6px;display:block;">34.2% used</span>
+    </div>
+
+    <!-- Storage Used -->
+    <div style="background:#111;border:1px solid #222;border-radius:10px;padding:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span style="font-size:12px;color:#888;font-weight:500;"><i class="fas fa-database" style="color:#00c853;margin-right:6px;"></i>Storage Used</span>
+        <span style="font-size:13px;font-weight:700;color:#fff;">1.2 GB <span style="color:#666;font-weight:400;">/ 5 GB</span></span>
+      </div>
+      <div style="width:100%;height:8px;background:#222;border-radius:4px;overflow:hidden;">
+        <div style="width:24%;height:100%;background:linear-gradient(90deg,#00c853,#009940);border-radius:4px;transition:width 0.5s;"></div>
+      </div>
+      <span style="font-size:10px;color:#555;margin-top:6px;display:block;">24% used</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function mp_saveRiskSettings() {
+  var btn = event.target.closest('button');
+  var origText = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  btn.style.opacity = '0.7';
+  btn.disabled = true;
+  setTimeout(function() {
+    btn.innerHTML = origText;
+    btn.style.opacity = '1';
+    btn.disabled = false;
+    var status = document.getElementById('mp_riskSaveStatus');
+    status.style.display = 'inline';
+    setTimeout(function() { status.style.display = 'none'; }, 2500);
+  }, 800);
+}
+</script>
+<!-- END MY PLAN PAGE CONTENT -->
         </div>
 
         <div class="content-page hidden" id="backtestPage">
-            <h2><i class="fas fa-history"></i> Backtest</h2>
-            <p>Backtesting tools will be displayed here.</p>
+  <!-- Back to Dashboard -->
+  <button onclick="showPage('openPositionsPage')" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#aaa;font-size:12px;cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#aaa'">
+    <i class="fas fa-arrow-left"></i> Back
+  </button>
+
+<!-- BACKTEST PAGE CONTENT -->
+
+<!-- Page Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
+      <i class="fas fa-history" style="color:#aa66ff;margin-right:10px;"></i>Strategy Backtester
+    </h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Test strategies against historical data before deploying live</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="bt_statusBadge" style="display:inline-flex;align-items:center;gap:6px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:6px 14px;font-size:12px;color:#888;">
+      <span style="width:8px;height:8px;border-radius:50%;background:#555;display:inline-block;" id="bt_statusDot"></span>
+      Ready
+    </span>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start;">
+
+  <!-- LEFT: Configuration Panel -->
+  <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;">
+    <h3 style="margin:0 0 20px 0;font-size:15px;font-weight:600;color:#fff;">
+      <i class="fas fa-sliders-h" style="color:#00ccff;margin-right:8px;"></i>Configuration
+    </h3>
+
+    <!-- Strategy -->
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-chess-board" style="color:#aa66ff;margin-right:4px;"></i>Strategy
+      </label>
+      <select id="bt_strategy" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23888\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');background-repeat:no-repeat;background-position:right 10px center;background-size:16px;">
+        <option value="ma_crossover">Moving Average Crossover</option>
+        <option value="rsi_reversal">RSI Reversal</option>
+        <option value="supertrend">Supertrend</option>
+        <option value="macd">MACD</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+
+    <!-- Symbol -->
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-search-dollar" style="color:#00ccff;margin-right:4px;"></i>Symbol
+      </label>
+      <input type="text" id="bt_symbol" value="NIFTY" placeholder="Enter symbol" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+        <button onclick="document.getElementById('bt_symbol').value='NIFTY'" style="background:#111;border:1px solid #333;border-radius:6px;padding:4px 10px;color:#888;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">NIFTY</button>
+        <button onclick="document.getElementById('bt_symbol').value='BANKNIFTY'" style="background:#111;border:1px solid #333;border-radius:6px;padding:4px 10px;color:#888;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">BANKNIFTY</button>
+        <button onclick="document.getElementById('bt_symbol').value='RELIANCE'" style="background:#111;border:1px solid #333;border-radius:6px;padding:4px 10px;color:#888;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">RELIANCE</button>
+        <button onclick="document.getElementById('bt_symbol').value='TCS'" style="background:#111;border:1px solid #333;border-radius:6px;padding:4px 10px;color:#888;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">TCS</button>
+        <button onclick="document.getElementById('bt_symbol').value='HDFCBANK'" style="background:#111;border:1px solid #333;border-radius:6px;padding:4px 10px;color:#888;font-size:11px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">HDFCBANK</button>
+      </div>
+    </div>
+
+    <!-- Historical Days Slider -->
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-calendar-alt" style="color:#ff8800;margin-right:4px;"></i>Historical Days: <span id="bt_daysValue" style="color:#00ccff;font-weight:700;">180</span>
+      </label>
+      <input type="range" id="bt_days" min="30" max="1000" value="180" oninput="document.getElementById('bt_daysValue').textContent=this.value" style="width:100%;accent-color:#00ccff;cursor:pointer;" />
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#555;">
+        <span>30 days</span><span>1000 days</span>
+      </div>
+    </div>
+
+    <!-- Interval -->
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-clock" style="color:#00cc88;margin-right:4px;"></i>Interval
+      </label>
+      <select id="bt_interval" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23888\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');background-repeat:no-repeat;background-position:right 10px center;background-size:16px;">
+        <option value="1d">1 Day</option>
+        <option value="1h">1 Hour</option>
+        <option value="15m" selected>15 Minutes</option>
+        <option value="5m">5 Minutes</option>
+      </select>
+    </div>
+
+    <!-- Initial Capital -->
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-rupee-sign" style="color:#00ccff;margin-right:4px;"></i>Initial Capital
+      </label>
+      <input type="number" id="bt_capital" value="100000" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+    </div>
+
+    <!-- Risk Settings -->
+    <div style="background:#111;border:1px solid #222;border-radius:8px;padding:14px;margin-bottom:16px;">
+      <h4 style="margin:0 0 12px 0;font-size:12px;color:#ff8800;font-weight:600;">
+        <i class="fas fa-shield-alt" style="margin-right:4px;"></i>Risk Settings
+      </h4>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Stop Loss %</label>
+          <input type="number" id="bt_sl" value="2" min="0" max="50" step="0.5" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff4444;font-size:12px;outline:none;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Target %</label>
+          <input type="number" id="bt_target" value="4" min="0" max="100" step="0.5" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#00c853;font-size:12px;outline:none;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Trailing SL %</label>
+          <input type="number" id="bt_trailSl" value="1" min="0" max="50" step="0.5" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff8800;font-size:12px;outline:none;" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <button onclick="bt_startBacktest()" id="bt_startBtn" style="width:100%;padding:12px;background:linear-gradient(135deg,#00cc88 0%,#009966 100%);border:none;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;box-shadow:0 4px 12px rgba(0,204,136,0.3);margin-bottom:10px;" onmouseenter="this.style.transform='scale(1.02)'" onmouseleave="this.style.transform='scale(1)'">
+      <i class="fas fa-play"></i> Start Backtest
+    </button>
+    <button onclick="bt_exportCSV()" id="bt_exportBtn" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff';this.style.color='#00ccff'" onmouseleave="this.style.borderColor='#333';this.style.color='#888'">
+      <i class="fas fa-file-csv"></i> Export CSV
+    </button>
+
+    <!-- Progress Bar -->
+    <div id="bt_progressContainer" style="display:none;margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:11px;color:#888;">Processing...</span>
+        <span id="bt_progressPct" style="font-size:11px;color:#00ccff;font-weight:600;">0%</span>
+      </div>
+      <div style="width:100%;height:6px;background:#222;border-radius:3px;overflow:hidden;">
+        <div id="bt_progressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#00ccff,#00cc88);border-radius:3px;transition:width 0.15s;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Results Panel -->
+  <div>
+    <!-- Summary Cards -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;">
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;text-align:center;">
+        <span style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Final Capital</span>
+        <span id="bt_finalCapital" style="font-size:20px;font-weight:700;color:#fff;">--</span>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;text-align:center;">
+        <span style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Total P&L</span>
+        <span id="bt_totalPnl" style="font-size:20px;font-weight:700;color:#888;">--</span>
+        <span id="bt_totalPnlPct" style="font-size:11px;color:#666;display:block;margin-top:2px;">--</span>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;text-align:center;">
+        <span style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Total Trades</span>
+        <span id="bt_totalTrades" style="font-size:20px;font-weight:700;color:#fff;">--</span>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;text-align:center;">
+        <span style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Win Rate</span>
+        <span id="bt_winRate" style="font-size:20px;font-weight:700;color:#888;">--</span>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;text-align:center;">
+        <span style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Profit Factor</span>
+        <span id="bt_profitFactor" style="font-size:20px;font-weight:700;color:#888;">--</span>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;text-align:center;">
+        <span style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Max Drawdown</span>
+        <span id="bt_maxDrawdown" style="font-size:20px;font-weight:700;color:#888;">--</span>
+      </div>
+    </div>
+
+    <!-- Equity Curve -->
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <h4 style="margin:0 0 14px 0;font-size:14px;font-weight:600;color:#fff;">
+        <i class="fas fa-chart-area" style="color:#00cc88;margin-right:6px;"></i>Equity Curve
+      </h4>
+      <div id="bt_equityCurve" style="width:100%;height:200px;background:#111;border:1px solid #222;border-radius:8px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+        <span id="bt_equityPlaceholder" style="color:#555;font-size:13px;"><i class="fas fa-chart-line" style="margin-right:6px;"></i>Run backtest to see equity curve</span>
+        <svg id="bt_equitySvg" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;" viewBox="0 0 600 200" preserveAspectRatio="none">
+          <!-- Grid lines -->
+          <line x1="0" y1="50" x2="600" y2="50" stroke="#1a1a1a" stroke-width="1"/>
+          <line x1="0" y1="100" x2="600" y2="100" stroke="#1a1a1a" stroke-width="1"/>
+          <line x1="0" y1="150" x2="600" y2="150" stroke="#1a1a1a" stroke-width="1"/>
+          <!-- Equity line - populated by JS -->
+          <polyline id="bt_equityLine" fill="none" stroke="#00cc88" stroke-width="2" points=""/>
+          <polyline id="bt_equityFill" fill="url(#bt_grad)" stroke="none" points=""/>
+          <defs>
+            <linearGradient id="bt_grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#00cc88" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#00cc88" stop-opacity="0.02"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Trade Log Table -->
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h4 style="margin:0;font-size:14px;font-weight:600;color:#fff;">
+          <i class="fas fa-list-ol" style="color:#00ccff;margin-right:6px;"></i>Trade Log
+        </h4>
+        <span id="bt_tradeCount" style="font-size:11px;color:#666;background:#111;padding:3px 10px;border-radius:6px;border:1px solid #222;">0 trades</span>
+      </div>
+      <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+        <table id="bt_tradeTable" style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px;">
+          <thead>
+            <tr style="background:#111;">
+              <th style="padding:10px 8px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">#</th>
+              <th style="padding:10px 8px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Type</th>
+              <th style="padding:10px 8px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Entry Time</th>
+              <th style="padding:10px 8px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Entry Price</th>
+              <th style="padding:10px 8px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Exit Time</th>
+              <th style="padding:10px 8px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Exit Price</th>
+              <th style="padding:10px 8px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Qty</th>
+              <th style="padding:10px 8px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">P&L</th>
+              <th style="padding:10px 8px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">P&L %</th>
+              <th style="padding:10px 8px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Exit Reason</th>
+            </tr>
+          </thead>
+          <tbody id="bt_tradeBody">
+            <tr><td colspan="10" style="padding:30px;text-align:center;color:#555;font-size:13px;">
+              <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#333;"></i>
+              Run a backtest to see trade results
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function bt_startBacktest() {
+  var btn = document.getElementById('bt_startBtn');
+  var prog = document.getElementById('bt_progressContainer');
+  var bar = document.getElementById('bt_progressBar');
+  var pct = document.getElementById('bt_progressPct');
+  var dot = document.getElementById('bt_statusDot');
+
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+  btn.style.opacity = '0.7';
+  btn.disabled = true;
+  prog.style.display = 'block';
+  dot.style.background = '#ff8800';
+
+  var progress = 0;
+  var timer = setInterval(function() {
+    progress += Math.random() * 8 + 2;
+    if (progress >= 100) {
+      progress = 100;
+      clearInterval(timer);
+      setTimeout(function() { bt_showResults(); }, 300);
+    }
+    bar.style.width = progress + '%';
+    pct.textContent = Math.round(progress) + '%';
+  }, 120);
+}
+
+function bt_showResults() {
+  var btn = document.getElementById('bt_startBtn');
+  btn.innerHTML = '<i class="fas fa-play"></i> Start Backtest';
+  btn.style.opacity = '1';
+  btn.disabled = false;
+  document.getElementById('bt_statusDot').style.background = '#00c853';
+  document.getElementById('bt_statusBadge').querySelector('span:last-child') || 0;
+
+  var capital = parseFloat(document.getElementById('bt_capital').value) || 100000;
+  var finalCap = capital + 18750;
+
+  document.getElementById('bt_finalCapital').textContent = '\u20B9' + finalCap.toLocaleString('en-IN');
+  document.getElementById('bt_totalPnl').textContent = '+\u20B918,750';
+  document.getElementById('bt_totalPnl').style.color = '#00c853';
+  document.getElementById('bt_totalPnlPct').textContent = '+18.75%';
+  document.getElementById('bt_totalPnlPct').style.color = '#00c853';
+  document.getElementById('bt_totalTrades').textContent = '42';
+  document.getElementById('bt_winRate').textContent = '64.3%';
+  document.getElementById('bt_winRate').style.color = '#00c853';
+  document.getElementById('bt_profitFactor').textContent = '1.82';
+  document.getElementById('bt_profitFactor').style.color = '#00ccff';
+  document.getElementById('bt_maxDrawdown').textContent = '-8.4%';
+  document.getElementById('bt_maxDrawdown').style.color = '#ff4444';
+
+  // Draw equity curve
+  document.getElementById('bt_equityPlaceholder').style.display = 'none';
+  var svg = document.getElementById('bt_equitySvg');
+  svg.style.display = 'block';
+  var pts = [];
+  var v = 160;
+  for (var i = 0; i <= 30; i++) {
+    v = v + (Math.random() * 16 - 6);
+    if (v > 195) v = 190;
+    if (v < 40) v = 50;
+    pts.push(Math.round(i * 20) + ',' + Math.round(200 - v));
+  }
+  document.getElementById('bt_equityLine').setAttribute('points', pts.join(' '));
+  var fillPts = '0,200 ' + pts.join(' ') + ' 600,200';
+  document.getElementById('bt_equityFill').setAttribute('points', fillPts);
+
+  // Populate trade log
+  var trades = [
+    { type: 'LONG', entryTime: '2025-09-12 09:30', entryPrice: 19245.50, exitTime: '2025-09-12 14:15', exitPrice: 19412.75, qty: 50, pnl: 8362.50, pnlPct: 0.87, reason: 'Target' },
+    { type: 'SHORT', entryTime: '2025-09-15 10:00', entryPrice: 19380.00, exitTime: '2025-09-15 13:45', exitPrice: 19295.25, qty: 50, pnl: 4237.50, pnlPct: 0.44, reason: 'Target' },
+    { type: 'LONG', entryTime: '2025-09-18 09:20', entryPrice: 19510.00, exitTime: '2025-09-18 11:30', exitPrice: 19472.50, qty: 50, pnl: -1875.00, pnlPct: -0.19, reason: 'Stop Loss' },
+    { type: 'LONG', entryTime: '2025-09-22 09:45', entryPrice: 19320.75, exitTime: '2025-09-22 15:00', exitPrice: 19518.00, qty: 50, pnl: 9862.50, pnlPct: 1.02, reason: 'Trailing SL' },
+    { type: 'SHORT', entryTime: '2025-09-25 10:15', entryPrice: 19600.00, exitTime: '2025-09-25 14:30', exitPrice: 19555.50, qty: 50, pnl: 2225.00, pnlPct: 0.23, reason: 'EOD Exit' }
+  ];
+
+  var tbody = document.getElementById('bt_tradeBody');
+  tbody.innerHTML = '';
+  trades.forEach(function(t, i) {
+    var isProfit = t.pnl >= 0;
+    var typeColor = t.type === 'LONG' ? '#00c853' : '#ff4444';
+    var typeBg = t.type === 'LONG' ? 'rgba(0,200,83,0.1)' : 'rgba(255,68,68,0.1)';
+    var pnlColor = isProfit ? '#00c853' : '#ff4444';
+    var reasonColor = t.reason === 'Target' ? '#00c853' : t.reason === 'Stop Loss' ? '#ff4444' : t.reason === 'Trailing SL' ? '#ff8800' : '#00ccff';
+    var row = '<tr style="border-bottom:1px solid #1a1a1a;" onmouseenter="this.style.background=\'#111\'" onmouseleave="this.style.background=\'transparent\'">' +
+      '<td style="padding:10px 8px;text-align:center;color:#666;">' + (i+1) + '</td>' +
+      '<td style="padding:10px 8px;text-align:center;"><span style="background:' + typeBg + ';color:' + typeColor + ';padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;border:1px solid ' + typeColor + '30;">' + t.type + '</span></td>' +
+      '<td style="padding:10px 8px;color:#ccc;">' + t.entryTime + '</td>' +
+      '<td style="padding:10px 8px;text-align:right;color:#fff;font-weight:600;">' + t.entryPrice.toFixed(2) + '</td>' +
+      '<td style="padding:10px 8px;color:#ccc;">' + t.exitTime + '</td>' +
+      '<td style="padding:10px 8px;text-align:right;color:#fff;font-weight:600;">' + t.exitPrice.toFixed(2) + '</td>' +
+      '<td style="padding:10px 8px;text-align:right;color:#aaa;">' + t.qty + '</td>' +
+      '<td style="padding:10px 8px;text-align:right;color:' + pnlColor + ';font-weight:700;">' + (isProfit ? '+' : '') + '\u20B9' + t.pnl.toLocaleString('en-IN') + '</td>' +
+      '<td style="padding:10px 8px;text-align:right;color:' + pnlColor + ';">' + (isProfit ? '+' : '') + t.pnlPct.toFixed(2) + '%</td>' +
+      '<td style="padding:10px 8px;text-align:center;"><span style="color:' + reasonColor + ';font-size:11px;background:' + reasonColor + '15;padding:3px 8px;border-radius:4px;">' + t.reason + '</span></td>' +
+      '</tr>';
+    tbody.innerHTML += row;
+  });
+  document.getElementById('bt_tradeCount').textContent = trades.length + ' trades';
+}
+
+function bt_exportCSV() {
+  var table = document.getElementById('bt_tradeTable');
+  var rows = table.querySelectorAll('tr');
+  if (rows.length <= 1) { alert('No backtest data to export. Run a backtest first.'); return; }
+  var csv = [];
+  rows.forEach(function(row) {
+    var cols = row.querySelectorAll('th, td');
+    var rowData = [];
+    cols.forEach(function(col) { rowData.push('"' + col.textContent.trim().replace(/"/g, '""') + '"'); });
+    csv.push(rowData.join(','));
+  });
+  var blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'backtest_' + document.getElementById('bt_symbol').value + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+<!-- END BACKTEST PAGE CONTENT -->
         </div>
 
         <div class="content-page hidden" id="settingsPage">
@@ -4664,8 +6308,453 @@
     <i class="fas fa-arrow-left"></i> Back
   </button>
 
-            <h2><i class="fas fa-cog"></i> Settings</h2>
-            <p>Settings content will be displayed here.</p>
+<!-- SETTINGS PAGE CONTENT -->
+
+<!-- Page Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
+      <i class="fas fa-cog" style="color:#00ccff;margin-right:10px;"></i>Settings
+    </h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Configure trading parameters, alerts, and app preferences</p>
+  </div>
+</div>
+
+<!-- Section 1: Trading Settings -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#fff;">
+    <i class="fas fa-chart-bar" style="color:#00ccff;margin-right:8px;"></i>Trading Settings
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:20px;">
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-sort-numeric-up" style="color:#00ccff;margin-right:4px;"></i>Default Quantity
+      </label>
+      <input type="number" id="st_defaultQty" value="1" min="1" max="1000" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      <span style="font-size:10px;color:#555;margin-top:4px;display:block;">Range: 1 - 1,000</span>
+    </div>
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-layer-group" style="color:#aa66ff;margin-right:4px;"></i>Max Positions
+      </label>
+      <input type="number" id="st_maxPositions" value="10" min="1" max="100" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      <span style="font-size:10px;color:#555;margin-top:4px;display:block;">Range: 1 - 100</span>
+    </div>
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-percentage" style="color:#ff8800;margin-right:4px;"></i>Risk per Trade (%)
+      </label>
+      <input type="number" id="st_riskPerTrade" value="2" min="0.1" max="10" step="0.1" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      <span style="font-size:10px;color:#555;margin-top:4px;display:block;">Range: 0.1% - 10%</span>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button onclick="st_saveTradingSettings()" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;box-shadow:0 4px 12px rgba(0,204,136,0.3);" onmouseenter="this.style.transform='scale(1.03)'" onmouseleave="this.style.transform='scale(1)'">
+      <i class="fas fa-save"></i> Save Trading Settings
+    </button>
+    <span id="st_tradingSaveStatus" style="font-size:12px;color:#00c853;display:none;"><i class="fas fa-check-circle"></i> Saved!</span>
+  </div>
+</div>
+
+<!-- Section 2: Telegram Alerts -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <h3 style="margin:0;font-size:16px;font-weight:600;color:#fff;">
+      <i class="fab fa-telegram" style="color:#00ccff;margin-right:8px;"></i>Telegram Alerts
+    </h3>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <span style="font-size:12px;color:#888;">Enable</span>
+      <div style="position:relative;width:44px;height:24px;">
+        <input type="checkbox" id="st_telegramEnabled" checked onchange="st_toggleTelegram(this)" style="opacity:0;width:0;height:0;position:absolute;" />
+        <div id="st_telegramToggle" onclick="var cb=document.getElementById('st_telegramEnabled');cb.checked=!cb.checked;st_toggleTelegram(cb);" style="width:44px;height:24px;background:#00cc88;border-radius:12px;cursor:pointer;transition:all 0.3s;position:relative;">
+          <div id="st_telegramKnob" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;left:22px;transition:all 0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+        </div>
+      </div>
+    </label>
+  </div>
+
+  <div id="st_telegramFields" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-key" style="color:#ff8800;margin-right:4px;"></i>Bot Token
+      </label>
+      <input type="password" id="st_botToken" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+    </div>
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-hashtag" style="color:#aa66ff;margin-right:4px;"></i>Chat ID
+      </label>
+      <input type="text" id="st_chatId" placeholder="e.g. -1001234567890" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+    </div>
+  </div>
+
+  <div style="background:#111;border:1px solid #222;border-radius:8px;padding:12px;margin-bottom:16px;">
+    <p style="margin:0;font-size:11px;color:#666;line-height:1.6;">
+      <i class="fas fa-info-circle" style="color:#00ccff;margin-right:4px;"></i>
+      <strong style="color:#888;">Setup:</strong> Message <span style="color:#00ccff;">@BotFather</span> on Telegram, use <span style="color:#00ccff;">/newbot</span> to create a bot and get the token. Add the bot to your group/channel, then get the Chat ID from <span style="color:#00ccff;">@userinfobot</span> or the Telegram API.
+    </p>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <button onclick="st_saveTelegram()" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.03)'" onmouseleave="this.style.transform='scale(1)'">
+      <i class="fas fa-save"></i> Save Telegram
+    </button>
+    <button onclick="st_testTelegram()" style="background:#111;border:1px solid #333;color:#00ccff;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor='#00ccff'" onmouseleave="this.style.borderColor='#333'">
+      <i class="fas fa-paper-plane"></i> Test Connection
+    </button>
+    <span id="st_telegramStatus" style="font-size:12px;display:none;"></span>
+  </div>
+</div>
+
+<!-- Section 3: Telegram Bot Controller -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <h3 style="margin:0;font-size:16px;font-weight:600;color:#fff;">
+      <i class="fas fa-gamepad" style="color:#aa66ff;margin-right:8px;"></i>Telegram Bot Controller
+      <span style="font-size:11px;color:#666;font-weight:400;margin-left:6px;">(Remote Control)</span>
+    </h3>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <span style="font-size:12px;color:#888;">Enable</span>
+      <div style="position:relative;width:44px;height:24px;">
+        <input type="checkbox" id="st_botControlEnabled" onchange="st_toggleBotControl(this)" style="opacity:0;width:0;height:0;position:absolute;" />
+        <div id="st_botControlToggle" onclick="var cb=document.getElementById('st_botControlEnabled');cb.checked=!cb.checked;st_toggleBotControl(cb);" style="width:44px;height:24px;background:#444;border-radius:12px;cursor:pointer;transition:all 0.3s;position:relative;">
+          <div id="st_botControlKnob" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:all 0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+        </div>
+      </div>
+    </label>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:12px;color:#888;">Status:</span>
+      <span id="st_botStatus" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#ff4444;font-weight:600;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#ff4444;display:inline-block;" id="st_botDot"></span>
+        Stopped
+      </span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="st_startBot()" id="st_startBotBtn" style="background:rgba(0,200,83,0.1);color:#00c853;border:1px solid rgba(0,200,83,0.3);border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(0,200,83,0.2)'" onmouseleave="this.style.background='rgba(0,200,83,0.1)'">
+        <i class="fas fa-play" style="margin-right:4px;"></i>Start
+      </button>
+      <button onclick="st_stopBot()" id="st_stopBotBtn" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='rgba(255,68,68,0.2)'" onmouseleave="this.style.background='rgba(255,68,68,0.1)'">
+        <i class="fas fa-stop" style="margin-right:4px;"></i>Stop
+      </button>
+    </div>
+  </div>
+
+  <div style="background:#111;border:1px solid #222;border-radius:8px;padding:16px;">
+    <h4 style="margin:0 0 10px 0;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px;">
+      <i class="fas fa-terminal" style="color:#00ccff;margin-right:6px;"></i>Available Commands
+    </h4>
+    <pre style="margin:0;font-family:'Courier New',monospace;font-size:12px;color:#ccc;line-height:2;background:#0d0d0d;padding:14px;border-radius:6px;border:1px solid #1a1a1a;overflow-x:auto;"><span style="color:#00ccff;">/status</span>     - View current bot & trading status
+<span style="color:#00ccff;">/positions</span>  - List all open positions
+<span style="color:#00ccff;">/orders</span>     - Show pending orders
+<span style="color:#00ccff;">/pnl</span>        - Today's profit & loss summary
+<span style="color:#00ccff;">/pause</span>      - Pause all trading activity
+<span style="color:#00ccff;">/resume</span>     - Resume trading activity
+<span style="color:#00ccff;">/squareoff</span>  - Square off all open positions
+<span style="color:#00ccff;">/help</span>       - Show all available commands</pre>
+  </div>
+</div>
+
+<!-- Section 4: Auto Square-off -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <h3 style="margin:0;font-size:16px;font-weight:600;color:#fff;">
+      <i class="fas fa-power-off" style="color:#ff4444;margin-right:8px;"></i>Auto Square-off
+    </h3>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <span style="font-size:12px;color:#888;">Enable</span>
+      <div style="position:relative;width:44px;height:24px;">
+        <input type="checkbox" id="st_autoSqEnabled" checked onchange="st_toggleAutoSq(this)" style="opacity:0;width:0;height:0;position:absolute;" />
+        <div id="st_autoSqToggle" onclick="var cb=document.getElementById('st_autoSqEnabled');cb.checked=!cb.checked;st_toggleAutoSq(cb);" style="width:44px;height:24px;background:#00cc88;border-radius:12px;cursor:pointer;transition:all 0.3s;position:relative;">
+          <div id="st_autoSqKnob" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;left:22px;transition:all 0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+        </div>
+      </div>
+    </label>
+  </div>
+
+  <div id="st_autoSqFields">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:20px;">
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-arrow-up" style="color:#00c853;margin-right:4px;"></i>Daily Profit Target (&#8377;)
+        </label>
+        <input type="number" id="st_dailyProfit" value="5000" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-arrow-down" style="color:#ff4444;margin-right:4px;"></i>Daily Loss Limit (&#8377;)
+        </label>
+        <input type="number" id="st_dailyLoss" value="3000" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+          <i class="fas fa-clock" style="color:#ff8800;margin-right:4px;"></i>Square-off Time
+        </label>
+        <input type="time" id="st_sqTime" value="15:15" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;" />
+      </div>
+    </div>
+
+    <!-- Per-Position Limits -->
+    <div style="background:#111;border:1px solid #222;border-radius:8px;padding:16px;margin-bottom:20px;">
+      <h4 style="margin:0 0 14px 0;font-size:12px;color:#aa66ff;font-weight:600;text-transform:uppercase;letter-spacing:1px;">
+        <i class="fas fa-crosshairs" style="margin-right:6px;"></i>Per-Position Limits
+      </h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;">
+        <div>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Profit Target (%)</label>
+          <input type="number" id="st_posProfit" value="5" min="0" max="100" step="0.5" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#00c853;font-size:12px;outline:none;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Stop Loss (%)</label>
+          <input type="number" id="st_posLoss" value="2" min="0" max="100" step="0.5" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff4444;font-size:12px;outline:none;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">Trailing Profit (%)</label>
+          <input type="number" id="st_posTrailing" value="1" min="0" max="50" step="0.5" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#ff8800;font-size:12px;outline:none;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button onclick="st_saveAutoSq()" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.03)'" onmouseleave="this.style.transform='scale(1)'">
+      <i class="fas fa-save"></i> Save Auto Square-off
+    </button>
+    <span id="st_autoSqSaveStatus" style="font-size:12px;color:#00c853;display:none;"><i class="fas fa-check-circle"></i> Saved!</span>
+  </div>
+</div>
+
+<!-- Section 5: App Preferences -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;margin-bottom:24px;">
+  <h3 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#fff;">
+    <i class="fas fa-palette" style="color:#ff8800;margin-right:8px;"></i>App Preferences
+  </h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px;">
+
+    <!-- Theme -->
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-moon" style="color:#aa66ff;margin-right:4px;"></i>Theme
+      </label>
+      <select id="st_theme" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23888\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');background-repeat:no-repeat;background-position:right 10px center;background-size:16px;">
+        <option value="dark" selected>Dark Mode</option>
+        <option value="light" disabled>Light Mode (Coming Soon)</option>
+      </select>
+    </div>
+
+    <!-- Sound Alerts -->
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-volume-up" style="color:#00ccff;margin-right:4px;"></i>Sound Alerts
+      </label>
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+        <div style="position:relative;width:44px;height:24px;">
+          <input type="checkbox" id="st_soundEnabled" checked onchange="st_toggleSound(this)" style="opacity:0;width:0;height:0;position:absolute;" />
+          <div id="st_soundToggle" onclick="var cb=document.getElementById('st_soundEnabled');cb.checked=!cb.checked;st_toggleSound(cb);" style="width:44px;height:24px;background:#00cc88;border-radius:12px;cursor:pointer;transition:all 0.3s;position:relative;">
+            <div id="st_soundKnob" style="width:20px;height:20px;background:#fff;border-radius:50%;position:absolute;top:2px;left:22px;transition:all 0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+          </div>
+        </div>
+        <span id="st_soundLabel" style="font-size:12px;color:#00c853;">Enabled</span>
+      </div>
+    </div>
+
+    <!-- Notification Frequency -->
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-bell" style="color:#ff8800;margin-right:4px;"></i>Notification Frequency
+      </label>
+      <select id="st_notifFreq" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23888\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');background-repeat:no-repeat;background-position:right 10px center;background-size:16px;">
+        <option value="all">All Notifications</option>
+        <option value="important" selected>Important Only</option>
+        <option value="trades">Trades Only</option>
+        <option value="none">None</option>
+      </select>
+    </div>
+
+    <!-- Data Refresh Interval -->
+    <div>
+      <label style="display:block;font-size:12px;color:#aaa;margin-bottom:6px;font-weight:500;">
+        <i class="fas fa-sync-alt" style="color:#00c853;margin-right:4px;"></i>Data Refresh Interval
+      </label>
+      <select id="st_refreshInterval" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23888\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');background-repeat:no-repeat;background-position:right 10px center;background-size:16px;">
+        <option value="1">1 Second</option>
+        <option value="2" selected>2 Seconds</option>
+        <option value="5">5 Seconds</option>
+        <option value="10">10 Seconds</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;display:flex;align-items:center;gap:12px;">
+    <button onclick="st_savePreferences()" style="background:linear-gradient(135deg,#00cc88 0%,#009966 100%);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.03)'" onmouseleave="this.style.transform='scale(1)'">
+      <i class="fas fa-save"></i> Save Preferences
+    </button>
+    <span id="st_prefSaveStatus" style="font-size:12px;color:#00c853;display:none;"><i class="fas fa-check-circle"></i> Saved!</span>
+  </div>
+</div>
+
+<script>
+// Generic save handler with status feedback
+function st_showSaveStatus(statusId) {
+  var el = document.getElementById(statusId);
+  el.style.display = 'inline';
+  setTimeout(function() { el.style.display = 'none'; }, 2500);
+}
+
+function st_saveTradingSettings() {
+  var btn = event.target.closest('button');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  btn.disabled = true;
+  setTimeout(function() {
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Trading Settings';
+    btn.disabled = false;
+    st_showSaveStatus('st_tradingSaveStatus');
+  }, 600);
+}
+
+function st_saveTelegram() {
+  var btn = event.target.closest('button');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  btn.disabled = true;
+  setTimeout(function() {
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Telegram';
+    btn.disabled = false;
+    var s = document.getElementById('st_telegramStatus');
+    s.style.display = 'inline';
+    s.style.color = '#00c853';
+    s.innerHTML = '<i class="fas fa-check-circle"></i> Telegram settings saved!';
+    setTimeout(function() { s.style.display = 'none'; }, 2500);
+  }, 600);
+}
+
+function st_testTelegram() {
+  var btn = event.target.closest('button');
+  var origHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+  btn.disabled = true;
+  var s = document.getElementById('st_telegramStatus');
+  setTimeout(function() {
+    btn.innerHTML = origHTML;
+    btn.disabled = false;
+    var token = document.getElementById('st_botToken').value;
+    var chatId = document.getElementById('st_chatId').value;
+    if (!token || !chatId) {
+      s.style.display = 'inline';
+      s.style.color = '#ff4444';
+      s.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please enter Bot Token and Chat ID first';
+    } else {
+      s.style.display = 'inline';
+      s.style.color = '#00c853';
+      s.innerHTML = '<i class="fas fa-check-circle"></i> Test message sent successfully!';
+    }
+    setTimeout(function() { s.style.display = 'none'; }, 3000);
+  }, 1200);
+}
+
+// Toggle handlers
+function st_toggleTelegram(cb) {
+  var toggle = document.getElementById('st_telegramToggle');
+  var knob = document.getElementById('st_telegramKnob');
+  var fields = document.getElementById('st_telegramFields');
+  if (cb.checked) {
+    toggle.style.background = '#00cc88';
+    knob.style.left = '22px';
+    fields.style.opacity = '1';
+    fields.style.pointerEvents = 'auto';
+  } else {
+    toggle.style.background = '#444';
+    knob.style.left = '2px';
+    fields.style.opacity = '0.4';
+    fields.style.pointerEvents = 'none';
+  }
+}
+
+function st_toggleBotControl(cb) {
+  var toggle = document.getElementById('st_botControlToggle');
+  var knob = document.getElementById('st_botControlKnob');
+  if (cb.checked) {
+    toggle.style.background = '#00cc88';
+    knob.style.left = '22px';
+  } else {
+    toggle.style.background = '#444';
+    knob.style.left = '2px';
+    st_stopBot();
+  }
+}
+
+function st_toggleAutoSq(cb) {
+  var toggle = document.getElementById('st_autoSqToggle');
+  var knob = document.getElementById('st_autoSqKnob');
+  var fields = document.getElementById('st_autoSqFields');
+  if (cb.checked) {
+    toggle.style.background = '#00cc88';
+    knob.style.left = '22px';
+    fields.style.opacity = '1';
+    fields.style.pointerEvents = 'auto';
+  } else {
+    toggle.style.background = '#444';
+    knob.style.left = '2px';
+    fields.style.opacity = '0.4';
+    fields.style.pointerEvents = 'none';
+  }
+}
+
+function st_toggleSound(cb) {
+  var toggle = document.getElementById('st_soundToggle');
+  var knob = document.getElementById('st_soundKnob');
+  var label = document.getElementById('st_soundLabel');
+  if (cb.checked) {
+    toggle.style.background = '#00cc88';
+    knob.style.left = '22px';
+    label.textContent = 'Enabled';
+    label.style.color = '#00c853';
+  } else {
+    toggle.style.background = '#444';
+    knob.style.left = '2px';
+    label.textContent = 'Disabled';
+    label.style.color = '#888';
+  }
+}
+
+function st_startBot() {
+  var dot = document.getElementById('st_botDot');
+  var status = document.getElementById('st_botStatus');
+  dot.style.background = '#00c853';
+  status.style.color = '#00c853';
+  status.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#00c853;display:inline-block;animation:pulse 2s infinite;" id="st_botDot"></span> Running';
+}
+
+function st_stopBot() {
+  var status = document.getElementById('st_botStatus');
+  status.style.color = '#ff4444';
+  status.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#ff4444;display:inline-block;" id="st_botDot"></span> Stopped';
+}
+
+function st_saveAutoSq() {
+  var btn = event.target.closest('button');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  btn.disabled = true;
+  setTimeout(function() {
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Auto Square-off';
+    btn.disabled = false;
+    st_showSaveStatus('st_autoSqSaveStatus');
+  }, 600);
+}
+
+function st_savePreferences() {
+  var btn = event.target.closest('button');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  btn.disabled = true;
+  setTimeout(function() {
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Preferences';
+    btn.disabled = false;
+    st_showSaveStatus('st_prefSaveStatus');
+  }, 600);
+}
+</script>
+<!-- END SETTINGS PAGE CONTENT -->
         </div>
 
         <div class="content-page hidden" id="alPage">
@@ -4674,8 +6763,413 @@
     <i class="fas fa-arrow-left"></i> Back
   </button>
 
-            <h2><i class="fas fa-robot"></i> AL</h2>
-            <p>AI trading tools will be displayed here.</p>
+
+<!-- AL PAGE CONTENT - AI Trading & Alerts -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px;">
+      <i class="fas fa-robot" style="color:#aa66ff;margin-right:10px;"></i>AI Trading & Alerts
+    </h2>
+    <p style="margin:4px 0 0 0;font-size:13px;color:#888;">Price alerts, technical indicator signals, and AI-powered trading insights</p>
+  </div>
+</div>
+
+<!-- ===== CREATE NEW ALERT ===== -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+  <h4 style="margin:0 0 16px 0;font-size:14px;color:#00ccff;font-weight:600;">
+    <i class="fas fa-bell" style="margin-right:6px;"></i>Create New Alert
+  </h4>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Symbol</label>
+      <input type="text" id="al_alertSymbol" placeholder="e.g. NIFTY, RELIANCE" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;" onfocus="this.style.borderColor='#00ccff'" onblur="this.style.borderColor='#333'" />
+    </div>
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Alert Type</label>
+      <select id="al_alertType" style="width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:12px;outline:none;">
+        <option value="price_above">Price Above</option>
+        <option value="price_below">Price Below</option>
+        <option value="price_cross_up">Price Cross Up</option>
+        <option value="price_cross_down">Price Cross Down</option>
+        <option value="rsi_overbought">RSI Overbought (&gt;70)</option>
+        <option value="rsi_oversold">RSI Oversold (&lt;30)</option>
+        <option value="macd_bullish">MACD Bullish Cross</option>
+        <option value="macd_bearish">MACD Bearish Cross</option>
+        <option value="supertrend_buy">Supertrend Buy</option>
+        <option value="supertrend_sell">Supertrend Sell</option>
+        <option value="pct_change_up">% Change Up</option>
+        <option value="pct_change_down">% Change Down</option>
+      </select>
+    </div>
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Target Value</label>
+      <input type="number" id="al_alertTarget" placeholder="e.g. 22500" step="0.05" style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;" />
+    </div>
+    <div>
+      <label style="display:block;font-size:11px;color:#888;margin-bottom:5px;">Custom Message</label>
+      <input type="text" id="al_alertMsg" placeholder="Optional note..." style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none;" />
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;">
+      <input type="checkbox" id="al_repeatAlert" style="accent-color:#00ccff;width:16px;height:16px;" /> Repeat Alert (trigger multiple times)
+    </label>
+    <button onclick="al_createAlert()" style="margin-left:auto;background:linear-gradient(135deg,#00ccff,#0088cc);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+      <i class="fas fa-plus"></i> Create Alert
+    </button>
+  </div>
+</div>
+
+<!-- ===== ACTIVE ALERTS TABLE ===== -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <h4 style="margin:0;font-size:14px;color:#fff;font-weight:600;">
+      <i class="fas fa-list" style="color:#00cc88;margin-right:6px;"></i>Active Alerts <span id="al_activeCount" style="background:#333;color:#888;font-size:10px;padding:2px 8px;border-radius:10px;margin-left:6px;">4</span>
+    </h4>
+    <div style="display:flex;gap:6px;">
+      <button onclick="al_refreshAlerts()" style="background:#111;border:1px solid #333;border-radius:6px;padding:6px 12px;color:#888;font-size:11px;cursor:pointer;"><i class="fas fa-sync-alt" style="margin-right:3px;"></i>Refresh</button>
+      <button onclick="al_clearTriggered()" style="background:rgba(255,136,0,0.1);color:#ff8800;border:1px solid rgba(255,136,0,0.3);border-radius:6px;padding:6px 12px;font-size:11px;cursor:pointer;"><i class="fas fa-broom" style="margin-right:3px;"></i>Clear Triggered</button>
+    </div>
+  </div>
+  <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#111;">
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">ID</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Symbol</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Type</th>
+          <th style="padding:10px 12px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Target</th>
+          <th style="padding:10px 12px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Status</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Created</th>
+          <th style="padding:10px 12px;text-align:center;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="al_alertsBody">
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#555;">#1</td>
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">NIFTY</td>
+          <td style="padding:10px 12px;color:#aaa;">Price Above</td>
+          <td style="padding:10px 12px;text-align:right;color:#00c853;font-weight:600;">&#8377;22,800</td>
+          <td style="padding:10px 12px;text-align:center;"><span style="background:rgba(0,204,136,0.15);color:#00cc88;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">ACTIVE</span></td>
+          <td style="padding:10px 12px;color:#555;font-size:11px;">18 Feb, 09:15</td>
+          <td style="padding:10px 12px;text-align:center;">
+            <button onclick="al_disableAlert(1)" style="background:rgba(255,152,0,0.1);color:#ff9800;border:1px solid rgba(255,152,0,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;" title="Disable"><i class="fas fa-pause"></i></button>
+            <button onclick="al_deleteAlert(1)" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;" title="Delete"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#555;">#2</td>
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">BANKNIFTY</td>
+          <td style="padding:10px 12px;color:#aaa;">RSI Overbought</td>
+          <td style="padding:10px 12px;text-align:right;color:#ff8800;font-weight:600;">70</td>
+          <td style="padding:10px 12px;text-align:center;"><span style="background:rgba(0,204,136,0.15);color:#00cc88;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">ACTIVE</span></td>
+          <td style="padding:10px 12px;color:#555;font-size:11px;">18 Feb, 09:30</td>
+          <td style="padding:10px 12px;text-align:center;">
+            <button onclick="al_disableAlert(2)" style="background:rgba(255,152,0,0.1);color:#ff9800;border:1px solid rgba(255,152,0,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;" title="Disable"><i class="fas fa-pause"></i></button>
+            <button onclick="al_deleteAlert(2)" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;" title="Delete"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#555;">#3</td>
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">RELIANCE</td>
+          <td style="padding:10px 12px;color:#aaa;">Price Below</td>
+          <td style="padding:10px 12px;text-align:right;color:#ff4444;font-weight:600;">&#8377;2,900</td>
+          <td style="padding:10px 12px;text-align:center;"><span style="background:rgba(255,136,0,0.15);color:#ff8800;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">TRIGGERED</span></td>
+          <td style="padding:10px 12px;color:#555;font-size:11px;">17 Feb, 14:22</td>
+          <td style="padding:10px 12px;text-align:center;">
+            <button onclick="al_deleteAlert(3)" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;" title="Delete"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#555;">#4</td>
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">TCS</td>
+          <td style="padding:10px 12px;color:#aaa;">MACD Bullish Cross</td>
+          <td style="padding:10px 12px;text-align:right;color:#00ccff;font-weight:600;">--</td>
+          <td style="padding:10px 12px;text-align:center;"><span style="background:rgba(102,102,102,0.15);color:#888;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">DISABLED</span></td>
+          <td style="padding:10px 12px;color:#555;font-size:11px;">16 Feb, 11:00</td>
+          <td style="padding:10px 12px;text-align:center;">
+            <button onclick="al_enableAlert(4)" style="background:rgba(0,204,136,0.1);color:#00cc88;border:1px solid rgba(0,204,136,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;" title="Enable"><i class="fas fa-play"></i></button>
+            <button onclick="al_deleteAlert(4)" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;" title="Delete"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== ALERT HISTORY ===== -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+  <h4 style="margin:0 0 14px 0;font-size:14px;color:#ff8800;font-weight:600;">
+    <i class="fas fa-history" style="margin-right:6px;"></i>Alert History (Recently Triggered)
+  </h4>
+  <div style="overflow-x:auto;border-radius:8px;border:1px solid #222;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#111;">
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Symbol</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Type</th>
+          <th style="padding:10px 12px;text-align:right;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Target</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Triggered At</th>
+          <th style="padding:10px 12px;text-align:left;color:#888;font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid #2a2a2a;">Message</th>
+        </tr>
+      </thead>
+      <tbody id="al_historyBody">
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">RELIANCE</td>
+          <td style="padding:10px 12px;color:#aaa;">Price Below</td>
+          <td style="padding:10px 12px;text-align:right;color:#ff4444;">&#8377;2,900</td>
+          <td style="padding:10px 12px;color:#ff8800;font-size:11px;">17 Feb, 14:22:35</td>
+          <td style="padding:10px 12px;color:#888;font-size:11px;">RELIANCE dropped below support</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">NIFTY</td>
+          <td style="padding:10px 12px;color:#aaa;">Supertrend Buy</td>
+          <td style="padding:10px 12px;text-align:right;color:#00c853;">--</td>
+          <td style="padding:10px 12px;color:#ff8800;font-size:11px;">17 Feb, 10:45:12</td>
+          <td style="padding:10px 12px;color:#888;font-size:11px;">Supertrend flipped bullish on 15m</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 12px;color:#fff;font-weight:600;">BANKNIFTY</td>
+          <td style="padding:10px 12px;color:#aaa;">Price Cross Down</td>
+          <td style="padding:10px 12px;text-align:right;color:#ff4444;">&#8377;47,500</td>
+          <td style="padding:10px 12px;color:#ff8800;font-size:11px;">16 Feb, 15:10:08</td>
+          <td style="padding:10px 12px;color:#888;font-size:11px;">Broke below key level</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== AI TRADING SIGNALS ===== -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+  <h4 style="margin:0 0 16px 0;font-size:14px;color:#aa66ff;font-weight:600;">
+    <i class="fas fa-brain" style="margin-right:6px;"></i>AI Trading Signals
+  </h4>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
+    <!-- Signal 1 -->
+    <div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:16px;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:#ff4444;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+        <span style="background:rgba(255,68,68,0.15);color:#ff4444;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">BEARISH</span>
+        <span style="font-size:10px;color:#555;">2 min ago</span>
+      </div>
+      <h5 style="margin:0 0 6px 0;font-size:14px;color:#fff;font-weight:600;">NIFTY Bearish Divergence</h5>
+      <p style="margin:0 0 12px 0;font-size:12px;color:#888;line-height:1.5;">RSI showing bearish divergence on 15m timeframe. Price making higher highs while RSI making lower highs.</p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;color:#555;margin-bottom:3px;">Confidence</div>
+          <div style="background:#222;border-radius:4px;height:6px;overflow:hidden;">
+            <div style="width:78%;height:100%;background:linear-gradient(90deg,#ff8800,#ff4444);border-radius:4px;"></div>
+          </div>
+        </div>
+        <span style="font-size:14px;font-weight:700;color:#ff8800;">78%</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff8800;margin-right:4px;"></i>Suggested: Sell CE</span>
+        <button onclick="al_deploySignal('nifty_bearish_div')" style="background:rgba(170,102,255,0.15);color:#aa66ff;border:1px solid rgba(170,102,255,0.3);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-weight:600;"><i class="fas fa-rocket" style="margin-right:3px;"></i>Deploy</button>
+      </div>
+    </div>
+    <!-- Signal 2 -->
+    <div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:16px;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:#ff8800;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+        <span style="background:rgba(255,136,0,0.15);color:#ff8800;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">HEDGE</span>
+        <span style="font-size:10px;color:#555;">15 min ago</span>
+      </div>
+      <h5 style="margin:0 0 6px 0;font-size:14px;color:#fff;font-weight:600;">BANKNIFTY Support Test</h5>
+      <p style="margin:0 0 12px 0;font-size:12px;color:#888;line-height:1.5;">Testing key support at 47,500. Volume increasing at support zone. Consider hedging open positions.</p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;color:#555;margin-bottom:3px;">Confidence</div>
+          <div style="background:#222;border-radius:4px;height:6px;overflow:hidden;">
+            <div style="width:82%;height:100%;background:linear-gradient(90deg,#00ccff,#00cc88);border-radius:4px;"></div>
+          </div>
+        </div>
+        <span style="font-size:14px;font-weight:700;color:#00ccff;">82%</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff8800;margin-right:4px;"></i>Suggested: Buy PE hedge</span>
+        <button onclick="al_deploySignal('bnf_support')" style="background:rgba(170,102,255,0.15);color:#aa66ff;border:1px solid rgba(170,102,255,0.3);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-weight:600;"><i class="fas fa-rocket" style="margin-right:3px;"></i>Deploy</button>
+      </div>
+    </div>
+    <!-- Signal 3 -->
+    <div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:16px;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:#00c853;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+        <span style="background:rgba(0,200,83,0.15);color:#00c853;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">BULLISH</span>
+        <span style="font-size:10px;color:#555;">32 min ago</span>
+      </div>
+      <h5 style="margin:0 0 6px 0;font-size:14px;color:#fff;font-weight:600;">RELIANCE Breakout</h5>
+      <p style="margin:0 0 12px 0;font-size:12px;color:#888;line-height:1.5;">Breaking above 2990 resistance with high volume. MACD bullish crossover confirmed on daily.</p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;color:#555;margin-bottom:3px;">Confidence</div>
+          <div style="background:#222;border-radius:4px;height:6px;overflow:hidden;">
+            <div style="width:71%;height:100%;background:linear-gradient(90deg,#00c853,#00cc88);border-radius:4px;"></div>
+          </div>
+        </div>
+        <span style="font-size:14px;font-weight:700;color:#00c853;">71%</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:#aaa;"><i class="fas fa-lightbulb" style="color:#00c853;margin-right:4px;"></i>Suggested: Buy</span>
+        <button onclick="al_deploySignal('reliance_breakout')" style="background:rgba(170,102,255,0.15);color:#aa66ff;border:1px solid rgba(170,102,255,0.3);border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-weight:600;"><i class="fas fa-rocket" style="margin-right:3px;"></i>Deploy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== AI MARKET SCANNER ===== -->
+<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px;">
+  <h4 style="margin:0 0 16px 0;font-size:14px;color:#00cc88;font-weight:600;">
+    <i class="fas fa-search-dollar" style="margin-right:6px;"></i>AI Market Scanner
+  </h4>
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <button onclick="al_runScan('bullish')" style="background:rgba(0,200,83,0.1);color:#00c853;border:1px solid rgba(0,200,83,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-arrow-up" style="margin-right:4px;"></i>Bullish Setups</button>
+    <button onclick="al_runScan('bearish')" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-arrow-down" style="margin-right:4px;"></i>Bearish Setups</button>
+    <button onclick="al_runScan('momentum')" style="background:rgba(0,204,255,0.1);color:#00ccff;border:1px solid rgba(0,204,255,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Momentum Picks</button>
+    <button onclick="al_runScan('volume')" style="background:rgba(170,102,255,0.1);color:#aa66ff;border:1px solid rgba(170,102,255,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-chart-bar" style="margin-right:4px;"></i>Volume Spikes</button>
+  </div>
+  <div id="al_scanResults" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+    <div style="background:#111;border:1px solid #222;border-radius:8px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="color:#fff;font-weight:600;">TATAMOTORS</span>
+        <span style="color:#00c853;font-size:12px;font-weight:600;">+3.2%</span>
+      </div>
+      <div style="font-size:11px;color:#888;">Bullish engulfing on daily</div>
+      <div style="font-size:11px;color:#555;margin-top:4px;">RSI: 58 | Vol: 2.1x avg</div>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:8px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="color:#fff;font-weight:600;">BAJFINANCE</span>
+        <span style="color:#00c853;font-size:12px;font-weight:600;">+2.8%</span>
+      </div>
+      <div style="font-size:11px;color:#888;">MACD bullish cross on 1h</div>
+      <div style="font-size:11px;color:#555;margin-top:4px;">RSI: 62 | Vol: 1.8x avg</div>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:8px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="color:#fff;font-weight:600;">SBIN</span>
+        <span style="color:#ff4444;font-size:12px;font-weight:600;">-1.5%</span>
+      </div>
+      <div style="font-size:11px;color:#888;">Supertrend sell on 15m</div>
+      <div style="font-size:11px;color:#555;margin-top:4px;">RSI: 38 | Vol: 1.4x avg</div>
+    </div>
+    <div style="background:#111;border:1px solid #222;border-radius:8px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="color:#fff;font-weight:600;">HDFCBANK</span>
+        <span style="color:#00c853;font-size:12px;font-weight:600;">+1.9%</span>
+      </div>
+      <div style="font-size:11px;color:#888;">Volume breakout above 20 DMA</div>
+      <div style="font-size:11px;color:#555;margin-top:4px;">RSI: 55 | Vol: 3.2x avg</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== AL PAGE - ALERTS & AI FUNCTIONS =====
+let al_nextId = 5;
+let al_alerts = [
+  {id:1, symbol:'NIFTY', type:'Price Above', target:22800, status:'ACTIVE', created:'18 Feb, 09:15'},
+  {id:2, symbol:'BANKNIFTY', type:'RSI Overbought', target:70, status:'ACTIVE', created:'18 Feb, 09:30'},
+  {id:3, symbol:'RELIANCE', type:'Price Below', target:2900, status:'TRIGGERED', created:'17 Feb, 14:22'},
+  {id:4, symbol:'TCS', type:'MACD Bullish Cross', target:null, status:'DISABLED', created:'16 Feb, 11:00'}
+];
+
+function al_createAlert() {
+  var sym = document.getElementById('al_alertSymbol').value.trim().toUpperCase();
+  var type = document.getElementById('al_alertType');
+  var typeText = type.options[type.selectedIndex].text;
+  var target = parseFloat(document.getElementById('al_alertTarget').value) || 0;
+  var msg = document.getElementById('al_alertMsg').value.trim();
+  var repeat = document.getElementById('al_repeatAlert').checked;
+  if (!sym) { alert('Please enter a symbol'); return; }
+  var newAlert = {id: al_nextId++, symbol: sym, type: typeText, target: target, status: 'ACTIVE', created: 'Just now'};
+  al_alerts.push(newAlert);
+  var tbody = document.getElementById('al_alertsBody');
+  var tr = document.createElement('tr');
+  tr.style.cssText = 'border-bottom:1px solid #1a1a1a;';
+  tr.innerHTML = '<td style="padding:10px 12px;color:#555;">#'+newAlert.id+'</td><td style="padding:10px 12px;color:#fff;font-weight:600;">'+sym+'</td><td style="padding:10px 12px;color:#aaa;">'+typeText+'</td><td style="padding:10px 12px;text-align:right;color:#00c853;font-weight:600;">'+(target ? '&#8377;'+target.toLocaleString() : '--')+'</td><td style="padding:10px 12px;text-align:center;"><span style="background:rgba(0,204,136,0.15);color:#00cc88;font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">ACTIVE</span></td><td style="padding:10px 12px;color:#555;font-size:11px;">Just now</td><td style="padding:10px 12px;text-align:center;"><button onclick="al_disableAlert('+newAlert.id+')" style="background:rgba(255,152,0,0.1);color:#ff9800;border:1px solid rgba(255,152,0,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;"><i class="fas fa-pause"></i></button><button onclick="al_deleteAlert('+newAlert.id+')" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;"><i class="fas fa-trash"></i></button></td>';
+  tbody.appendChild(tr);
+  document.getElementById('al_activeCount').textContent = al_alerts.filter(function(a){return a.status==='ACTIVE';}).length;
+  document.getElementById('al_alertSymbol').value = '';
+  document.getElementById('al_alertTarget').value = '';
+  document.getElementById('al_alertMsg').value = '';
+  alert('Alert created for ' + sym + ': ' + typeText + (repeat ? ' (Repeating)' : ''));
+}
+
+function al_deleteAlert(id) {
+  if (!confirm('Delete alert #' + id + '?')) return;
+  al_alerts = al_alerts.filter(function(a){return a.id !== id;});
+  var tbody = document.getElementById('al_alertsBody');
+  var rows = tbody.querySelectorAll('tr');
+  rows.forEach(function(r) { if (r.innerHTML.indexOf('#'+id+'<') > -1) r.remove(); });
+  document.getElementById('al_activeCount').textContent = al_alerts.filter(function(a){return a.status==='ACTIVE';}).length;
+}
+
+function al_disableAlert(id) {
+  var alert_obj = al_alerts.find(function(a){return a.id === id;});
+  if (alert_obj) alert_obj.status = 'DISABLED';
+  al_refreshAlerts();
+}
+
+function al_enableAlert(id) {
+  var alert_obj = al_alerts.find(function(a){return a.id === id;});
+  if (alert_obj) alert_obj.status = 'ACTIVE';
+  al_refreshAlerts();
+}
+
+function al_clearTriggered() {
+  al_alerts = al_alerts.filter(function(a){return a.status !== 'TRIGGERED';});
+  al_refreshAlerts();
+}
+
+function al_refreshAlerts() {
+  var tbody = document.getElementById('al_alertsBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  al_alerts.forEach(function(a) {
+    var statusColor = a.status === 'ACTIVE' ? '#00cc88' : a.status === 'TRIGGERED' ? '#ff8800' : '#888';
+    var statusBg = a.status === 'ACTIVE' ? 'rgba(0,204,136,0.15)' : a.status === 'TRIGGERED' ? 'rgba(255,136,0,0.15)' : 'rgba(102,102,102,0.15)';
+    var actions = '';
+    if (a.status === 'ACTIVE') actions += '<button onclick="al_disableAlert('+a.id+')" style="background:rgba(255,152,0,0.1);color:#ff9800;border:1px solid rgba(255,152,0,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;"><i class="fas fa-pause"></i></button>';
+    if (a.status === 'DISABLED') actions += '<button onclick="al_enableAlert('+a.id+')" style="background:rgba(0,204,136,0.1);color:#00cc88;border:1px solid rgba(0,204,136,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;"><i class="fas fa-play"></i></button>';
+    actions += '<button onclick="al_deleteAlert('+a.id+')" style="background:rgba(255,68,68,0.1);color:#ff4444;border:1px solid rgba(255,68,68,0.3);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;"><i class="fas fa-trash"></i></button>';
+    var tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid #1a1a1a;';
+    tr.innerHTML = '<td style="padding:10px 12px;color:#555;">#'+a.id+'</td><td style="padding:10px 12px;color:#fff;font-weight:600;">'+a.symbol+'</td><td style="padding:10px 12px;color:#aaa;">'+a.type+'</td><td style="padding:10px 12px;text-align:right;color:#00c853;font-weight:600;">'+(a.target ? '&#8377;'+a.target.toLocaleString() : '--')+'</td><td style="padding:10px 12px;text-align:center;"><span style="background:'+statusBg+';color:'+statusColor+';font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;">'+a.status+'</span></td><td style="padding:10px 12px;color:#555;font-size:11px;">'+a.created+'</td><td style="padding:10px 12px;text-align:center;">'+actions+'</td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('al_activeCount').textContent = al_alerts.filter(function(a){return a.status==='ACTIVE';}).length;
+}
+
+function al_deploySignal(signalId) {
+  if (!confirm('Deploy this AI signal as a trading strategy?')) return;
+  alert('Signal deployed! Check Strategy Creation page to customize and execute.');
+  showPage('strategyCreationPage');
+}
+
+function al_runScan(scanType) {
+  var scanNames = {bullish:'Bullish Setups', bearish:'Bearish Setups', momentum:'Momentum Picks', volume:'Volume Spikes'};
+  var container = document.getElementById('al_scanResults');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:30px;color:#555;grid-column:1/-1;"><i class="fas fa-spinner fa-spin" style="font-size:24px;margin-bottom:10px;display:block;color:#00ccff;"></i>Scanning for ' + scanNames[scanType] + '...</div>';
+  setTimeout(function() {
+    var demoResults = {
+      bullish: [{sym:'TATAMOTORS',chg:'+3.2%',desc:'Bullish engulfing on daily',rsi:58,vol:'2.1x'},{sym:'BAJFINANCE',chg:'+2.8%',desc:'MACD bullish cross on 1h',rsi:62,vol:'1.8x'},{sym:'HDFCBANK',chg:'+1.9%',desc:'Volume breakout above 20 DMA',rsi:55,vol:'3.2x'},{sym:'TITAN',chg:'+2.1%',desc:'EMA 9/21 bullish crossover',rsi:61,vol:'1.5x'}],
+      bearish: [{sym:'SBIN',chg:'-1.5%',desc:'Supertrend sell on 15m',rsi:38,vol:'1.4x'},{sym:'WIPRO',chg:'-2.1%',desc:'Bearish MACD crossover',rsi:32,vol:'1.7x'},{sym:'ASIANPAINT',chg:'-1.8%',desc:'Breaking below support',rsi:35,vol:'2.0x'}],
+      momentum: [{sym:'ADANIENT',chg:'+4.5%',desc:'Strong momentum with RSI > 65',rsi:72,vol:'3.5x'},{sym:'TATASTEEL',chg:'+3.1%',desc:'Sector rotation into metals',rsi:68,vol:'2.8x'},{sym:'ITC',chg:'+1.2%',desc:'Steady uptrend, low volatility',rsi:59,vol:'1.3x'}],
+      volume: [{sym:'RELIANCE',chg:'+0.8%',desc:'3x average volume spike',rsi:52,vol:'3.0x'},{sym:'JSWSTEEL',chg:'+2.4%',desc:'Heavy institutional buying',rsi:64,vol:'4.2x'},{sym:'NTPC',chg:'+1.1%',desc:'Block deal detected',rsi:51,vol:'5.1x'}]
+    };
+    var results = demoResults[scanType] || demoResults.bullish;
+    container.innerHTML = '';
+    results.forEach(function(r) {
+      var chgColor = r.chg.startsWith('+') ? '#00c853' : '#ff4444';
+      container.innerHTML += '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:14px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="color:#fff;font-weight:600;">'+r.sym+'</span><span style="color:'+chgColor+';font-size:12px;font-weight:600;">'+r.chg+'</span></div><div style="font-size:11px;color:#888;">'+r.desc+'</div><div style="font-size:11px;color:#555;margin-top:4px;">RSI: '+r.rsi+' | Vol: '+r.vol+' avg</div></div>';
+    });
+  }, 1500);
+}
+</script>
+
         </div>
     </div>
 

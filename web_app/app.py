@@ -384,15 +384,35 @@ def get_ltp(symbol=None):
         return jsonify({'success': False, 'message': 'Broker not connected'})
 
     try:
+        import re
         exchange = request.args.get('exchange', 'NSE')
+
         # Auto-detect NFO for option/future symbols
-        if any(x in symbol for x in ['CE', 'PE', 'FUT']) and exchange == 'NSE':
-            import re
-            if re.search(r'\d{2}[A-Z]{3}\d{2}[CP]\d+', symbol) or symbol.endswith('FUT') or re.search(r'\d+CE$|\d+PE$', symbol):
+        # Patterns: NIFTY10MAR26P25600, NIFTY30MAR26F, BANKNIFTY26224CE, etc.
+        if exchange == 'NSE':
+            if (re.search(r'\d{2}[A-Z]{3}\d{2}[CPF]', symbol) or
+                symbol.endswith('FUT') or
+                re.search(r'\d+CE$|\d+PE$', symbol)):
                 exchange = 'NFO'
+            elif symbol.startswith('SENSEX') and len(symbol) > 6:
+                exchange = 'BFO'
+
+        # Try fetching LTP with the symbol as-is
         ltp = broker.get_ltp(symbol, exchange)
+
+        # If LTP is 0 and symbol has -EQ suffix, try without it
+        if (not ltp or float(ltp) == 0) and symbol.endswith('-EQ'):
+            stripped = symbol.replace('-EQ', '')
+            ltp = broker.get_ltp(stripped, exchange)
+            if ltp and float(ltp) > 0:
+                logger.info(f"LTP found with stripped symbol: {stripped} ({exchange}): {ltp}")
+
+        # If LTP is 0 and it's NSE, try with -EQ suffix (some brokers need it)
+        if (not ltp or float(ltp) == 0) and exchange == 'NSE' and '-EQ' not in symbol:
+            ltp = broker.get_ltp(symbol + '-EQ', exchange)
+
         logger.info(f"LTP for {symbol} ({exchange}): {ltp}")
-        return jsonify({'success': True, 'symbol': symbol, 'ltp': ltp})
+        return jsonify({'success': True, 'symbol': symbol, 'ltp': float(ltp) if ltp else 0})
     except Exception as e:
         logger.error(f"LTP error for {symbol}: {e}")
         return jsonify({'success': False, 'message': str(e)})

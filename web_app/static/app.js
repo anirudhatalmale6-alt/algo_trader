@@ -1099,14 +1099,47 @@ function updatePLSummary() {
 }
 
 function updateCurrentPrices() {
-    positions.forEach(position => {
-        const changePercent = (Math.random() - 0.5) / 100;
-        position.currentPrice = position.currentPrice * (1 + changePercent);
-    });
+    if (brokerConnected && positions.length > 0) {
+        // Fetch real LTP for each position from broker
+        let pending = positions.length;
+        positions.forEach(position => {
+            const sym = position.symbol;
+            if (!sym) { pending--; return; }
 
-    savePositions();
-    renderPositions();
-    updatePLSummary();
+            // Determine exchange
+            let exchange = 'NSE';
+            if (sym.match(/\d{2}[A-Z]{3}\d{2}[CPF]/) || sym.match(/FUT$/) ||
+                sym.match(/\d+CE$/) || sym.match(/\d+PE$/)) {
+                exchange = 'NFO';
+            }
+
+            fetch(`/api/ltp/${encodeURIComponent(sym)}?exchange=${exchange}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.ltp > 0) {
+                        position.currentPrice = data.ltp;
+                    }
+                })
+                .catch(() => {})
+                .finally(() => {
+                    pending--;
+                    if (pending <= 0) {
+                        savePositions();
+                        renderPositions();
+                        updatePLSummary();
+                    }
+                });
+        });
+    } else {
+        // Demo mode - small random changes
+        positions.forEach(position => {
+            const changePercent = (Math.random() - 0.5) / 100;
+            position.currentPrice = position.currentPrice * (1 + changePercent);
+        });
+        savePositions();
+        renderPositions();
+        updatePLSummary();
+    }
 }
 
 function updateMarketData() {
@@ -3177,8 +3210,17 @@ function updateWatchlistLtp() {
 
         // Determine exchange from symbol pattern
         let exchange = 'NSE';
-        if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CP]/) || symbol.match(/FUT$/)) {
-            exchange = 'NFO';
+        // NFO patterns: NIFTY10MAR26P25600, NIFTY30MAR26F, BANKNIFTY26224CE, etc.
+        if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CPF]/) || symbol.match(/FUT$/) ||
+            symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/) || symbol.endsWith('F')) {
+            // Check it's not a normal stock ending with F (like IDFCFIRSTB)
+            if (symbol.match(/\d[A-Z]{3}\d{2}[F]$/) || symbol.match(/\d{2}[A-Z]{3}\d{2}[CPF]/)) {
+                exchange = 'NFO';
+            }
+        }
+        // BSE symbols
+        if (symbol.match(/^SENSEX|^BANKEX/) && symbol.length > 6) {
+            exchange = 'BFO';
         }
 
         fetch(`/api/ltp/${encodeURIComponent(symbol)}?exchange=${exchange}`)
@@ -3191,11 +3233,27 @@ function updateWatchlistLtp() {
                         const newPrice = data.ltp;
                         priceEl.textContent = newPrice.toFixed(2);
 
-                        // Update stored price data
+                        // Update change data
+                        const changeEl = item.querySelector('.wl-item-change');
                         if (stockPrices[symbol]) {
+                            const prevPrice = stockPrices[symbol].price;
+                            if (prevPrice > 0) {
+                                stockPrices[symbol].change = newPrice - prevPrice;
+                                stockPrices[symbol].changePct = ((newPrice - prevPrice) / prevPrice * 100);
+                            }
                             stockPrices[symbol].price = newPrice;
                         } else {
                             stockPrices[symbol] = { price: newPrice, change: 0, changePct: 0 };
+                        }
+
+                        if (changeEl) {
+                            const chg = stockPrices[symbol].change;
+                            const chgPct = stockPrices[symbol].changePct;
+                            const sign = chg >= 0 ? '+' : '';
+                            changeEl.innerHTML = `<span class="change-abs">${sign}${chg.toFixed(2)}</span> <span class="change-pct">(${sign}${chgPct.toFixed(2)}%)</span>`;
+                            // Update color class
+                            item.classList.remove('wl-positive', 'wl-negative', 'wl-neutral');
+                            item.classList.add(chg > 0 ? 'wl-positive' : chg < 0 ? 'wl-negative' : 'wl-neutral');
                         }
 
                         // Flash effect on price change

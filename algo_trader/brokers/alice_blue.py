@@ -128,37 +128,35 @@ class AliceBlueBroker(BaseBroker):
             }
 
             # Step 1: Get encryption key
-            logger.info(f"Alice Blue direct login: getting encryption key for {self.user_id}")
+            logger.info(f"Alice Blue direct login: user_id={self.user_id}, api_key_len={len(self.secret_key) if self.secret_key else 0}")
             enc_payload = {'userId': self.user_id.upper()}
-            enc_response = requests.post(
-                f"{self.BASE_URL}/customer/getAPIEncpkey",
-                json=enc_payload, headers=headers, timeout=30
-            )
+            url1 = f"{self.BASE_URL}/customer/getAPIEncpkey"
+            logger.info(f"Step 1: POST {url1} payload={enc_payload}")
+            enc_response = requests.post(url1, json=enc_payload, headers=headers, timeout=30)
+            logger.info(f"Step 1 response: status={enc_response.status_code}, body={enc_response.text[:500]}")
             enc_data = enc_response.json()
-            logger.info(f"Encryption key response: stat={enc_data.get('stat')}")
 
             enc_key = enc_data.get('encKey')
             if not enc_key:
-                error = enc_data.get('emsg', 'Failed to get encryption key')
+                error = enc_data.get('emsg', enc_data.get('message', 'Failed to get encryption key'))
                 logger.error(f"Alice Blue: No encryption key - {error}")
                 return {'success': False, 'error': error}
 
             # Step 2: Create SHA-256 hash of userId + apiKey + encKey
             hash_input = self.user_id.upper() + self.secret_key + enc_key
             user_data = hashlib.sha256(hash_input.encode()).hexdigest()
+            logger.info(f"Step 2: hash({self.user_id.upper()} + key[{len(self.secret_key)}chars] + encKey) = {user_data[:20]}...")
 
             # Step 3: Get session ID
             session_payload = {
                 'userId': self.user_id.upper(),
                 'userData': user_data
             }
-            logger.info(f"Alice Blue direct login: getting session for {self.user_id}")
-            session_response = requests.post(
-                f"{self.BASE_URL}/customer/getUserSID",
-                json=session_payload, headers=headers, timeout=30
-            )
+            url2 = f"{self.BASE_URL}/customer/getUserSID"
+            logger.info(f"Step 3: POST {url2}")
+            session_response = requests.post(url2, json=session_payload, headers=headers, timeout=30)
+            logger.info(f"Step 3 response: status={session_response.status_code}, body={session_response.text[:500]}")
             session_data = session_response.json()
-            logger.info(f"Session response: stat={session_data.get('stat')}")
 
             if session_data.get('stat') == 'Ok' and session_data.get('sessionID'):
                 self.session_id = session_data['sessionID']
@@ -167,7 +165,7 @@ class AliceBlueBroker(BaseBroker):
                 logger.info(f"Alice Blue direct login successful!")
                 return {'success': True}
             else:
-                error = session_data.get('emsg', 'Failed to get session')
+                error = session_data.get('emsg', session_data.get('message', 'Failed to get session'))
                 logger.error(f"Alice Blue direct login failed: {error}")
                 return {'success': False, 'error': error}
 

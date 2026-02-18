@@ -1,10 +1,10 @@
 ============================================
-   ALGO TRADER - INSTALLATION GUIDE
-   (Hindi Instructions)
+   MUKESH ALGO - WEB APP
+   INSTALLATION GUIDE (Hindi)
 ============================================
 
-STEP 1: Python Install Karo
----------------------------
+STEP 1: Python Install Karo (agar pehle se nahi hai)
+----------------------------------------------------
 1. Ye link kholo: https://www.python.org/downloads/
 2. "Download Python" button pe click karo
 3. Downloaded file pe double-click karo
@@ -13,9 +13,9 @@ STEP 1: Python Install Karo
 6. Installation complete hone do
 
 
-STEP 2: Algo Trader Download Karo
----------------------------------
-1. Ye link kholo: https://github.com/anirudhatalmale6-alt/algo-trader-phase1
+STEP 2: MUKESH ALGO Download Karo
+----------------------------------
+1. Ye link kholo: https://github.com/anirudhatalmale6-alt/algo_trader
 2. Green "Code" button pe click karo
 3. "Download ZIP" pe click karo
 4. ZIP file download hogi
@@ -24,59 +24,48 @@ STEP 2: Algo Trader Download Karo
 
 
 STEP 3: Install Karo
---------------------
-1. Extracted folder kholo (algo-trader-phase1)
+---------------------
+1. Extracted folder kholo (algo_trader-main)
 2. "install_windows.bat" file pe DOUBLE-CLICK karo
 3. Black window khulegi - installation hogi
 4. Jab "INSTALLATION COMPLETE" dikhe, Enter dabao
-5. Desktop pe "Algo Trader" shortcut ban jayega
+5. Desktop pe "MUKESH ALGO" shortcut ban jayega
 
 
 STEP 4: App Chalao
-------------------
-1. Desktop pe "Algo Trader" pe double-click karo
-2. App khul jayegi!
+-------------------
+1. Desktop pe "MUKESH ALGO" pe double-click karo
+   (ya extracted folder mein "start_app.bat" pe double-click karo)
+2. Black terminal window khulegi (ye band mat karo!)
+3. Browser automatically khulega: http://127.0.0.1:5000
+4. App ready hai!
 
 
-BROKER SETUP (App ke andar):
----------------------------
-1. App mein "Settings" tab kholo
-2. "Add Broker" pe click karo
-3. Upstox ya Alice Blue select karo
-4. API Key aur Secret dalo
-5. "Get Login URL" pe click karo
-6. Browser mein login karo
-7. Jo code mile, wo paste karo
-8. "Authenticate" pe click karo
-9. Done!
+STEP 5: Broker Connect Karo (App ke andar)
+-------------------------------------------
+1. App mein left side hamburger menu (3 lines) pe click karo
+2. "Broker" page pe jao
+3. "Alice Blue" select karo
+4. User ID dalo (e.g., 515175)
+5. Secret Key (API Key) dalo
+6. "Connect" button dabao
+7. Connected!
+
+
+UPDATE KAISE KARE (naya version download):
+-------------------------------------------
+1. Purana folder delete karo (ya rename karo)
+2. GitHub se naya ZIP download karo (Step 2 repeat karo)
+3. Extract karo
+4. "install_windows.bat" dobara run karo (Step 3)
+5. "start_app.bat" se app chalao (Step 4)
 
 
 PROBLEM AAYE TOH:
-----------------
-- Screenshot bhejo mujhe Freelancer pe
+------------------
+- Server terminal mein error ka screenshot bhejo
+- Browser mein app ka screenshot bhejo
 - Main solve kar dunga
-
-
-============================================
-   API CREDENTIALS KAISE BANAYE
-============================================
-
-UPSTOX:
--------
-1. https://account.upstox.com/developer/apps kholo
-2. Login karo
-3. "New App" pe click karo
-4. App Name: AlgoTrader (ya kuch bhi)
-5. Redirect URL: http://127.0.0.1:5000/callback
-6. Submit karo
-7. API Key aur Secret mil jayega - save karo
-
-
-ALICE BLUE:
------------
-1. Alice Blue support se contact karo
-2. ANT API access maango
-3. API Key aur Secret milega
 
 
 ============================================

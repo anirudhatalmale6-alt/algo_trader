@@ -546,10 +546,18 @@ class AliceBlueBroker(BaseBroker):
         if result.get('data') and isinstance(result['data'], dict):
             data = result['data']
 
-        ltp = float(data.get('LTP') or data.get('ltp') or 0)
-        prev_close = float(data.get('PrvClose') or data.get('prvClose') or data.get('previous_close') or data.get('pClose') or 0)
-        change = float(data.get('Chng') or data.get('chng') or data.get('change') or 0)
-        change_pct = float(data.get('ChngPer') or data.get('chngPer') or data.get('change_per') or data.get('pChange') or 0)
+        # Log all keys once for debugging (helps identify correct field names)
+        logger.debug(f"ScripQuote fields: {list(data.keys())}")
+
+        ltp = float(data.get('LTP') or data.get('ltp') or data.get('lastTradedPrice') or 0)
+        prev_close = float(data.get('PrvClose') or data.get('prvClose') or data.get('previous_close') or
+                          data.get('pClose') or data.get('Close') or data.get('close') or
+                          data.get('YClose') or data.get('yClose') or 0)
+        change = float(data.get('Chng') or data.get('chng') or data.get('change') or
+                       data.get('Change') or data.get('NetChng') or data.get('netChng') or 0)
+        change_pct = float(data.get('ChngPer') or data.get('chngPer') or data.get('change_per') or
+                          data.get('pChange') or data.get('PerChng') or data.get('perChng') or
+                          data.get('ChangePer') or 0)
 
         # Calculate change from prev_close if API didn't return it
         if ltp > 0 and prev_close > 0 and change == 0:
@@ -566,6 +574,7 @@ class AliceBlueBroker(BaseBroker):
                 payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
                 if result.get('stat') == 'Ok' or result.get('success'):
+                    logger.debug(f"Raw quote for {symbol}({exchange},tok={token}): {str(result)[:300]}")
                     quote = self._extract_quote_data(result)
                     if quote['ltp'] > 0:
                         return quote
@@ -574,6 +583,7 @@ class AliceBlueBroker(BaseBroker):
             payload = {'exch': exchange, 'symbol': symbol}
             result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
             if result.get('stat') == 'Ok' or result.get('success'):
+                logger.debug(f"Raw quote fallback for {symbol}({exchange}): {str(result)[:300]}")
                 quote = self._extract_quote_data(result)
                 if quote['ltp'] > 0:
                     return quote

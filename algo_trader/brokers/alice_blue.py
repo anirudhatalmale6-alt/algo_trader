@@ -539,6 +539,15 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Error fetching option LTP from AliceBlue: {e}")
             return 0
 
+    @staticmethod
+    def _get_first_valid(data: Dict, keys: list, default=None):
+        """Get the first non-None value from a dict for a list of possible keys"""
+        for key in keys:
+            val = data.get(key)
+            if val is not None:
+                return val
+        return default
+
     def _extract_quote_data(self, result: Dict) -> Dict:
         """Extract LTP, change, change% and prev close from ScripQuoteDetails response"""
         data = result
@@ -546,23 +555,39 @@ class AliceBlueBroker(BaseBroker):
         if result.get('data') and isinstance(result['data'], dict):
             data = result['data']
 
-        # Log all keys once for debugging (helps identify correct field names)
-        logger.debug(f"ScripQuote fields: {list(data.keys())}")
+        # Log all keys for debugging
+        logger.debug(f"ScripQuote keys: {list(data.keys())}")
 
-        ltp = float(data.get('LTP') or data.get('ltp') or data.get('lastTradedPrice') or 0)
-        prev_close = float(data.get('PrvClose') or data.get('prvClose') or data.get('previous_close') or
-                          data.get('pClose') or data.get('Close') or data.get('close') or
-                          data.get('YClose') or data.get('yClose') or 0)
-        change = float(data.get('Chng') or data.get('chng') or data.get('change') or
-                       data.get('Change') or data.get('NetChng') or data.get('netChng') or 0)
-        change_pct = float(data.get('ChngPer') or data.get('chngPer') or data.get('change_per') or
-                          data.get('pChange') or data.get('PerChng') or data.get('perChng') or
-                          data.get('ChangePer') or 0)
+        # Use _get_first_valid to avoid falsy-value bugs with `or` chains
+        # Alice Blue fields: LTP, PrvClose, Change, PerChange
+        ltp_raw = self._get_first_valid(data, ['LTP', 'ltp', 'lastTradedPrice'], '0')
+        prev_close_raw = self._get_first_valid(data, ['PrvClose', 'prvClose', 'previous_close', 'pClose', 'YClose', 'yClose', 'Close'], '0')
+        change_raw = self._get_first_valid(data, ['Change', 'change', 'Chng', 'chng', 'NetChng', 'netChng'], '0')
+        change_pct_raw = self._get_first_valid(data, ['PerChange', 'perChange', 'ChngPer', 'chngPer', 'pChange', 'PerChng', 'ChangePer', 'change_per'], '0')
+
+        try:
+            ltp = float(ltp_raw)
+        except (ValueError, TypeError):
+            ltp = 0.0
+        try:
+            prev_close = float(prev_close_raw)
+        except (ValueError, TypeError):
+            prev_close = 0.0
+        try:
+            change = float(change_raw)
+        except (ValueError, TypeError):
+            change = 0.0
+        try:
+            change_pct = float(change_pct_raw)
+        except (ValueError, TypeError):
+            change_pct = 0.0
 
         # Calculate change from prev_close if API didn't return it
         if ltp > 0 and prev_close > 0 and change == 0:
             change = round(ltp - prev_close, 2)
             change_pct = round((change / prev_close) * 100, 2)
+
+        logger.debug(f"Extracted: LTP={ltp}, Change={change}, Change%={change_pct}, PrvClose={prev_close}")
 
         return {'ltp': ltp, 'change': change, 'change_pct': change_pct, 'prev_close': prev_close}
 

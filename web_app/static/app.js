@@ -204,7 +204,7 @@ function fetchBrokerInstruments() {
     // Just trigger the server to download & cache instrument lists
     // We don't load 50k+ instruments into browser memory
     // Instead, search API will be used for lookups
-    fetch('/api/instruments?exchanges=NSE,NFO')
+    fetch('/api/instruments?exchanges=NSE,NFO,BSE,MCX,BFO,CDS')
         .then(r => r.json())
         .then(data => {
             if (data.success && data.count > 0) {
@@ -328,13 +328,24 @@ function saveWatchlist() {
     localStorage.setItem('mukeshAlgoWatchlist', JSON.stringify(watchlistStocks));
 }
 
-function addToWatchlistBySymbol(symbol) {
+// Exchange mapping for watchlist symbols (stored in localStorage)
+let watchlistExchanges = JSON.parse(localStorage.getItem('mukeshAlgoWatchlistExchanges') || '{}');
+
+function saveWatchlistExchanges() {
+    localStorage.setItem('mukeshAlgoWatchlistExchanges', JSON.stringify(watchlistExchanges));
+}
+
+function addToWatchlistBySymbol(symbol, exchange) {
     if (watchlistStocks.includes(symbol)) return;
     if (watchlistStocks.length >= 50) {
         alert("Maximum 50 stocks allowed in watchlist!");
         return;
     }
     watchlistStocks.push(symbol);
+    if (exchange) {
+        watchlistExchanges[symbol] = exchange;
+        saveWatchlistExchanges();
+    }
     saveWatchlist();
     renderWatchlist();
     if (typeof addLog === 'function') addLog('INFO', 'system', 'Added to watchlist: ' + symbol);
@@ -382,11 +393,17 @@ function renderWatchlist() {
         // Look up from local database, determine exchange from symbol pattern
         let stockInfo = stockDatabase.find(s => s.symbol === symbol);
         if (!stockInfo) {
-            // Auto-detect exchange for broker instruments (F&O symbols from Alice Blue)
-            let exchange = 'NSE';
-            if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CP]\d+/) || symbol.includes('FUT') ||
-                symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/)) {
-                exchange = 'NFO';
+            // Use saved exchange or auto-detect
+            let exchange = watchlistExchanges[symbol] || 'NSE';
+            if (exchange === 'NSE') {
+                // Auto-detect if not saved
+                if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CP]\d+/) || symbol.includes('FUT') ||
+                    symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/)) {
+                    exchange = 'NFO';
+                } else if (symbol.startsWith('SENSEX') || symbol.startsWith('BANKEX')) {
+                    exchange = symbol.length > 6 ? 'BFO' : 'BSE';
+                } else if (['CRUDEOIL','NATURALGAS','GOLD','GOLDM','SILVER','SILVERM','COPPER','ZINC','LEAD','NICKEL','ALUMINIUM','COTTON'].some(c => symbol.startsWith(c))) {
+                exchange = 'MCX';
             }
             stockInfo = { name: symbol, exchange: exchange, sector: '' };
         }
@@ -395,7 +412,7 @@ function renderWatchlist() {
         const changeSign = priceData.change > 0 ? '+' : '';
 
         html += `
-        <div class="wl-item ${changeClass}" data-symbol="${symbol}">
+        <div class="wl-item ${changeClass}" data-symbol="${symbol}" data-exchange="${stockInfo.exchange}">
             <div class="wl-item-left">
                 <div class="wl-item-symbol">
                     ${symbol}
@@ -543,8 +560,9 @@ function renderSearchResults(matches, resultsDiv) {
         // Escape single quotes in symbol for onclick
         const safeSymbol = (s.symbol || '').replace(/'/g, "\\'");
         const expiry = s.expiry ? `<span style="color:#666;font-size:10px;margin-left:4px;">${s.expiry}</span>` : '';
+        const safeExchange = (s.exchange || 'NSE').replace(/'/g, "\\'");
         return `
-            <div class="wl-search-result-item" onclick="addToWatchlistFromSearch('${safeSymbol}')">
+            <div class="wl-search-result-item" onclick="addToWatchlistFromSearch('${safeSymbol}','${safeExchange}')">
                 <div>
                     <span class="sr-symbol">${s.symbol}</span>
                     <span class="sr-name">${s.name || s.symbol}</span>
@@ -557,8 +575,8 @@ function renderSearchResults(matches, resultsDiv) {
     resultsDiv.style.display = 'block';
 }
 
-function addToWatchlistFromSearch(symbol) {
-    addToWatchlistBySymbol(symbol);
+function addToWatchlistFromSearch(symbol, exchange) {
+    addToWatchlistBySymbol(symbol, exchange);
     document.getElementById('watchlistSearch').value = '';
     document.getElementById('wlSearchResults').style.display = 'none';
 }
@@ -3229,10 +3247,14 @@ function updateWatchlistLtp() {
         if (symbol.match(/\d{2}[A-Z]{3}\d{2}[CPF]/) || symbol.match(/FUT$/) ||
             symbol.match(/\d+CE$/) || symbol.match(/\d+PE$/)) {
             exchange = 'NFO';
-        }
-        if (symbol.match(/^SENSEX|^BANKEX/) && symbol.length > 6) {
+        } else if (symbol.match(/^SENSEX|^BANKEX/) && symbol.length > 6) {
             exchange = 'BFO';
+        } else if (['CRUDEOIL','NATURALGAS','GOLD','GOLDM','SILVER','SILVERM','COPPER','ZINC','LEAD','NICKEL','ALUMINIUM','COTTON'].some(c => symbol.startsWith(c))) {
+            exchange = 'MCX';
         }
+        // Check if the item has exchange data attribute (set by search results)
+        const itemExch = item.dataset.exchange;
+        if (itemExch) exchange = itemExch;
         symbolList.push({ symbol, exchange });
     });
 

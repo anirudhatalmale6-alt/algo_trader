@@ -566,6 +566,10 @@ def get_bulk_ltp():
                 if (re.search(r'\d{2}[A-Z]{3}\d{2}[CPF]', sym) or
                     sym.endswith('FUT') or re.search(r'\d+CE$|\d+PE$', sym)):
                     exch = 'NFO'
+                elif sym.startswith(('SENSEX', 'BANKEX')) and len(sym) > 6:
+                    exch = 'BFO'
+                elif sym.startswith(('CRUDEOIL', 'NATURALGAS', 'GOLD', 'GOLDM', 'SILVER', 'SILVERM', 'COPPER', 'ZINC', 'LEAD', 'NICKEL', 'ALUMINIUM', 'COTTON')):
+                    exch = 'MCX'
 
             try:
                 # Use get_scrip_quote if available (returns change data)

@@ -599,7 +599,12 @@ class AliceBlueBroker(BaseBroker):
                 payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
                 if result.get('stat') == 'Ok' or result.get('success'):
-                    logger.debug(f"Raw quote for {symbol}({exchange},tok={token}): {str(result)[:300]}")
+                    # Log FULL raw response for first few calls to identify correct fields
+                    if not hasattr(self, '_quote_logged'):
+                        self._quote_logged = set()
+                    if symbol not in self._quote_logged and len(self._quote_logged) < 5:
+                        self._quote_logged.add(symbol)
+                        logger.info(f"FULL API response for {symbol}({exchange}): {json.dumps(result, indent=2)[:1500]}")
                     quote = self._extract_quote_data(result)
                     if quote['ltp'] > 0:
                         return quote
@@ -608,7 +613,11 @@ class AliceBlueBroker(BaseBroker):
             payload = {'exch': exchange, 'symbol': symbol}
             result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
             if result.get('stat') == 'Ok' or result.get('success'):
-                logger.debug(f"Raw quote fallback for {symbol}({exchange}): {str(result)[:300]}")
+                if not hasattr(self, '_quote_logged'):
+                    self._quote_logged = set()
+                if symbol not in self._quote_logged and len(self._quote_logged) < 5:
+                    self._quote_logged.add(symbol)
+                    logger.info(f"FULL API response (fallback) for {symbol}({exchange}): {json.dumps(result, indent=2)[:1500]}")
                 quote = self._extract_quote_data(result)
                 if quote['ltp'] > 0:
                     return quote

@@ -403,7 +403,8 @@ function renderWatchlist() {
                 } else if (symbol.startsWith('SENSEX') || symbol.startsWith('BANKEX')) {
                     exchange = symbol.length > 6 ? 'BFO' : 'BSE';
                 } else if (['CRUDEOIL','NATURALGAS','GOLD','GOLDM','SILVER','SILVERM','COPPER','ZINC','LEAD','NICKEL','ALUMINIUM','COTTON'].some(c => symbol.startsWith(c))) {
-                exchange = 'MCX';
+                    exchange = 'MCX';
+                }
             }
             stockInfo = { name: symbol, exchange: exchange, sector: '' };
         }

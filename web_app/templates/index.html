@@ -2756,31 +2756,58 @@
     btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Placing...';
     btn.style.opacity = '0.7';
 
-    // Simulate API call (replace with actual API integration)
-    setTimeout(function() {
+    // Send order to broker via API
+    fetch('/api/order/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbol: symbol,
+        exchange: 'NSE',
+        transaction_type: currentOrderSide,
+        order_type: orderType,
+        quantity: qty,
+        price: (orderType === 'LIMIT' || orderType === 'SL') ? price : 0,
+        product: 'MIS',
+        broker_id: broker
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i>Place Order';
       btn.style.opacity = '1';
 
-      // Add order to table
-      addOrderToTable({
-        time: new Date().toLocaleTimeString('en-IN', { hour12: false }),
-        symbol: symbol,
-        side: currentOrderSide,
-        qty: qty,
-        price: price || 'MKT',
-        status: 'OPEN',
-        broker: broker,
-        orderId: 'ORD' + Date.now()
-      });
+      if (data.success) {
+        // Add order to table
+        addOrderToTable({
+          time: new Date().toLocaleTimeString('en-IN', { hour12: false }),
+          symbol: symbol,
+          side: currentOrderSide,
+          qty: qty,
+          price: price || 'MKT',
+          status: 'OPEN',
+          broker: broker,
+          orderId: data.order_id || ('ORD' + Date.now())
+        });
 
-      showToast(currentOrderSide + ' order placed for ' + symbol, 'success');
-      if (typeof addLog === 'function') addLog('SUCCESS', 'order', currentOrderSide + ' ' + orderType + ' order: ' + symbol + ' x' + qty + (price ? ' @ ' + price : ' @ MKT'));
+        showToast(currentOrderSide + ' order placed for ' + symbol + (data.order_id ? ' (ID: ' + data.order_id + ')' : ''), 'success');
+        if (typeof addLog === 'function') addLog('SUCCESS', 'order', currentOrderSide + ' ' + orderType + ' order: ' + symbol + ' x' + qty + (price ? ' @ ' + price : ' @ MKT') + (data.order_id ? ' [' + data.order_id + ']' : ''));
 
-      // Reset form
-      document.getElementById('qo_symbol').value = '';
-      document.getElementById('qo_qty').value = '1';
-    }, 800);
+        // Reset form
+        document.getElementById('qo_symbol').value = '';
+        document.getElementById('qo_qty').value = '1';
+      } else {
+        showToast('Order failed: ' + (data.message || 'Unknown error'), 'error');
+        if (typeof addLog === 'function') addLog('ERROR', 'order', 'Order failed: ' + (data.message || 'Unknown error'));
+      }
+    })
+    .catch(function(err) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i>Place Order';
+      btn.style.opacity = '1';
+      showToast('Network error: ' + err.message, 'error');
+      if (typeof addLog === 'function') addLog('ERROR', 'order', 'Order network error: ' + err.message);
+    });
   };
 
 

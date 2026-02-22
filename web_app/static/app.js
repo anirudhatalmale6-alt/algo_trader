@@ -1484,13 +1484,44 @@ function addPosition() {
         }
     };
 
+    // Place actual order with broker if connected
+    if (brokerConnected) {
+        const qty = newPosition.buyQty || newPosition.sellQty || 1;
+        const transType = orderType === 'SELL' ? 'SELL' : 'BUY';
+        fetch('/api/order/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                symbol: symbol,
+                exchange: 'NSE',
+                transaction_type: transType,
+                order_type: 'MARKET',
+                quantity: qty,
+                price: entryPrice,
+                product: 'MIS'
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                newPosition.orderId = data.order_id;
+                if (typeof addLog === 'function') addLog('SUCCESS', 'order', `Broker order placed: ${transType} ${symbol} x${qty} (ID: ${data.order_id || 'N/A'})`);
+            } else {
+                if (typeof addLog === 'function') addLog('WARNING', 'order', `Broker order failed: ${data.message || 'Unknown error'} - Position saved locally`);
+            }
+        })
+        .catch(err => {
+            if (typeof addLog === 'function') addLog('WARNING', 'order', `Broker order error: ${err.message} - Position saved locally`);
+        });
+    }
+
     positions.push(newPosition);
     savePositions();
     renderPositions();
     updatePLSummary();
     closeAddModal();
 
-    alert(`${orderType} position added for ${symbol} with position settings`);
+    alert(`${orderType} position added for ${symbol}`);
     if (typeof addLog === 'function') addLog('SUCCESS', 'trade', `Position opened: ${orderType} ${symbol} x${newPosition.buyQty || newPosition.sellQty} @ ${newPosition.entryPrice}`);
 }
 

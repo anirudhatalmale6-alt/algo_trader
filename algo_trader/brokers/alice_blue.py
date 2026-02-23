@@ -591,8 +591,10 @@ class AliceBlueBroker(BaseBroker):
                                 logger.info(f"NSE prev close for {clean_sym}: {pc} (index)")
                                 return pc
             else:
-                # Equity quote
-                url = f'https://www.nseindia.com/api/quote-equity?symbol={clean_sym}'
+                # Equity quote - URL-encode symbol for special chars (M&M, L&T etc.)
+                from urllib.parse import quote
+                encoded_sym = quote(clean_sym)
+                url = f'https://www.nseindia.com/api/quote-equity?symbol={encoded_sym}'
                 r = self._nse_session.get(url, timeout=10)
                 if r.status_code == 200:
                     data = r.json()
@@ -603,9 +605,12 @@ class AliceBlueBroker(BaseBroker):
                         logger.info(f"NSE prev close for {clean_sym}: {pc}")
                         return pc
                 elif r.status_code == 403:
-                    # Session expired, refresh cookies
+                    # Session expired, refresh cookies and retry
                     try:
+                        import time
+                        time.sleep(0.5)
                         self._nse_session.get('https://www.nseindia.com', timeout=10)
+                        time.sleep(0.3)
                         r = self._nse_session.get(url, timeout=10)
                         if r.status_code == 200:
                             data = r.json()

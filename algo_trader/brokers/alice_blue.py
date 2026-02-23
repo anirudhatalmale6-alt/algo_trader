@@ -539,8 +539,82 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Error fetching option LTP from AliceBlue: {e}")
             return 0
 
+    def _fetch_mw_data(self, token: int, exchange: str, symbol: str = "") -> Dict:
+        """Fetch quote data via marketWatch API (same source as Alice Blue's own watchlist).
+        Adds scrip to a hidden MW, fetches data, returns dict with ltp/change/change_pct/prev_close.
+        Results are cached per token."""
+        if not hasattr(self, '_mw_cache'):
+            self._mw_cache = {}
+
+        cache_key = f"{exchange}:{token}"
+        if cache_key in self._mw_cache:
+            cached = self._mw_cache[cache_key]
+            # Only use cache for prev_close (LTP changes, but prev_close doesn't)
+            return cached
+
+        try:
+            mw_name = "ALGO_MW"
+            # Add scrip to market watch
+            add_payload = {'mwName': mw_name, 'exch': exchange, 'symbol': str(token)}
+            self._make_request("POST", "/marketWatch/addScripToMW", add_payload)
+
+            # Fetch market watch data
+            fetch_payload = {'mwName': mw_name}
+            result = self._make_request("POST", "/marketWatch/fetchMWScrips", fetch_payload)
+
+            if not hasattr(self, '_mw_logged'):
+                self._mw_logged = 0
+            if self._mw_logged < 2:
+                self._mw_logged += 1
+                print(f"\n{'='*60}")
+                print(f"MW API response for {symbol}({exchange}) token={token}:")
+                print(json.dumps(result, indent=2)[:2000])
+                print(f"{'='*60}\n")
+
+            # Parse the MW response - look for our token in the scrips list
+            if isinstance(result, dict):
+                scrips = result.get('YScr498', result.get('scrips', result.get('data', [])))
+                if isinstance(scrips, list):
+                    for scrip in scrips:
+                        if isinstance(scrip, dict):
+                            scrip_token = str(scrip.get('token', scrip.get('symbol', '')))
+                            if scrip_token == str(token):
+                                ltp = self._safe_float(scrip.get('ltp', scrip.get('LTP', 0)))
+                                pc = self._safe_float(scrip.get('pc', scrip.get('PrvClose', scrip.get('pdc', 0))))
+                                chg = self._safe_float(scrip.get('change', scrip.get('Change', 0)))
+                                chg_pct = self._safe_float(scrip.get('pchg', scrip.get('PerChange', scrip.get('chgp', 0))))
+
+                                if pc > 0:
+                                    # Calculate change from prev close if MW didn't provide
+                                    if chg == 0 and ltp > 0:
+                                        chg = round(ltp - pc, 2)
+                                        chg_pct = round((chg / pc) * 100, 2)
+                                    quote = {'ltp': ltp, 'change': chg, 'change_pct': chg_pct, 'prev_close': pc}
+                                    self._mw_cache[cache_key] = quote
+                                    return quote
+
+            # Also try parsing flat response (some MW formats return flat data)
+            if isinstance(result, dict) and result.get('stat') == 'Ok':
+                for key, val in result.items():
+                    if isinstance(val, list):
+                        for item in val:
+                            if isinstance(item, dict) and str(item.get('token', '')) == str(token):
+                                ltp = self._safe_float(item.get('ltp', item.get('LTP', 0)))
+                                pc = self._safe_float(item.get('pc', item.get('pdc', item.get('PrvClose', 0))))
+                                if pc > 0:
+                                    chg = round(ltp - pc, 2) if ltp > 0 else 0
+                                    chg_pct = round((chg / pc) * 100, 2) if pc > 0 else 0
+                                    quote = {'ltp': ltp, 'change': chg, 'change_pct': chg_pct, 'prev_close': pc}
+                                    self._mw_cache[cache_key] = quote
+                                    return quote
+
+        except Exception as e:
+            logger.error(f"MW data error for {symbol}: {e}")
+
+        return None
+
     def _get_prev_close(self, token: int, exchange: str, symbol: str = "") -> float:
-        """Get previous day's closing price using chart/history API.
+        """Get previous day's closing price using chart/history API as fallback.
         Caches result per token since prev close doesn't change during the day."""
         if not hasattr(self, '_prev_close_cache'):
             self._prev_close_cache = {}
@@ -550,7 +624,6 @@ class AliceBlueBroker(BaseBroker):
             return self._prev_close_cache[cache_key]
 
         try:
-            # Fetch last 5 days of daily data to ensure we get at least 1 trading day
             now = datetime.now()
             from_ts = str(int((now - timedelta(days=5)).timestamp())) + '000'
             to_ts = str(int(now.timestamp())) + '000'
@@ -572,17 +645,14 @@ class AliceBlueBroker(BaseBroker):
                 if data.get('stat') == 'Ok' and data.get('result'):
                     candles = data['result']
                     if len(candles) >= 2:
-                        # Second-to-last candle's close is yesterday's close
                         prev_close = float(candles[-2].get('close', 0))
                     elif len(candles) == 1:
-                        # Only one candle - use its open as approx prev close
                         prev_close = float(candles[-1].get('open', 0))
                     else:
                         prev_close = 0.0
 
                     if prev_close > 0:
                         self._prev_close_cache[cache_key] = prev_close
-                        logger.info(f"Prev close for {symbol}({exchange}): {prev_close}")
                         return prev_close
         except Exception as e:
             logger.error(f"Error fetching prev close for {symbol}: {e}")
@@ -655,6 +725,7 @@ class AliceBlueBroker(BaseBroker):
             quote = None
 
             if token and token != 0:
+                # Get LTP from ScripDetails (this works reliably)
                 payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
 
@@ -673,14 +744,23 @@ class AliceBlueBroker(BaseBroker):
             if not quote or quote['ltp'] <= 0:
                 return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
 
-            # If API didn't provide prev_close or change, fetch prev close from historical data
+            # If ScripDetails didn't provide change data, try MarketWatch API
             if quote['ltp'] > 0 and quote['change'] == 0.0 and quote['prev_close'] <= 0:
-                effective_token = token if token and token != 0 else symbol
-                prev_close = self._get_prev_close(effective_token, exchange, symbol)
-                if prev_close > 0:
-                    quote['prev_close'] = prev_close
-                    quote['change'] = round(quote['ltp'] - prev_close, 2)
-                    quote['change_pct'] = round((quote['change'] / prev_close) * 100, 2)
+                effective_token = token if token and token != 0 else 0
+                if effective_token:
+                    mw_data = self._fetch_mw_data(effective_token, exchange, symbol)
+                    if mw_data and mw_data.get('prev_close', 0) > 0:
+                        # Use MW prev_close but keep our LTP (more recent)
+                        quote['prev_close'] = mw_data['prev_close']
+                        quote['change'] = round(quote['ltp'] - mw_data['prev_close'], 2)
+                        quote['change_pct'] = round((quote['change'] / mw_data['prev_close']) * 100, 2)
+                    else:
+                        # Fallback to chart/history API
+                        prev_close = self._get_prev_close(effective_token, exchange, symbol)
+                        if prev_close > 0:
+                            quote['prev_close'] = prev_close
+                            quote['change'] = round(quote['ltp'] - prev_close, 2)
+                            quote['change_pct'] = round((quote['change'] / prev_close) * 100, 2)
 
             return quote
         except Exception as e:

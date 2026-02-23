@@ -641,6 +641,44 @@ def debug_quote(symbol):
     return jsonify(result)
 
 
+@app.route('/api/debug/mw/<symbol>')
+def debug_mw(symbol):
+    """Debug endpoint to see MarketWatch API response for a symbol"""
+    broker = get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'error': 'Broker not connected'})
+
+    exchange = request.args.get('exchange', 'NSE')
+    result = {}
+    try:
+        token = broker._get_instrument_token(symbol, exchange)
+        result['token'] = token
+        result['symbol'] = symbol
+        result['exchange'] = exchange
+
+        if token and token != 0:
+            # Add scrip to MW
+            mw_name = "ALGO_MW"
+            add_payload = {'mwName': mw_name, 'exch': exchange, 'symbol': str(token)}
+            add_result = broker._make_request("POST", "/marketWatch/addScripToMW", add_payload)
+            result['add_to_mw'] = add_result
+
+            # Fetch MW data
+            fetch_payload = {'mwName': mw_name}
+            mw_result = broker._make_request("POST", "/marketWatch/fetchMWScrips", fetch_payload)
+            result['mw_response'] = mw_result
+
+            # Also show what get_scrip_quote returns
+            quote = broker.get_scrip_quote(symbol, exchange)
+            result['final_quote'] = quote
+        else:
+            result['error'] = f'Token not found for {symbol} on {exchange}'
+    except Exception as e:
+        result['error'] = str(e)
+
+    return jsonify(result)
+
+
 # ===== ORDERS =====
 
 @app.route('/api/order/place', methods=['POST'])

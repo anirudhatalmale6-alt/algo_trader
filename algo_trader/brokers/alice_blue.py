@@ -539,89 +539,98 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Error fetching option LTP from AliceBlue: {e}")
             return 0
 
-    def _fetch_mw_data(self, token: int, exchange: str, symbol: str = "") -> Dict:
-        """Fetch quote data via marketWatch API (same source as Alice Blue's own watchlist).
-        Adds scrip to a hidden MW, fetches data, returns dict with ltp/change/change_pct/prev_close.
-        Results are cached per token."""
-        if not hasattr(self, '_mw_cache'):
-            self._mw_cache = {}
-
-        cache_key = f"{exchange}:{token}"
-        if cache_key in self._mw_cache:
-            cached = self._mw_cache[cache_key]
-            # Only use cache for prev_close (LTP changes, but prev_close doesn't)
-            return cached
-
-        try:
-            mw_name = "ALGO_MW"
-            # Add scrip to market watch
-            add_payload = {'mwName': mw_name, 'exch': exchange, 'symbol': str(token)}
-            self._make_request("POST", "/marketWatch/addScripToMW", add_payload)
-
-            # Fetch market watch data
-            fetch_payload = {'mwName': mw_name}
-            result = self._make_request("POST", "/marketWatch/fetchMWScrips", fetch_payload)
-
-            if not hasattr(self, '_mw_logged'):
-                self._mw_logged = 0
-            if self._mw_logged < 2:
-                self._mw_logged += 1
-                print(f"\n{'='*60}")
-                print(f"MW API response for {symbol}({exchange}) token={token}:")
-                print(json.dumps(result, indent=2)[:2000])
-                print(f"{'='*60}\n")
-
-            # Parse the MW response - look for our token in the scrips list
-            if isinstance(result, dict):
-                scrips = result.get('YScr498', result.get('scrips', result.get('data', [])))
-                if isinstance(scrips, list):
-                    for scrip in scrips:
-                        if isinstance(scrip, dict):
-                            scrip_token = str(scrip.get('token', scrip.get('symbol', '')))
-                            if scrip_token == str(token):
-                                ltp = self._safe_float(scrip.get('ltp', scrip.get('LTP', 0)))
-                                pc = self._safe_float(scrip.get('pc', scrip.get('PrvClose', scrip.get('pdc', 0))))
-                                chg = self._safe_float(scrip.get('change', scrip.get('Change', 0)))
-                                chg_pct = self._safe_float(scrip.get('pchg', scrip.get('PerChange', scrip.get('chgp', 0))))
-
-                                if pc > 0:
-                                    # Calculate change from prev close if MW didn't provide
-                                    if chg == 0 and ltp > 0:
-                                        chg = round(ltp - pc, 2)
-                                        chg_pct = round((chg / pc) * 100, 2)
-                                    quote = {'ltp': ltp, 'change': chg, 'change_pct': chg_pct, 'prev_close': pc}
-                                    self._mw_cache[cache_key] = quote
-                                    return quote
-
-            # Also try parsing flat response (some MW formats return flat data)
-            if isinstance(result, dict) and result.get('stat') == 'Ok':
-                for key, val in result.items():
-                    if isinstance(val, list):
-                        for item in val:
-                            if isinstance(item, dict) and str(item.get('token', '')) == str(token):
-                                ltp = self._safe_float(item.get('ltp', item.get('LTP', 0)))
-                                pc = self._safe_float(item.get('pc', item.get('pdc', item.get('PrvClose', 0))))
-                                if pc > 0:
-                                    chg = round(ltp - pc, 2) if ltp > 0 else 0
-                                    chg_pct = round((chg / pc) * 100, 2) if pc > 0 else 0
-                                    quote = {'ltp': ltp, 'change': chg, 'change_pct': chg_pct, 'prev_close': pc}
-                                    self._mw_cache[cache_key] = quote
-                                    return quote
-
-        except Exception as e:
-            logger.error(f"MW data error for {symbol}: {e}")
-
-        return None
-
-    def _get_prev_close(self, token: int, exchange: str, symbol: str = "") -> float:
-        """Get previous day's closing price using chart/history API as fallback.
-        Caches result per token since prev close doesn't change during the day."""
+    def _get_nse_prev_close(self, symbol: str, exchange: str = "NSE") -> float:
+        """Get official previous close from NSE India API.
+        This gives the exact same value that Alice Blue and all brokers use.
+        Caches result per symbol since prev close doesn't change during the day."""
         if not hasattr(self, '_prev_close_cache'):
             self._prev_close_cache = {}
 
-        cache_key = f"{exchange}:{token}"
+        # Clean symbol for NSE API (remove -EQ suffix, etc.)
+        clean_sym = symbol.replace('-EQ', '').replace('-BE', '').strip()
+        cache_key = f"{clean_sym}"
         if cache_key in self._prev_close_cache:
             return self._prev_close_cache[cache_key]
+
+        # Only works for NSE/NFO equities, not MCX/BSE
+        if exchange not in ('NSE', 'NFO', 'BSE', 'BFO'):
+            return 0.0
+
+        try:
+            if not hasattr(self, '_nse_session'):
+                self._nse_session = requests.Session()
+                self._nse_session.headers.update({
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                })
+                # Get cookies from NSE main page
+                try:
+                    self._nse_session.get('https://www.nseindia.com', timeout=10)
+                except:
+                    pass
+
+            # For index symbols, use different endpoint
+            index_map = {
+                'NIFTY': 'NIFTY 50', 'NIFTY 50': 'NIFTY 50',
+                'BANKNIFTY': 'NIFTY BANK', 'NIFTY BANK': 'NIFTY BANK',
+                'INDIAVIX': 'INDIA VIX', 'INDIA VIX': 'INDIA VIX',
+            }
+
+            if clean_sym.upper() in index_map:
+                idx_name = index_map[clean_sym.upper()]
+                url = f'https://www.nseindia.com/api/allIndices'
+                r = self._nse_session.get(url, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    for idx in data.get('data', []):
+                        if idx.get('index') == idx_name:
+                            pc = self._safe_float(idx.get('previousClose', 0))
+                            if pc > 0:
+                                self._prev_close_cache[cache_key] = pc
+                                logger.info(f"NSE prev close for {clean_sym}: {pc} (index)")
+                                return pc
+            else:
+                # Equity quote
+                url = f'https://www.nseindia.com/api/quote-equity?symbol={clean_sym}'
+                r = self._nse_session.get(url, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    pi = data.get('priceInfo', {})
+                    pc = self._safe_float(pi.get('previousClose', 0))
+                    if pc > 0:
+                        self._prev_close_cache[cache_key] = pc
+                        logger.info(f"NSE prev close for {clean_sym}: {pc}")
+                        return pc
+                elif r.status_code == 403:
+                    # Session expired, refresh cookies
+                    try:
+                        self._nse_session.get('https://www.nseindia.com', timeout=10)
+                        r = self._nse_session.get(url, timeout=10)
+                        if r.status_code == 200:
+                            data = r.json()
+                            pi = data.get('priceInfo', {})
+                            pc = self._safe_float(pi.get('previousClose', 0))
+                            if pc > 0:
+                                self._prev_close_cache[cache_key] = pc
+                                logger.info(f"NSE prev close for {clean_sym}: {pc} (retry)")
+                                return pc
+                    except:
+                        pass
+
+        except Exception as e:
+            logger.warning(f"NSE API error for {clean_sym}: {e}")
+
+        return 0.0
+
+    def _get_prev_close_fallback(self, token: int, exchange: str, symbol: str = "") -> float:
+        """Fallback: Get previous close from chart/history API if NSE API fails."""
+        if not hasattr(self, '_prev_close_cache_hist'):
+            self._prev_close_cache_hist = {}
+
+        cache_key = f"{exchange}:{token}"
+        if cache_key in self._prev_close_cache_hist:
+            return self._prev_close_cache_hist[cache_key]
 
         try:
             now = datetime.now()
@@ -652,10 +661,10 @@ class AliceBlueBroker(BaseBroker):
                         prev_close = 0.0
 
                     if prev_close > 0:
-                        self._prev_close_cache[cache_key] = prev_close
+                        self._prev_close_cache_hist[cache_key] = prev_close
                         return prev_close
         except Exception as e:
-            logger.error(f"Error fetching prev close for {symbol}: {e}")
+            logger.error(f"Chart history error for {symbol}: {e}")
 
         return 0.0
 
@@ -744,23 +753,23 @@ class AliceBlueBroker(BaseBroker):
             if not quote or quote['ltp'] <= 0:
                 return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
 
-            # If ScripDetails didn't provide change data, try MarketWatch API
+            # If ScripDetails didn't provide change data, get prev close from NSE
             if quote['ltp'] > 0 and quote['change'] == 0.0 and quote['prev_close'] <= 0:
-                effective_token = token if token and token != 0 else 0
-                if effective_token:
-                    mw_data = self._fetch_mw_data(effective_token, exchange, symbol)
-                    if mw_data and mw_data.get('prev_close', 0) > 0:
-                        # Use MW prev_close but keep our LTP (more recent)
-                        quote['prev_close'] = mw_data['prev_close']
-                        quote['change'] = round(quote['ltp'] - mw_data['prev_close'], 2)
-                        quote['change_pct'] = round((quote['change'] / mw_data['prev_close']) * 100, 2)
-                    else:
-                        # Fallback to chart/history API
-                        prev_close = self._get_prev_close(effective_token, exchange, symbol)
-                        if prev_close > 0:
-                            quote['prev_close'] = prev_close
-                            quote['change'] = round(quote['ltp'] - prev_close, 2)
-                            quote['change_pct'] = round((quote['change'] / prev_close) * 100, 2)
+                # Try 1: NSE India official API (exact match with Alice Blue)
+                # Get the trading symbol for NSE lookup
+                trading_sym = symbol.replace('-EQ', '').replace('-BE', '')
+                prev_close = self._get_nse_prev_close(trading_sym, exchange)
+
+                # Try 2: Chart/history API as fallback
+                if prev_close <= 0:
+                    effective_token = token if token and token != 0 else 0
+                    if effective_token:
+                        prev_close = self._get_prev_close_fallback(effective_token, exchange, symbol)
+
+                if prev_close > 0:
+                    quote['prev_close'] = prev_close
+                    quote['change'] = round(quote['ltp'] - prev_close, 2)
+                    quote['change_pct'] = round((quote['change'] / prev_close) * 100, 2)
 
             return quote
         except Exception as e:

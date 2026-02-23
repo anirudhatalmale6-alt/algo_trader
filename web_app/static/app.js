@@ -1174,7 +1174,7 @@ function updateMarketData() {
                         if (existing) {
                             if (item.ltp > 0) {
                                 existing.price = item.ltp;
-                                existing.change = item.change || 0;
+                                existing.change = item.change != null ? item.change : 0;
                             }
                         }
                     });
@@ -3310,8 +3310,8 @@ function updateWatchlistLtp() {
             // Response can be {ltp, change, change_pct} object or just a number (backward compat)
             const quoteData = ltpData[symbol];
             const newPrice = typeof quoteData === 'object' ? quoteData.ltp : quoteData;
-            const apiChange = typeof quoteData === 'object' ? (quoteData.change || 0) : 0;
-            const apiChangePct = typeof quoteData === 'object' ? (quoteData.change_pct || 0) : 0;
+            const apiChange = typeof quoteData === 'object' && quoteData.change != null ? quoteData.change : 0;
+            const apiChangePct = typeof quoteData === 'object' && quoteData.change_pct != null ? quoteData.change_pct : 0;
 
             if (!newPrice || newPrice <= 0) return;
 

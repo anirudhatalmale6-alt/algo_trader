@@ -7,7 +7,7 @@ import hashlib
 import json
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
-from datetime import datetime
+from datetime import datetime, timedelta
 from loguru import logger
 
 from .base import BaseBroker, BrokerOrder
@@ -539,6 +539,56 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Error fetching option LTP from AliceBlue: {e}")
             return 0
 
+    def _get_prev_close(self, token: int, exchange: str, symbol: str = "") -> float:
+        """Get previous day's closing price using chart/history API.
+        Caches result per token since prev close doesn't change during the day."""
+        if not hasattr(self, '_prev_close_cache'):
+            self._prev_close_cache = {}
+
+        cache_key = f"{exchange}:{token}"
+        if cache_key in self._prev_close_cache:
+            return self._prev_close_cache[cache_key]
+
+        try:
+            # Fetch last 5 days of daily data to ensure we get at least 1 trading day
+            now = datetime.now()
+            from_ts = str(int((now - timedelta(days=5)).timestamp())) + '000'
+            to_ts = str(int(now.timestamp())) + '000'
+
+            payload = {
+                "token": str(token),
+                "exchange": exchange,
+                "from": from_ts,
+                "to": to_ts,
+                "resolution": "D"
+            }
+
+            url = f"{self.BASE_URL}/chart/history"
+            headers = self._get_headers()
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('stat') == 'Ok' and data.get('result'):
+                    candles = data['result']
+                    if len(candles) >= 2:
+                        # Second-to-last candle's close is yesterday's close
+                        prev_close = float(candles[-2].get('close', 0))
+                    elif len(candles) == 1:
+                        # Only one candle - use its open as approx prev close
+                        prev_close = float(candles[-1].get('open', 0))
+                    else:
+                        prev_close = 0.0
+
+                    if prev_close > 0:
+                        self._prev_close_cache[cache_key] = prev_close
+                        logger.info(f"Prev close for {symbol}({exchange}): {prev_close}")
+                        return prev_close
+        except Exception as e:
+            logger.error(f"Error fetching prev close for {symbol}: {e}")
+
+        return 0.0
+
     @staticmethod
     def _get_first_valid(data: Dict, keys: list, default=None):
         """Get the first non-None value from a dict for a list of possible keys"""
@@ -602,44 +652,37 @@ class AliceBlueBroker(BaseBroker):
         """Get full quote data (LTP + change + prev close) for a symbol"""
         try:
             token = self._get_instrument_token(symbol, exchange)
+            quote = None
+
             if token and token != 0:
                 payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
 
-                # Log FULL raw response for first few symbols (print to terminal)
-                if not hasattr(self, '_quote_logged'):
-                    self._quote_logged = set()
-                if symbol not in self._quote_logged and len(self._quote_logged) < 3:
-                    self._quote_logged.add(symbol)
-                    print(f"\n{'='*60}")
-                    print(f"RAW API RESPONSE for {symbol} ({exchange}) token={token}:")
-                    print(f"Response type: {type(result).__name__}")
-                    if isinstance(result, dict):
-                        for k, v in result.items():
-                            print(f"  {k}: {v} (type: {type(v).__name__})")
-                    else:
-                        print(f"  {result}")
-                    print(f"{'='*60}\n")
-
                 if isinstance(result, dict) and (result.get('stat') == 'Ok' or result.get('success')):
                     quote = self._extract_quote_data(result)
-                    if quote['ltp'] > 0:
-                        return quote
                 elif isinstance(result, list):
-                    # Some APIs return list responses
                     quote = self._extract_quote_data(result)
-                    if quote['ltp'] > 0:
-                        return quote
 
-            # Fallback with trading symbol as string
-            payload = {'exch': exchange, 'symbol': symbol}
-            result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
-            if isinstance(result, dict) and (result.get('stat') == 'Ok' or result.get('success')):
-                quote = self._extract_quote_data(result)
-                if quote['ltp'] > 0:
-                    return quote
+            # Fallback with trading symbol as string if token didn't work
+            if not quote or quote['ltp'] <= 0:
+                payload = {'exch': exchange, 'symbol': symbol}
+                result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
+                if isinstance(result, dict) and (result.get('stat') == 'Ok' or result.get('success')):
+                    quote = self._extract_quote_data(result)
 
-            return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
+            if not quote or quote['ltp'] <= 0:
+                return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
+
+            # If API didn't provide prev_close or change, fetch prev close from historical data
+            if quote['ltp'] > 0 and quote['change'] == 0.0 and quote['prev_close'] <= 0:
+                effective_token = token if token and token != 0 else symbol
+                prev_close = self._get_prev_close(effective_token, exchange, symbol)
+                if prev_close > 0:
+                    quote['prev_close'] = prev_close
+                    quote['change'] = round(quote['ltp'] - prev_close, 2)
+                    quote['change_pct'] = round((quote['change'] / prev_close) * 100, 2)
+
+            return quote
         except Exception as e:
             logger.error(f"Error getting quote for {symbol}: {e}")
             return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}

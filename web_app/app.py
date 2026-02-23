@@ -606,6 +606,41 @@ def get_bulk_ltp():
         return jsonify({'success': False, 'message': str(e)})
 
 
+# ===== DEBUG =====
+
+@app.route('/api/debug/quote/<symbol>')
+def debug_quote(symbol):
+    """Debug endpoint to see raw API response for a symbol"""
+    broker = get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'error': 'Broker not connected'})
+
+    exchange = request.args.get('exchange', 'NSE')
+    result = {}
+    try:
+        # Get instrument token
+        token = broker._get_instrument_token(symbol, exchange)
+        result['token'] = token
+        result['symbol'] = symbol
+        result['exchange'] = exchange
+
+        if token and token != 0:
+            payload = {'exch': exchange, 'symbol': str(token)}
+            raw_response = broker._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
+            result['raw_response'] = raw_response
+            result['response_keys'] = list(raw_response.keys()) if isinstance(raw_response, dict) else f"type={type(raw_response).__name__}"
+
+            # Show all key-value pairs for easy reading
+            if isinstance(raw_response, dict):
+                result['all_fields'] = {k: str(v) for k, v in raw_response.items()}
+        else:
+            result['error'] = f'Token not found for {symbol} on {exchange}'
+    except Exception as e:
+        result['error'] = str(e)
+
+    return jsonify(result)
+
+
 # ===== ORDERS =====
 
 @app.route('/api/order/place', methods=['POST'])

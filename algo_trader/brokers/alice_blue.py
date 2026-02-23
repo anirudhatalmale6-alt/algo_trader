@@ -548,46 +548,53 @@ class AliceBlueBroker(BaseBroker):
                 return val
         return default
 
-    def _extract_quote_data(self, result: Dict) -> Dict:
-        """Extract LTP, change, change% and prev close from ScripQuoteDetails response"""
+    @staticmethod
+    def _safe_float(val, default=0.0):
+        """Safely convert a value to float, handling strings, None, empty, 'NA', etc."""
+        if val is None:
+            return default
+        try:
+            s = str(val).strip()
+            if not s or s in ('NA', 'N/A', '--', '-', ''):
+                return default
+            return float(s)
+        except (ValueError, TypeError):
+            return default
+
+    def _extract_quote_data(self, result) -> Dict:
+        """Extract LTP, change, change% and prev close from ScripQuoteDetails response.
+        Handles various response structures: flat dict, nested dict, list of dicts."""
+
+        # Flatten the response to a single dict with the actual data
         data = result
-        # Some responses nest data under 'data' key
-        if result.get('data') and isinstance(result['data'], dict):
-            data = result['data']
+        if isinstance(result, list) and len(result) > 0:
+            data = result[0]  # Some APIs return list of dicts
+        if isinstance(data, dict):
+            # Try various nesting patterns
+            for nested_key in ['data', 'result', 'scrip', 'quote', 'scripData']:
+                nested = data.get(nested_key)
+                if isinstance(nested, dict) and len(nested) > 3:
+                    data = nested
+                    break
+                elif isinstance(nested, list) and len(nested) > 0 and isinstance(nested[0], dict):
+                    data = nested[0]
+                    break
 
-        # Log all keys for debugging
-        logger.debug(f"ScripQuote keys: {list(data.keys())}")
+        if not isinstance(data, dict):
+            logger.warning(f"Unexpected response type: {type(data)}")
+            return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
 
-        # Use _get_first_valid to avoid falsy-value bugs with `or` chains
-        # Alice Blue fields: LTP, PrvClose, Change, PerChange
-        ltp_raw = self._get_first_valid(data, ['LTP', 'ltp', 'lastTradedPrice'], '0')
-        prev_close_raw = self._get_first_valid(data, ['PrvClose', 'prvClose', 'previous_close', 'pClose', 'YClose', 'yClose', 'Close'], '0')
-        change_raw = self._get_first_valid(data, ['Change', 'change', 'Chng', 'chng', 'NetChng', 'netChng'], '0')
-        change_pct_raw = self._get_first_valid(data, ['PerChange', 'perChange', 'ChngPer', 'chngPer', 'pChange', 'PerChng', 'ChangePer', 'change_per'], '0')
+        # Extract values using _get_first_valid (checks for None, not falsy)
+        ltp = self._safe_float(self._get_first_valid(data, ['LTP', 'ltp', 'Ltp', 'lastTradedPrice', 'LastTradedPrice', 'last_traded_price']))
+        prev_close = self._safe_float(self._get_first_valid(data, ['PrvClose', 'prvClose', 'pClose', 'YClose', 'yClose', 'Close', 'close', 'previous_close', 'PreviousClose', 'previousClose']))
+        change = self._safe_float(self._get_first_valid(data, ['Change', 'change', 'Chng', 'chng', 'NetChng', 'netChng', 'priceChange', 'PriceChange']))
+        change_pct = self._safe_float(self._get_first_valid(data, ['PerChange', 'perChange', 'ChngPer', 'chngPer', 'pChange', 'PerChng', 'ChangePer', 'change_per', 'percentChange', 'PercentChange']))
 
-        try:
-            ltp = float(ltp_raw)
-        except (ValueError, TypeError):
-            ltp = 0.0
-        try:
-            prev_close = float(prev_close_raw)
-        except (ValueError, TypeError):
-            prev_close = 0.0
-        try:
-            change = float(change_raw)
-        except (ValueError, TypeError):
-            change = 0.0
-        try:
-            change_pct = float(change_pct_raw)
-        except (ValueError, TypeError):
-            change_pct = 0.0
-
-        # Calculate change from prev_close if API didn't return it
-        if ltp > 0 and prev_close > 0 and change == 0:
+        # Calculate change from prev_close if API didn't return usable change values
+        if ltp > 0 and prev_close > 0 and change == 0.0 and change_pct == 0.0:
             change = round(ltp - prev_close, 2)
-            change_pct = round((change / prev_close) * 100, 2)
-
-        logger.debug(f"Extracted: LTP={ltp}, Change={change}, Change%={change_pct}, PrvClose={prev_close}")
+            if prev_close != 0:
+                change_pct = round((change / prev_close) * 100, 2)
 
         return {'ltp': ltp, 'change': change, 'change_pct': change_pct, 'prev_close': prev_close}
 
@@ -598,26 +605,36 @@ class AliceBlueBroker(BaseBroker):
             if token and token != 0:
                 payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
-                if result.get('stat') == 'Ok' or result.get('success'):
-                    # Log FULL raw response for first few calls to identify correct fields
-                    if not hasattr(self, '_quote_logged'):
-                        self._quote_logged = set()
-                    if symbol not in self._quote_logged and len(self._quote_logged) < 5:
-                        self._quote_logged.add(symbol)
-                        logger.info(f"FULL API response for {symbol}({exchange}): {json.dumps(result, indent=2)[:1500]}")
+
+                # Log FULL raw response for first few symbols (print to terminal)
+                if not hasattr(self, '_quote_logged'):
+                    self._quote_logged = set()
+                if symbol not in self._quote_logged and len(self._quote_logged) < 3:
+                    self._quote_logged.add(symbol)
+                    print(f"\n{'='*60}")
+                    print(f"RAW API RESPONSE for {symbol} ({exchange}) token={token}:")
+                    print(f"Response type: {type(result).__name__}")
+                    if isinstance(result, dict):
+                        for k, v in result.items():
+                            print(f"  {k}: {v} (type: {type(v).__name__})")
+                    else:
+                        print(f"  {result}")
+                    print(f"{'='*60}\n")
+
+                if isinstance(result, dict) and (result.get('stat') == 'Ok' or result.get('success')):
+                    quote = self._extract_quote_data(result)
+                    if quote['ltp'] > 0:
+                        return quote
+                elif isinstance(result, list):
+                    # Some APIs return list responses
                     quote = self._extract_quote_data(result)
                     if quote['ltp'] > 0:
                         return quote
 
-            # Fallback with trading symbol
+            # Fallback with trading symbol as string
             payload = {'exch': exchange, 'symbol': symbol}
             result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
-            if result.get('stat') == 'Ok' or result.get('success'):
-                if not hasattr(self, '_quote_logged'):
-                    self._quote_logged = set()
-                if symbol not in self._quote_logged and len(self._quote_logged) < 5:
-                    self._quote_logged.add(symbol)
-                    logger.info(f"FULL API response (fallback) for {symbol}({exchange}): {json.dumps(result, indent=2)[:1500]}")
+            if isinstance(result, dict) and (result.get('stat') == 'Ok' or result.get('success')):
                 quote = self._extract_quote_data(result)
                 if quote['ltp'] > 0:
                     return quote

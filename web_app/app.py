@@ -213,6 +213,18 @@ def authenticate():
             active_broker_id = broker_id
 
         logger.info(f"Broker connected: {broker_id} (total: {len(connected_brokers)})")
+
+        # Start WebSocket for real-time tick data (Alice Blue)
+        if isinstance(pending_broker, AliceBlueBroker) and hasattr(pending_broker, 'start_websocket'):
+            try:
+                ws_started = pending_broker.start_websocket()
+                if ws_started:
+                    logger.info("Alice Blue WebSocket started for real-time data")
+                else:
+                    logger.warning("WebSocket start failed, will use REST API fallback")
+            except Exception as e:
+                logger.warning(f"WebSocket start error (non-fatal): {e}")
+
         pending_broker = None
 
         return jsonify({
@@ -555,6 +567,10 @@ def get_bulk_ltp():
         if not symbols:
             return jsonify({'success': True, 'data': {}})
 
+        # Auto-subscribe to WebSocket if connected (one-time per new symbol set)
+        if hasattr(broker, 'ws_subscribe') and getattr(broker, '_ws_connected', False):
+            _try_ws_subscribe(broker, symbols)
+
         result_map = {}
 
         for item in symbols:
@@ -572,7 +588,6 @@ def get_bulk_ltp():
                     exch = 'MCX'
 
             try:
-                # Use get_scrip_quote if available (returns change data)
                 if hasattr(broker, 'get_scrip_quote'):
                     quote = broker.get_scrip_quote(sym, exch)
                     if quote['ltp'] > 0:
@@ -586,7 +601,6 @@ def get_bulk_ltp():
                     if quote['ltp'] > 0:
                         result_map[sym] = quote
                 else:
-                    # Fallback for brokers without get_scrip_quote
                     ltp = broker.get_ltp(sym, exch)
                     if ltp and float(ltp) > 0:
                         result_map[sym] = {'ltp': float(ltp), 'change': 0, 'change_pct': 0}
@@ -604,6 +618,30 @@ def get_bulk_ltp():
     except Exception as e:
         logger.error(f"Bulk LTP error: {e}")
         return jsonify({'success': False, 'message': str(e)})
+
+
+def _try_ws_subscribe(broker, symbols):
+    """Subscribe watchlist symbols to WebSocket (once per unique symbol set)."""
+    try:
+        sym_key = ','.join(sorted(s.get('symbol', '') for s in symbols))
+        if hasattr(broker, '_ws_last_sub_key') and broker._ws_last_sub_key == sym_key:
+            return  # Already subscribed to same set
+
+        sub_list = []
+        for item in symbols:
+            sym = item.get('symbol', '')
+            exch = item.get('exchange', 'NSE')
+            if hasattr(broker, '_get_instrument_token'):
+                token = broker._get_instrument_token(sym, exch)
+                if token and token != 0:
+                    sub_list.append({'symbol': sym, 'exchange': exch, 'token': str(token)})
+
+        if sub_list:
+            broker.ws_subscribe(sub_list)
+            broker._ws_last_sub_key = sym_key
+            logger.info(f"WS subscribed to {len(sub_list)} watchlist symbols")
+    except Exception as e:
+        logger.debug(f"WS subscribe attempt failed: {e}")
 
 
 # ===== DEBUG =====
@@ -651,16 +689,45 @@ def debug_full(symbol):
     exchange = request.args.get('exchange', 'NSE')
     result = {'symbol': symbol, 'exchange': exchange}
     try:
+        # Token
+        token = broker._get_instrument_token(symbol, exchange) if hasattr(broker, '_get_instrument_token') else None
+        result['token'] = token
+
+        # WebSocket data
+        if token and hasattr(broker, 'get_ws_quote'):
+            ws_data = broker.get_ws_quote(str(token), exchange)
+            result['ws_data'] = ws_data
+            result['ws_connected'] = getattr(broker, '_ws_connected', False)
+
         # NSE prev close
         nse_pc = broker._get_nse_prev_close(symbol, exchange)
         result['nse_prev_close'] = nse_pc
 
-        # Final quote (uses NSE prev close)
+        # NSE cache
+        result['nse_cache_size'] = len(getattr(broker, '_prev_close_cache', {}))
+
+        # Final quote (uses all sources)
         quote = broker.get_scrip_quote(symbol, exchange)
         result['final_quote'] = quote
     except Exception as e:
         result['error'] = str(e)
 
+    return jsonify(result)
+
+
+@app.route('/api/debug/prevclose')
+def debug_prevclose():
+    """Debug page showing all cached previous close values"""
+    broker = get_active_broker()
+    if not broker or not broker.is_authenticated:
+        return jsonify({'error': 'Broker not connected'})
+
+    result = {
+        'ws_connected': getattr(broker, '_ws_connected', False),
+        'ws_tick_count': len(getattr(broker, '_ws_tick_data', {})),
+        'nse_cache': getattr(broker, '_prev_close_cache', {}),
+        'nse_batch_done': getattr(broker, '_nse_batch_done', False),
+    }
     return jsonify(result)
 
 

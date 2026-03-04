@@ -5,6 +5,8 @@ API Documentation: https://ant.aliceblueonline.com/
 import requests
 import hashlib
 import json
+import threading
+import ssl
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 from datetime import datetime, timedelta
@@ -539,89 +541,163 @@ class AliceBlueBroker(BaseBroker):
             logger.error(f"Error fetching option LTP from AliceBlue: {e}")
             return 0
 
+    def _init_nse_session(self):
+        """Initialize NSE session with proper browser-like headers (matching nsepython)."""
+        import time
+        self._nse_session = requests.Session()
+        self._nse_session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
+            'cache-control': 'max-age=0',
+            'sec-ch-ua': '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'none',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
+        })
+        # Warm up cookies by visiting 2 pages (like nsepython does)
+        try:
+            self._nse_session.get('https://www.nseindia.com', timeout=10)
+            time.sleep(0.3)
+            self._nse_session.get('https://www.nseindia.com/market-data/live-equity-market', timeout=10)
+        except Exception as e:
+            logger.warning(f"NSE cookie warmup failed: {e}")
+        self._nse_session_time = time.time()
+
+    def _ensure_nse_session(self):
+        """Ensure NSE session is active, refresh if older than 3 minutes."""
+        import time
+        if not hasattr(self, '_nse_session') or not hasattr(self, '_nse_session_time'):
+            self._init_nse_session()
+        elif time.time() - self._nse_session_time > 180:  # Refresh every 3 minutes
+            logger.info("NSE session expired, refreshing...")
+            self._init_nse_session()
+
+    def _nse_fetch(self, url: str) -> Optional[dict]:
+        """Fetch JSON from NSE API with retry on 403."""
+        import time
+        self._ensure_nse_session()
+        try:
+            r = self._nse_session.get(url, timeout=10)
+            if r.status_code == 200:
+                return r.json()
+            elif r.status_code == 403:
+                logger.info(f"NSE 403, refreshing session and retrying...")
+                self._init_nse_session()
+                time.sleep(0.5)
+                r = self._nse_session.get(url, timeout=10)
+                if r.status_code == 200:
+                    return r.json()
+                else:
+                    logger.warning(f"NSE retry failed: status={r.status_code}")
+            else:
+                logger.warning(f"NSE API status={r.status_code} for {url}")
+        except Exception as e:
+            logger.warning(f"NSE fetch error: {e}")
+        return None
+
+    def _batch_fetch_nse_prev_close(self):
+        """Fetch previous close for many stocks at once using NSE index endpoints.
+        Populates _prev_close_cache with all available data in just 2-3 API calls."""
+        if not hasattr(self, '_prev_close_cache'):
+            self._prev_close_cache = {}
+        if hasattr(self, '_nse_batch_done'):
+            return  # Already fetched this session
+
+        import time
+        logger.info("NSE batch fetch: loading previous close data for all stocks...")
+
+        # 1) Fetch all indices (NIFTY, BANKNIFTY, etc.)
+        try:
+            data = self._nse_fetch('https://www.nseindia.com/api/allIndices')
+            if data:
+                for idx in data.get('data', []):
+                    idx_name = idx.get('index', '')
+                    pc = self._safe_float(idx.get('previousClose', 0))
+                    if pc > 0:
+                        # Map index names to common symbols
+                        sym_map = {
+                            'NIFTY 50': 'NIFTY', 'NIFTY BANK': 'BANKNIFTY',
+                            'INDIA VIX': 'INDIAVIX', 'NIFTY FINANCIAL SERVICES': 'FINNIFTY',
+                            'NIFTY MIDCAP 50': 'NIFTYMIDCAP50',
+                        }
+                        if idx_name in sym_map:
+                            self._prev_close_cache[sym_map[idx_name]] = pc
+                            logger.info(f"  Index {sym_map[idx_name]}: prev_close={pc}")
+        except Exception as e:
+            logger.warning(f"NSE indices fetch error: {e}")
+
+        time.sleep(0.3)
+
+        # 2) Fetch NIFTY 50 stocks (top 50 by market cap)
+        nse_indices = [
+            'https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050',
+            'https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20NEXT%2050',
+        ]
+        for idx_url in nse_indices:
+            try:
+                data = self._nse_fetch(idx_url)
+                if data:
+                    for stock in data.get('data', []):
+                        sym = stock.get('symbol', '')
+                        pc = self._safe_float(stock.get('previousClose', 0))
+                        if sym and pc > 0:
+                            self._prev_close_cache[sym] = pc
+                time.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"NSE index fetch error for {idx_url}: {e}")
+
+        logger.info(f"NSE batch fetch complete: {len(self._prev_close_cache)} symbols cached")
+        self._nse_batch_done = True
+
     def _get_nse_prev_close(self, symbol: str, exchange: str = "NSE") -> float:
         """Get official previous close from NSE India API.
-        This gives the exact same value that Alice Blue and all brokers use.
-        Caches result per symbol since prev close doesn't change during the day."""
+        Uses batch-fetched data first, falls back to individual API call."""
         if not hasattr(self, '_prev_close_cache'):
             self._prev_close_cache = {}
 
-        # Clean symbol for NSE API (remove -EQ suffix, etc.)
-        clean_sym = symbol.replace('-EQ', '').replace('-BE', '').strip()
-        cache_key = f"{clean_sym}"
-        if cache_key in self._prev_close_cache:
-            return self._prev_close_cache[cache_key]
+        clean_sym = symbol.replace('-EQ', '').replace('-BE', '').strip().upper()
+        if clean_sym in self._prev_close_cache:
+            return self._prev_close_cache[clean_sym]
 
-        # Only works for NSE/NFO equities, not MCX/BSE
         if exchange not in ('NSE', 'NFO', 'BSE', 'BFO'):
             return 0.0
 
-        try:
-            if not hasattr(self, '_nse_session'):
-                self._nse_session = requests.Session()
-                self._nse_session.headers.update({
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'application/json',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                })
-                # Get cookies from NSE main page
-                try:
-                    self._nse_session.get('https://www.nseindia.com', timeout=10)
-                except:
-                    pass
+        # Try batch fetch first (loads ~100 stocks in 2-3 API calls)
+        if not hasattr(self, '_nse_batch_done'):
+            self._batch_fetch_nse_prev_close()
+            if clean_sym in self._prev_close_cache:
+                return self._prev_close_cache[clean_sym]
 
-            # For index symbols, use different endpoint
+        # Individual fetch for symbols not in batch
+        try:
+            from urllib.parse import quote
+
             index_map = {
                 'NIFTY': 'NIFTY 50', 'NIFTY 50': 'NIFTY 50',
                 'BANKNIFTY': 'NIFTY BANK', 'NIFTY BANK': 'NIFTY BANK',
                 'INDIAVIX': 'INDIA VIX', 'INDIA VIX': 'INDIA VIX',
+                'FINNIFTY': 'NIFTY FINANCIAL SERVICES',
             }
 
-            if clean_sym.upper() in index_map:
-                idx_name = index_map[clean_sym.upper()]
-                url = f'https://www.nseindia.com/api/allIndices'
-                r = self._nse_session.get(url, timeout=10)
-                if r.status_code == 200:
-                    data = r.json()
-                    for idx in data.get('data', []):
-                        if idx.get('index') == idx_name:
-                            pc = self._safe_float(idx.get('previousClose', 0))
-                            if pc > 0:
-                                self._prev_close_cache[cache_key] = pc
-                                logger.info(f"NSE prev close for {clean_sym}: {pc} (index)")
-                                return pc
+            if clean_sym in index_map:
+                # Already tried in batch, skip
+                pass
             else:
-                # Equity quote - URL-encode symbol for special chars (M&M, L&T etc.)
-                from urllib.parse import quote
                 encoded_sym = quote(clean_sym)
                 url = f'https://www.nseindia.com/api/quote-equity?symbol={encoded_sym}'
-                r = self._nse_session.get(url, timeout=10)
-                if r.status_code == 200:
-                    data = r.json()
+                data = self._nse_fetch(url)
+                if data:
                     pi = data.get('priceInfo', {})
                     pc = self._safe_float(pi.get('previousClose', 0))
                     if pc > 0:
-                        self._prev_close_cache[cache_key] = pc
-                        logger.info(f"NSE prev close for {clean_sym}: {pc}")
+                        self._prev_close_cache[clean_sym] = pc
+                        logger.info(f"NSE prev close for {clean_sym}: {pc} (individual)")
                         return pc
-                elif r.status_code == 403:
-                    # Session expired, refresh cookies and retry
-                    try:
-                        import time
-                        time.sleep(0.5)
-                        self._nse_session.get('https://www.nseindia.com', timeout=10)
-                        time.sleep(0.3)
-                        r = self._nse_session.get(url, timeout=10)
-                        if r.status_code == 200:
-                            data = r.json()
-                            pi = data.get('priceInfo', {})
-                            pc = self._safe_float(pi.get('previousClose', 0))
-                            if pc > 0:
-                                self._prev_close_cache[cache_key] = pc
-                                logger.info(f"NSE prev close for {clean_sym}: {pc} (retry)")
-                                return pc
-                    except:
-                        pass
 
         except Exception as e:
             logger.warning(f"NSE API error for {clean_sym}: {e}")
@@ -733,22 +809,29 @@ class AliceBlueBroker(BaseBroker):
         return {'ltp': ltp, 'change': change, 'change_pct': change_pct, 'prev_close': prev_close}
 
     def get_scrip_quote(self, symbol: str, exchange: str = "NSE") -> Dict:
-        """Get full quote data (LTP + change + prev close) for a symbol"""
+        """Get full quote data (LTP + change + prev close) for a symbol.
+        Priority: 1) WebSocket tick data  2) REST API + NSE prev close  3) REST API + chart fallback"""
         try:
             token = self._get_instrument_token(symbol, exchange)
-            quote = None
 
+            # ─── Try 1: WebSocket tick data (most accurate, matches Alice Blue exactly) ───
+            if token and token != 0 and getattr(self, '_ws_connected', False):
+                ws_quote = self.get_ws_quote(str(token), exchange)
+                if ws_quote and ws_quote['ltp'] > 0 and ws_quote['change_pct'] != 0:
+                    logger.debug(f"WS quote for {symbol}: {ws_quote}")
+                    return ws_quote
+
+            # ─── Try 2: REST API (ScripDetails) ───
+            quote = None
             if token and token != 0:
-                # Get LTP from ScripDetails (this works reliably)
                 payload = {'exch': exchange, 'symbol': str(token)}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
-
                 if isinstance(result, dict) and (result.get('stat') == 'Ok' or result.get('success')):
                     quote = self._extract_quote_data(result)
                 elif isinstance(result, list):
                     quote = self._extract_quote_data(result)
 
-            # Fallback with trading symbol as string if token didn't work
+            # Fallback with trading symbol as string
             if not quote or quote['ltp'] <= 0:
                 payload = {'exch': exchange, 'symbol': symbol}
                 result = self._make_request("POST", "/ScripDetails/getScripQuoteDetails", payload)
@@ -758,14 +841,23 @@ class AliceBlueBroker(BaseBroker):
             if not quote or quote['ltp'] <= 0:
                 return {'ltp': 0, 'change': 0, 'change_pct': 0, 'prev_close': 0}
 
-            # If ScripDetails didn't provide change data, get prev close from NSE
+            # ─── Enrich with prev close if ScripDetails didn't provide change data ───
             if quote['ltp'] > 0 and quote['change'] == 0.0 and quote['prev_close'] <= 0:
-                # Try 1: NSE India official API (exact match with Alice Blue)
-                # Get the trading symbol for NSE lookup
                 trading_sym = symbol.replace('-EQ', '').replace('-BE', '')
+
+                # Try WebSocket percentage change even if ltp came from REST
+                if token and token != 0:
+                    ws_quote = self.get_ws_quote(str(token), exchange)
+                    if ws_quote and ws_quote['prev_close'] > 0:
+                        quote['prev_close'] = ws_quote['prev_close']
+                        quote['change'] = round(quote['ltp'] - ws_quote['prev_close'], 2)
+                        quote['change_pct'] = ws_quote['change_pct']
+                        return quote
+
+                # Try NSE India API (batch + individual)
                 prev_close = self._get_nse_prev_close(trading_sym, exchange)
 
-                # Try 2: Chart/history API as fallback
+                # Fallback: Chart/history API
                 if prev_close <= 0:
                     effective_token = token if token and token != 0 else 0
                     if effective_token:
@@ -785,3 +877,197 @@ class AliceBlueBroker(BaseBroker):
         """Get LTP for any instrument using ScripDetails/getScripQuoteDetails"""
         quote = self.get_scrip_quote(symbol, exchange)
         return quote['ltp']
+
+    # ── WebSocket for real-time tick data ──────────────────────────────
+    WS_URL = "wss://ws1.aliceblueonline.com/NorenWS/"
+
+    def start_websocket(self):
+        """Start WebSocket connection for real-time tick data in a background thread."""
+        if not self.session_id:
+            logger.warning("Cannot start WebSocket: no session_id")
+            return False
+
+        if hasattr(self, '_ws_thread') and self._ws_thread and self._ws_thread.is_alive():
+            logger.info("WebSocket already running")
+            return True
+
+        try:
+            import websocket as ws_lib
+        except ImportError:
+            logger.warning("websocket-client not installed, skipping WebSocket")
+            return False
+
+        self._ws_tick_data = getattr(self, '_ws_tick_data', {})
+        self._ws_subscriptions = getattr(self, '_ws_subscriptions', "")
+        self._ws_connected = False
+
+        # Create WS session
+        try:
+            inv_url = f"{self.BASE_URL}/ws/invalidateSocketSess"
+            create_url = f"{self.BASE_URL}/ws/createSocketSess"
+            ws_headers = {
+                'Authorization': f'Bearer {self.user_id} {self.session_id}',
+                'Content-Type': 'application/json'
+            }
+            payload = json.dumps({"loginType": "API"})
+
+            inv_resp = requests.post(inv_url, headers=ws_headers, data=payload, timeout=10)
+            logger.info(f"WS invalidate: {inv_resp.text[:200]}")
+
+            create_resp = requests.post(create_url, headers=ws_headers, data=payload, timeout=10)
+            create_data = create_resp.json()
+            logger.info(f"WS create session: {create_data.get('stat', 'unknown')}")
+
+            if create_data.get('stat') != 'Ok':
+                logger.warning(f"WS session creation failed: {create_data}")
+                return False
+
+            # Double SHA-256 of session_id for ENC token
+            sha1 = hashlib.sha256(self.session_id.encode('utf-8')).hexdigest()
+            self._ws_enc = hashlib.sha256(sha1.encode('utf-8')).hexdigest()
+
+        except Exception as e:
+            logger.error(f"WS session setup error: {e}")
+            return False
+
+        def on_open(ws):
+            init_msg = {
+                "susertoken": self._ws_enc,
+                "t": "c",
+                "actid": self.user_id + "_API",
+                "uid": self.user_id + "_API",
+                "source": "API"
+            }
+            ws.send(json.dumps(init_msg))
+            self._ws_connected = True
+            logger.info("WebSocket connected!")
+            # Re-subscribe if we have pending subscriptions
+            if self._ws_subscriptions:
+                sub_msg = {"k": self._ws_subscriptions, "t": "t"}
+                ws.send(json.dumps(sub_msg))
+                logger.info(f"WS re-subscribed: {self._ws_subscriptions[:100]}")
+
+        def on_message(ws, message):
+            try:
+                data = json.loads(message)
+                msg_type = data.get('t', '')
+                if msg_type in ('tf', 'tk', 'df', 'dk'):
+                    # Tick data: tf=tick feed, tk=tick acknowledgement
+                    tk = data.get('tk', '')
+                    exchange = data.get('e', '')
+                    key = f"{exchange}:{tk}"
+
+                    # Update stored tick data (merge, don't replace)
+                    if key not in self._ws_tick_data:
+                        self._ws_tick_data[key] = {}
+                    self._ws_tick_data[key].update(data)
+
+                    lp = data.get('lp', '')
+                    pc = data.get('pc', '')
+                    if lp:
+                        logger.debug(f"WS tick {key}: lp={lp} pc={pc}")
+                elif msg_type == 'ck':
+                    logger.info(f"WS connection acknowledged: {data.get('s', '')}")
+            except json.JSONDecodeError:
+                pass
+            except Exception as e:
+                logger.debug(f"WS message parse error: {e}")
+
+        def on_error(ws, error):
+            logger.warning(f"WS error: {error}")
+
+        def on_close(ws, close_status_code=None, close_msg=None):
+            self._ws_connected = False
+            logger.info(f"WS closed: {close_status_code} {close_msg}")
+
+        def ws_run():
+            while not getattr(self, '_ws_stop', False):
+                try:
+                    self._ws = ws_lib.WebSocketApp(
+                        self.WS_URL,
+                        on_open=on_open,
+                        on_message=on_message,
+                        on_error=on_error,
+                        on_close=on_close,
+                    )
+                    self._ws.run_forever(
+                        ping_interval=3,
+                        ping_payload='{"t":"h"}',
+                        sslopt={"cert_reqs": ssl.CERT_NONE}
+                    )
+                except Exception as e:
+                    logger.warning(f"WS run error: {e}")
+                if not getattr(self, '_ws_stop', False):
+                    import time
+                    time.sleep(2)  # Reconnect after 2s
+
+        self._ws_stop = False
+        self._ws_thread = threading.Thread(target=ws_run, daemon=True)
+        self._ws_thread.start()
+        logger.info("WebSocket thread started")
+        return True
+
+    def ws_subscribe(self, symbols_with_exchange: List[Dict]):
+        """Subscribe to symbols via WebSocket. Each item: {symbol, exchange, token}"""
+        if not hasattr(self, '_ws') or not self._ws_connected:
+            return
+
+        scripts = ""
+        for item in symbols_with_exchange:
+            token = item.get('token', '')
+            exchange = item.get('exchange', 'NSE')
+            if token:
+                scripts += f"{exchange}|{token}#"
+
+        if scripts:
+            scripts = scripts.rstrip('#')
+            self._ws_subscriptions = scripts
+            sub_msg = {"k": scripts, "t": "t"}
+            try:
+                self._ws.send(json.dumps(sub_msg))
+                logger.info(f"WS subscribed to {len(symbols_with_exchange)} symbols")
+            except Exception as e:
+                logger.warning(f"WS subscribe error: {e}")
+
+    def get_ws_quote(self, token: str, exchange: str = "NSE") -> Optional[Dict]:
+        """Get latest tick data from WebSocket for a token.
+        Returns dict with ltp, change, change_pct, prev_close if available."""
+        key = f"{exchange}:{token}"
+        tick = getattr(self, '_ws_tick_data', {}).get(key)
+        if not tick:
+            return None
+
+        lp = self._safe_float(tick.get('lp', 0))
+        if lp <= 0:
+            return None
+
+        pc_pct = self._safe_float(tick.get('pc', 0))  # percentage change
+        prev_close = 0.0
+        change = 0.0
+
+        if pc_pct != 0:
+            # Calculate prev_close from LTP and percentage change
+            prev_close = round(lp / (1 + pc_pct / 100), 2)
+            change = round(lp - prev_close, 2)
+
+        return {
+            'ltp': lp,
+            'change': change,
+            'change_pct': pc_pct,
+            'prev_close': prev_close,
+        }
+
+    def stop_websocket(self):
+        """Stop WebSocket connection."""
+        self._ws_stop = True
+        self._ws_connected = False
+        if hasattr(self, '_ws') and self._ws:
+            try:
+                self._ws.close()
+            except:
+                pass
+        logger.info("WebSocket stopped")
+
+    def get_prev_close_cache(self) -> Dict:
+        """Return the current prev_close cache for debugging."""
+        return getattr(self, '_prev_close_cache', {})
